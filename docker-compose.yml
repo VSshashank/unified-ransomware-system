@@ -1,0 +1,138 @@
+version: "3.8"
+
+services:
+  monitor:
+    build: ./services/monitor
+    container_name: ransomware_monitor
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./watched_files:/watch
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - WATCH_PATH=${WATCH_PATH:-/watch}
+    restart: unless-stopped
+    networks:
+      - ransomware_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  ml_engine:
+    build: ./services/ml-engine
+    container_name: ransomware_ml
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./models:/models
+      - ./logs:/app/logs
+    environment:
+      - MODEL_PATH=${MODEL_PATH:-/models/xgboost_model.pkl}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    networks:
+      - ransomware_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+
+  ledger:
+    build: ./services/ledger
+    container_name: ransomware_ledger
+    ports:
+      - "8003:8003"
+    restart: unless-stopped
+    networks:
+      - ransomware_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  response:
+    build: ./services/response
+    container_name: ransomware_response
+    ports:
+      - "8004:8004"
+    restart: unless-stopped
+    networks:
+      - ransomware_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  gateway:
+    build: ./services/gateway
+    container_name: ransomware_gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - MONITOR_URL=${MONITOR_URL:-http://monitor:8001}
+      - ML_URL=${ML_URL:-http://ml_engine:8002}
+      - LEDGER_URL=${LEDGER_URL:-http://ledger:8003}
+      - RESPONSE_URL=${RESPONSE_URL:-http://response:8004}
+      - JWT_SECRET=${JWT_SECRET:-dev-only-change-me}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-120}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      monitor:
+        condition: service_healthy
+      ml_engine:
+        condition: service_healthy
+      ledger:
+        condition: service_healthy
+      response:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ransomware_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  dashboard:
+    build: ./services/dashboard
+    container_name: ransomware_dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      - GATEWAY_URL=${GATEWAY_URL:-http://gateway:8000}
+      - JWT_SECRET=${JWT_SECRET:-dev-only-change-me}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ransomware_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+networks:
+  ransomware_net:
+    driver: bridge

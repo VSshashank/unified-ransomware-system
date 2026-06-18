@@ -1,0 +1,684 @@
+openapi: 3.0.3
+info:
+  title: URDS API Gateway
+  version: 1.0.0
+  description: Unified Ransomware Detection and Recovery System gateway contract for SH integration scope.
+servers:
+  - url: http://localhost:8000
+security:
+  - BearerAuth: []
+paths:
+  /health:
+    get:
+      summary: Gateway and downstream service health
+      security: []
+      responses:
+        "200":
+          description: Health state for the gateway and downstream services.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /auth/token:
+    post:
+      summary: Development-only JWT token generator
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+      responses:
+        "200":
+          description: JWT access token for local development.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+  /monitor/start:
+    post:
+      summary: Start file monitoring
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MonitorStartRequest"
+      responses:
+        "200":
+          description: Monitor started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitorStartResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /monitor/stop:
+    post:
+      summary: Stop file monitoring
+      responses:
+        "200":
+          description: Monitor stopped.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitorStopResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /monitor/status:
+    get:
+      summary: Current monitor status
+      responses:
+        "200":
+          description: Monitor status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitorStatusResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /monitor/events:
+    get:
+      summary: Recent file events for Dashboard v1
+      responses:
+        "200":
+          description: Recent monitor events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonitorEventsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /predict:
+    post:
+      summary: Predict ransomware risk from file features
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PredictRequest"
+      responses:
+        "200":
+          description: Prediction result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PredictResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /model/metrics:
+    get:
+      summary: Current ML model metrics
+      responses:
+        "200":
+          description: Model quality metrics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelMetricsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /ledger/log:
+    post:
+      summary: Log an event to the ledger
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LedgerLogRequest"
+      responses:
+        "200":
+          description: Ledger block response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LedgerLogResponse"
+        "201":
+          description: Ledger block created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LedgerLogResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /ledger/entries:
+    get:
+      summary: Recent ledger entries for Dashboard v1
+      responses:
+        "200":
+          description: Recent ledger entries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LedgerEntriesResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /response/terminate:
+    post:
+      summary: Terminate a suspicious process
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TerminateRequest"
+      responses:
+        "200":
+          description: Process termination result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TerminateResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /response/isolate:
+    post:
+      summary: Isolate host/network
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IsolateRequest"
+      responses:
+        "200":
+          description: Isolation action result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IsolateResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /response/recover:
+    post:
+      summary: Recover files from a snapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecoverRequest"
+      responses:
+        "200":
+          description: Recovery result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoverResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /response/trigger:
+    post:
+      summary: Trigger automated incident response
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerRequest"
+      responses:
+        "200":
+          description: Response trigger result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriggerResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /analyze:
+    post:
+      summary: Analyze a file through Monitor, ML Engine, and Ledger
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeRequest"
+      responses:
+        "200":
+          description: Prediction returned after ledger logging.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PredictResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    BadRequest:
+      description: Bad request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid JWT.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TooManyRequests:
+      description: Rate limit exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServiceUnavailable:
+      description: Downstream service unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [code, message, timestamp, request_id]
+      properties:
+        code:
+          type: string
+          example: PREDICTION_FAILED
+        message:
+          type: string
+          example: Unable to classify file due to missing features
+        timestamp:
+          type: string
+          format: date-time
+        request_id:
+          type: string
+          example: req_abc123
+    ErrorResponse:
+      type: object
+      required: [error, details]
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorEnvelope"
+        details:
+          type: object
+          additionalProperties: true
+          example:
+            missing_features: [pe_imports_count, api_calls]
+    TokenRequest:
+      type: object
+      properties:
+        sub:
+          type: string
+          default: user_id_123
+        role:
+          type: string
+          default: admin
+        tier:
+          type: string
+          default: enterprise
+    TokenResponse:
+      type: object
+      required: [access_token, token_type]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          example: bearer
+    HealthResponse:
+      type: object
+      required: [status, services]
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded]
+        services:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: true
+    MonitorStartRequest:
+      type: object
+      required: [watch_path, recursive, file_patterns]
+      properties:
+        watch_path:
+          type: string
+          example: /path/to/monitor
+        recursive:
+          type: boolean
+          example: true
+        file_patterns:
+          type: array
+          items:
+            type: string
+          example: ["*.doc", "*.pdf", "*.jpg"]
+    MonitorStartResponse:
+      type: object
+      required: [status, monitor_id, start_time]
+      properties:
+        status:
+          type: string
+          example: monitoring
+        monitor_id:
+          type: string
+          example: mon_123abc
+        start_time:
+          type: string
+          format: date-time
+    MonitorStopResponse:
+      type: object
+      required: [status, stop_time]
+      properties:
+        status:
+          type: string
+          example: stopped
+        stop_time:
+          type: string
+          format: date-time
+    MonitorStatusResponse:
+      type: object
+      required: [status, files_monitored, events_captured, uptime_seconds]
+      properties:
+        status:
+          type: string
+          example: active
+        files_monitored:
+          type: integer
+          example: 1523
+        events_captured:
+          type: integer
+          example: 45
+        uptime_seconds:
+          type: integer
+          example: 3600
+    FileEvent:
+      type: object
+      required: [event_id, file_path, event_type, entropy, timestamp]
+      properties:
+        event_id:
+          type: string
+        file_path:
+          type: string
+        event_type:
+          type: string
+        entropy:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+    MonitorEventsResponse:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileEvent"
+    FeatureSet:
+      type: object
+      required: [shannon_entropy, file_size, magic_bytes, modification_rate, pe_imports_count, api_calls]
+      properties:
+        shannon_entropy:
+          type: number
+          example: 7.89
+        file_size:
+          type: integer
+          example: 1048576
+        magic_bytes:
+          type: string
+          example: 4D5A
+        modification_rate:
+          type: number
+          example: 0.85
+        pe_imports_count:
+          type: integer
+          example: 45
+        api_calls:
+          type: array
+          items:
+            type: string
+          example: [CreateFile, WriteFile, CryptEncrypt]
+    PredictRequest:
+      type: object
+      required: [features]
+      properties:
+        features:
+          $ref: "#/components/schemas/FeatureSet"
+    PredictResponse:
+      type: object
+      required: [prediction, confidence, model_version, timestamp, threat_level, features_importance]
+      properties:
+        prediction:
+          type: string
+          example: ransomware
+        confidence:
+          type: number
+          example: 0.94
+        model_version:
+          type: string
+          example: 1.0.0
+        timestamp:
+          type: string
+          format: date-time
+        threat_level:
+          type: string
+          example: high
+        features_importance:
+          type: object
+          additionalProperties:
+            type: number
+    ModelMetricsResponse:
+      type: object
+      required: [accuracy, precision, recall, f1_score, roc_auc, last_trained]
+      properties:
+        accuracy:
+          type: number
+          example: 0.92
+        precision:
+          type: number
+          example: 0.91
+        recall:
+          type: number
+          example: 0.93
+        f1_score:
+          type: number
+          example: 0.92
+        roc_auc:
+          type: number
+          example: 0.95
+        last_trained:
+          type: string
+          format: date-time
+    LedgerLogRequest:
+      type: object
+      required: [event_type, event_data]
+      properties:
+        event_type:
+          type: string
+          example: file_encrypted
+        event_data:
+          type: object
+          additionalProperties: true
+    LedgerLogResponse:
+      type: object
+      required: [block_id, current_hash, previous_hash, timestamp, tamper_proof]
+      properties:
+        block_id:
+          type: integer
+          example: 42
+        current_hash:
+          type: string
+        previous_hash:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        tamper_proof:
+          type: boolean
+    LedgerEntriesResponse:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/LedgerLogResponse"
+    TerminateRequest:
+      type: object
+      required: [process_id, incident_id, reason, force]
+      properties:
+        process_id:
+          type: integer
+          example: 4512
+        incident_id:
+          type: string
+          example: inc_998877
+        reason:
+          type: string
+          example: ransomware_detected
+        force:
+          type: boolean
+          example: true
+    TerminateResponse:
+      type: object
+      required: [status, process_id, timestamp, exit_code]
+      properties:
+        status:
+          type: string
+          example: terminated
+        process_id:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+        exit_code:
+          type: integer
+    IsolateRequest:
+      type: object
+      required: [isolation_level, duration_seconds, allow_localhost]
+      properties:
+        isolation_level:
+          type: string
+          example: full
+        duration_seconds:
+          type: integer
+          example: 300
+        allow_localhost:
+          type: boolean
+          example: true
+    IsolateResponse:
+      type: object
+      required: [status, isolation_level, duration_seconds, timestamp]
+      properties:
+        status:
+          type: string
+          example: isolated
+        isolation_level:
+          type: string
+        duration_seconds:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+    RecoverRequest:
+      type: object
+      required: [snapshot_id, files, verify_integrity]
+      properties:
+        snapshot_id:
+          type: string
+          example: vss_20260131_100000
+        files:
+          type: array
+          items:
+            type: string
+        verify_integrity:
+          type: boolean
+    RecoverResponse:
+      type: object
+      required: [status, files_recovered, integrity_verified, timestamp]
+      properties:
+        status:
+          type: string
+          example: success
+        files_recovered:
+          type: integer
+        integrity_verified:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+    TriggerRequest:
+      type: object
+      required: [incident_id, process_id, threat_level, action_required]
+      properties:
+        incident_id:
+          type: string
+          example: inc_998877
+        process_id:
+          type: integer
+          example: 4512
+        threat_level:
+          type: string
+          example: critical
+        action_required:
+          type: string
+          example: terminate_process
+    TriggerResponse:
+      type: object
+      required: [status, actions_taken, timestamp]
+      properties:
+        status:
+          type: string
+          example: success
+        actions_taken:
+          type: array
+          items:
+            type: string
+          example: [process_terminated, network_isolated, admin_notified]
+        timestamp:
+          type: string
+          format: date-time
+    AnalyzeRequest:
+      type: object
+      required: [file_path]
+      properties:
+        file_path:
+          type: string
+          example: /path/to/file.doc
