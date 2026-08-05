@@ -1,0 +1,7 @@
+{
+  "accuracy": 0.9993351063829787,
+  "precision": 1.0,
+  "recall": 0.9986702127659575,
+  "f1_score": 0.9993346640053227,
+  "ransomware_detection_rate": 0.9986702127659575
+}

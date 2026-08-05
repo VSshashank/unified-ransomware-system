@@ -1,0 +1,11 @@
+Behavioral / Entropy Analysis Summary
+========================================
+Suggested entropy threshold: 0.3186
+WannaCry write rate: 4888.13 writes/sec
+Firefox write rate: 213.53 writes/sec
+
+CLEAR behavioral fingerprint (mean by label):
+            WAR       RAR       RAW        WAW
+Label                                         
+0      0.107383  9.420582  1.020134   2.612975
+1      0.000000  0.000000  0.001808  14.336347
