@@ -1,0 +1,95 @@
+{
+  "top_features": {
+    "ember_637": {
+      "importance": 0.8037156462669373,
+      "group": "string_info"
+    },
+    "ember_2359": {
+      "importance": 0.5927501916885376,
+      "group": "data_directories"
+    },
+    "ember_626": {
+      "importance": 0.5022603869438171,
+      "group": "string_info"
+    },
+    "ember_655": {
+      "importance": 0.24477297067642212,
+      "group": "string_info"
+    },
+    "ember_691": {
+      "importance": 0.2223278135061264,
+      "group": "imported_functions"
+    },
+    "ember_578": {
+      "importance": 0.20258978009223938,
+      "group": "byte_entropy_histogram"
+    },
+    "ember_2364": {
+      "importance": 0.20025111734867096,
+      "group": "data_directories"
+    },
+    "ember_596": {
+      "importance": 0.14689011871814728,
+      "group": "string_info"
+    },
+    "ember_786": {
+      "importance": 0.13353131711483002,
+      "group": "imported_functions"
+    },
+    "ember_89": {
+      "importance": 0.12170697003602982,
+      "group": "byte_histogram"
+    },
+    "ember_95": {
+      "importance": 0.11891777813434601,
+      "group": "byte_histogram"
+    },
+    "ember_128": {
+      "importance": 0.11747102439403534,
+      "group": "byte_histogram"
+    },
+    "ember_515": {
+      "importance": 0.11584490537643433,
+      "group": "byte_entropy_histogram"
+    },
+    "ember_615": {
+      "importance": 0.10516311973333359,
+      "group": "string_info"
+    },
+    "ember_2355": {
+      "importance": 0.10477135330438614,
+      "group": "data_directories"
+    },
+    "ember_32": {
+      "importance": 0.10450787097215652,
+      "group": "header_info"
+    },
+    "ember_2354": {
+      "importance": 0.10325679928064346,
+      "group": "data_directories"
+    },
+    "ember_683": {
+      "importance": 0.09289132803678513,
+      "group": "string_info"
+    },
+    "ember_511": {
+      "importance": 0.0865924060344696,
+      "group": "byte_entropy_histogram"
+    },
+    "ember_527": {
+      "importance": 0.08659128844738007,
+      "group": "byte_entropy_histogram"
+    }
+  },
+  "group_totals": {
+    "general_file_info": 0.1880289693363011,
+    "header_info": 0.8449663142673671,
+    "byte_histogram": 2.869958791656245,
+    "byte_entropy_histogram": 3.672535304358462,
+    "string_info": 3.035563189216191,
+    "imported_functions": 2.3549461434558907,
+    "exported_functions": 0.12330264176125638,
+    "section_info": 0.1730329710226215,
+    "data_directories": 1.460461167502217
+  }
+}

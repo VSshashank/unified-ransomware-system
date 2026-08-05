@@ -14,3 +14,4 @@ watched_files/
 *.log
 dist/
 build/
+data/
