@@ -178,6 +178,63 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/TooManyRequests"
+  /ledger/verify:
+    get:
+      summary: Verify the hash chain and report the first broken block
+      responses:
+        "200":
+          description: Chain verification result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LedgerVerifyResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /ledger/blocks:
+    get:
+      summary: Paginated read of the audit trail
+      parameters:
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+        - in: query
+          name: event_type
+          schema:
+            type: string
+          description: Filter by event type.
+        - in: query
+          name: file_path
+          schema:
+            type: string
+          description: Filter to events about one file.
+        - in: query
+          name: newest_first
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: A page of ledger blocks.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LedgerBlocksResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
   /response/terminate:
     post:
       summary: Terminate a suspicious process
@@ -560,6 +617,65 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/LedgerLogResponse"
+    LedgerBlock:
+      type: object
+      required: [block_id, timestamp, event_type, event_data, previous_hash, current_hash]
+      properties:
+        block_id:
+          type: integer
+          example: 42
+        timestamp:
+          type: string
+          format: date-time
+        event_type:
+          type: string
+          example: file_event
+        event_data:
+          type: object
+          description: >-
+            Event metadata only; raw file content never enters a block. Carries
+            file_hash whenever the file's hash is known, which the recovery
+            module reads back to verify a restore.
+        previous_hash:
+          type: string
+          description: Full SHA-256, 64 hex characters.
+          example: 3b1f0c5e9a7d4b28c6e1f0a9d8b7c6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d
+        current_hash:
+          type: string
+          description: Full SHA-256, 64 hex characters.
+        blockchain_anchor:
+          type: string
+          nullable: true
+          description: Phase 5 (Polygon anchoring); null until then.
+    LedgerBlocksResponse:
+      type: object
+      required: [blocks, total, offset, limit]
+      properties:
+        blocks:
+          type: array
+          items:
+            $ref: "#/components/schemas/LedgerBlock"
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+    LedgerVerifyResponse:
+      type: object
+      required: [valid, blocks_checked, verification_time_ms]
+      properties:
+        valid:
+          type: boolean
+        blocks_checked:
+          type: integer
+        invalid_block_id:
+          type: integer
+          nullable: true
+          description: Block where the chain first breaks; null when valid.
+        verification_time_ms:
+          type: number
+          description: Spec target is under 50ms.
     TerminateRequest:
       type: object
       required: [process_id, incident_id, reason, force]

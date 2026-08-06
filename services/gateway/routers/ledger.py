@@ -18,3 +18,15 @@ async def log_event(payload: LedgerLogRequest, request: Request) -> JSONResponse
 @router.get("/entries")
 async def ledger_entries(request: Request) -> JSONResponse:
     return await proxy_request(request, "GET", LEDGER_URL, "/ledger/entries")
+
+
+@router.get("/verify")
+async def verify_chain(request: Request) -> JSONResponse:
+    return await proxy_request(request, "GET", LEDGER_URL, "/ledger/verify")
+
+
+@router.get("/blocks")
+async def ledger_blocks(request: Request) -> JSONResponse:
+    # proxy_request forwards the query string, so offset/limit/event_type/
+    # file_path/newest_first all reach the ledger unchanged.
+    return await proxy_request(request, "GET", LEDGER_URL, "/ledger/blocks")
