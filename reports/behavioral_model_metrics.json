@@ -1,0 +1,27 @@
+{
+  "accuracy": 0.8856749311294766,
+  "precision": 0.9545454545454546,
+  "recall": 0.8099173553719008,
+  "f1_score": 0.8763040238450075,
+  "roc_auc": 0.9560670567432401,
+  "test_samples": 726,
+  "feature_names": [
+    "shannon_entropy",
+    "log_file_size",
+    "has_container_header",
+    "ransom_extension",
+    "printable_ratio",
+    "byte_value_std",
+    "chi_square_uniformity"
+  ],
+  "feature_importance": {
+    "shannon_entropy": 0.10103897750377655,
+    "log_file_size": 0.017367685213685036,
+    "has_container_header": 0.4962930679321289,
+    "ransom_extension": 0.25350821018218994,
+    "printable_ratio": 0.027411511167883873,
+    "byte_value_std": 0.0197395421564579,
+    "chi_square_uniformity": 0.08464106172323227
+  },
+  "trained_at": "2026-08-06T15:54:50.541750Z"
+}

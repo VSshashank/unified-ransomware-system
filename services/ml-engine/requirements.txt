@@ -1,2 +1,11 @@
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
+pydantic==2.10.4
+
+# NI model serving. Versions are pinned to the ones the models were trained
+# with: a pickle loaded by a different xgboost/sklearn major will either refuse
+# to unpickle or, worse, load with changed defaults.
+xgboost==3.4.0
+scikit-learn==1.9.0
+numpy==2.5.1
+joblib==1.5.3
