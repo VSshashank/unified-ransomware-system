@@ -1,0 +1,29 @@
+{
+  "detection_latency_ms": {
+    "samples": 40,
+    "mean": 11.596,
+    "p95": 29.849,
+    "max": 29.96,
+    "target": 100.0
+  },
+  "false_positive_rate": {
+    "corpus_size": 40,
+    "high_entropy_in_corpus": 32,
+    "false_positives": 0,
+    "rate": 0.0,
+    "target": 0.05,
+    "offenders": []
+  },
+  "true_positive_rate": {
+    "samples": 30,
+    "detected": 30,
+    "rate": 1.0
+  },
+  "cpu_percent": {
+    "files_written": 91,
+    "raw_percent_of_one_core": 16.5,
+    "percent_of_total_cpu": 2.06,
+    "cores": 8,
+    "target": 15.0
+  }
+}

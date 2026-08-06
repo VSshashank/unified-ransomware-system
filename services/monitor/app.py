@@ -1,25 +1,71 @@
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
+"""URDS Monitor service (port 8001) - AS.
+
+    POST /monitor/start   begin watching a path
+    POST /monitor/stop    stop watching
+    GET  /monitor/status  monitor id, files seen, events captured
+    GET  /monitor/events  recent events, newest first
+    POST /features        feature extraction for one file (used by /analyze)
+    GET  /health          liveness for docker-compose and the gateway
+
+Watchdog delivers filesystem events on its own thread. Classification happens
+inline there - it is a couple of reads and a counter, and the detection-latency
+target is measured from the moment the event arrives to the moment the verdict
+exists. The downstream fan-out (ML, ledger, response) is handed to a worker
+thread so a slow ledger cannot stall the watcher.
+"""
+
+import logging
 import os
-import math
-from collections import Counter
+import queue
+import threading
+from collections import deque
 from datetime import datetime, timezone
-from random import choice, randint, uniform
-from time import time
+from time import perf_counter, time
 from uuid import uuid4
 
+import httpx
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
+import pipeline
+from detection import (
+    DEFAULT_ENTROPY_THRESHOLD,
+    calculate_entropy,
+    classify,
+    get_magic_bytes,
+    read_magic,
+    sha256_file,
+)
 
-# PLACEHOLDER STUB: AS owns the real Monitor service logic.
-# This stub exists so SH can test gateway/dashboard integration end-to-end.
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+logger = logging.getLogger("monitor")
 
-app = FastAPI(title="URDS Monitor Stub", version="0.1.0")
+app = FastAPI(title="URDS Monitor", version="1.0.0")
+
+ENTROPY_THRESHOLD = float(os.getenv("ENTROPY_THRESHOLD", DEFAULT_ENTROPY_THRESHOLD))
+# Off in unit tests and anywhere the downstream services are not running.
+PIPELINE_ENABLED = os.getenv("PIPELINE_ENABLED", "true").lower() not in {"false", "0", "no"}
+MAX_EVENTS = int(os.getenv("MAX_EVENTS", "500"))
+
 STARTED_AT = time()
-RUNNING = True
-EVENTS = []
-observer = None
+
+# Bounded on purpose: the old list grew without limit for the lifetime of the
+# process, which is a slow leak on a busy watch path.
+EVENTS: deque = deque(maxlen=MAX_EVENTS)
+_SEEN_FILES: set[str] = set()
+_LOCK = threading.Lock()
+
+_observer: Observer | None = None
+_monitor_id: str | None = None
+_watch_path: str | None = None
+
+_work: queue.Queue = queue.Queue()
+_worker: threading.Thread | None = None
 
 
 class MonitorStartRequest(BaseModel):
@@ -35,188 +81,302 @@ class FeatureRequest(BaseModel):
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
-def calculate_entropy(file_path):
-    try:
-        with open(file_path, "rb") as file:
-            data = file.read()
 
-        if len(data) == 0:
-            return 0.0
-
-        counter = Counter(data)
-
-        entropy = 0.0
-
-        for count in counter.values():
-            probability = count / len(data)
-            entropy -= probability * math.log2(probability)
-
-        return round(entropy, 2)
-
-    except Exception as e:
-        print(f"Entropy Error: {e}")
-        return 0.0
-# ==========================
-# AS Module: Magic Byte Detection
-# ==========================
-def get_magic_bytes(file_path: str) -> str:
-    try:
-        with open(file_path, "rb") as file:
-            magic = file.read(4)
-            return magic.hex().upper()
-
-    except Exception as e:
-        print(f"Magic Byte Error: {e}")
-        return "UNKNOWN"
-# ==========================
-# AS Module: Real File Monitoring
-# ==========================
-class MonitorHandler(FileSystemEventHandler):
-
-    def on_created(self, event):
-        if event.is_directory:
-            return
-
-        EVENTS.append({
-        "event_id": f"evt_{uuid4().hex[:10]}",
-        "file_path": event.src_path,
-        "event_type": "created",
-        "entropy": calculate_entropy(event.src_path),
-        "file_size": os.path.getsize(event.src_path),
-        "magic_bytes": get_magic_bytes(event.src_path),
-        "timestamp": utc_now(),
-        "process_id": 0,
-        "user": "system"
-    })
-
-    def on_modified(self, event):
-        if event.is_directory:
-            return
-
-        EVENTS.append({
-        "event_id": f"evt_{uuid4().hex[:10]}",
-        "file_path": event.src_path,
-        "event_type": "created",
-        "entropy": calculate_entropy(event.src_path),
-        "file_size": os.path.getsize(event.src_path),
-        "magic_bytes": get_magic_bytes(event.src_path),
-        "timestamp": utc_now(),
-        "process_id": 0,
-        "user": "system"
-    })
-
-    def on_deleted(self, event):
-        if event.is_directory:
-            return
-
-        EVENTS.append({
-            "event_id": f"evt_{uuid4().hex[:10]}",
-            "file_path": event.src_path,
-            "event_type": "deleted",
-            "entropy": 0,
+def build_error(code: str, message: str, details: dict | None = None) -> dict:
+    return {
+        "error": {
+            "code": code,
+            "message": message,
             "timestamp": utc_now(),
-            "process_id": 0,
-            "user": "system"
-        })
+            "request_id": f"req_{uuid4().hex[:12]}",
+        },
+        "details": details or {},
+    }
 
-        del EVENTS[:-50]
-                
-def make_event(path: str | None = None) -> dict:
-    event_type = choice(["created", "modified", "renamed", "encrypted"])
-    suffix = choice(["doc", "pdf", "jpg", "xlsx"])
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content=build_error("BAD_REQUEST", "Request validation failed", {"errors": exc.errors()}),
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request, exc: StarletteHTTPException) -> JSONResponse:
+    code = {404: "NOT_FOUND", 405: "METHOD_NOT_ALLOWED", 500: "INTERNAL_SERVER_ERROR"}.get(
+        exc.status_code, "REQUEST_FAILED"
+    )
+    return JSONResponse(status_code=exc.status_code, content=build_error(code, str(exc.detail)))
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=500,
+        content=build_error("MONITOR_ERROR", "Unexpected monitor error", {"error": str(exc)}),
+    )
+
+
+# ------------------------------------------------------------------- extraction
+
+
+def extract_features(path: str) -> dict:
+    """Feature vector for one file. Every value is measured, none are invented."""
+    magic = read_magic(path)
+    entropy = calculate_entropy(path)
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        size = 0
+
+    verdict = classify(path, entropy, magic, ENTROPY_THRESHOLD)
+    return {
+        "shannon_entropy": entropy,
+        "file_size": size,
+        "magic_bytes": magic[:4].hex().upper() if magic else "UNKNOWN",
+        "container_format": verdict["container_format"],
+        "ransom_extension": verdict["ransom_extension"],
+        "suspicious": verdict["suspicious"],
+        "verdict": verdict["verdict"],
+        # Normalised 0-1 view of entropy; the ML stub and the dashboard both
+        # read this as "how encrypted-looking is it".
+        "modification_rate": round(min(1.0, entropy / 8.0), 2),
+    }
+
+
+def handle_event(path: str, event_type: str) -> dict | None:
+    """Classify one filesystem event and record it.
+
+    Detection latency is measured over exactly this function: from the event
+    arriving to a verdict existing. Target is under 100ms.
+    """
+    started = perf_counter()
+
+    if event_type == "deleted":
+        event = {
+            "event_id": f"evt_{uuid4().hex[:10]}",
+            "file_path": path,
+            "event_type": "deleted",
+            "entropy": 0.0,
+            "file_size": 0,
+            "magic_bytes": "UNKNOWN",
+            "file_hash": None,
+            "suspicious": False,
+            "verdict": "deleted",
+            "reason": "file removed",
+            "timestamp": utc_now(),
+            "process_id": os.getpid(),
+            "user": "system",
+        }
+        event["detection_latency_ms"] = round((perf_counter() - started) * 1000, 3)
+        _record(event)
+        return event
+
+    if not os.path.isfile(path):
+        return None
+
+    magic = read_magic(path)
+    entropy = calculate_entropy(path)
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return None
+
+    verdict = classify(path, entropy, magic, ENTROPY_THRESHOLD)
+    file_hash = sha256_file(path)
+
     event = {
         "event_id": f"evt_{uuid4().hex[:10]}",
-        "file_path": path or f"/watch/capstone_file_{randint(1, 200)}.{suffix}",
+        "file_path": path,
         "event_type": event_type,
-        "entropy": round(uniform(3.2, 8.1), 2),
+        "entropy": entropy,
+        "file_size": size,
+        "magic_bytes": magic[:4].hex().upper() if magic else "UNKNOWN",
+        "file_hash": file_hash,
+        "suspicious": verdict["suspicious"],
+        "verdict": verdict["verdict"],
+        "reason": verdict["reason"],
+        "container_format": verdict["container_format"],
         "timestamp": utc_now(),
-        "process_id": randint(1000, 9999),
-        "user": choice(["admin", "student", "analyst"]),
+        # watchdog reports *what* changed, never *who* changed it - attribution
+        # needs eBPF/fanotify (Linux) or ETW (Windows), which is Phase 5 work.
+        # Reporting the monitor's own PID here would be worse than admitting the
+        # gap: the response service runs in a different PID namespace, so that
+        # number would name an unrelated process for it to kill.
+        "process_id": None,
+        "user": "system",
     }
-    EVENTS.append(event)
-    del EVENTS[:-50]
+    event["detection_latency_ms"] = round((perf_counter() - started) * 1000, 3)
+
+    _record(event)
+
+    if verdict["suspicious"] and PIPELINE_ENABLED:
+        features = {
+            "shannon_entropy": entropy,
+            "file_size": size,
+            "magic_bytes": event["magic_bytes"],
+            "modification_rate": round(min(1.0, entropy / 8.0), 2),
+            "container_format": verdict["container_format"],
+            "ransom_extension": verdict["ransom_extension"],
+        }
+        _work.put((event, features, verdict))
+
     return event
+
+
+def _record(event: dict) -> None:
+    with _LOCK:
+        EVENTS.append(event)
+        _SEEN_FILES.add(event["file_path"])
+
+
+def _drain() -> None:
+    client = httpx.Client(timeout=pipeline.DOWNSTREAM_TIMEOUT)
+    try:
+        while True:
+            item = _work.get()
+            if item is None:
+                return
+            event, features, verdict = item
+            try:
+                outcome = pipeline.run(event, features, verdict, client=client)
+                with _LOCK:
+                    event["pipeline"] = {"stages": outcome["stages"]}
+                    if outcome["ledger_block"]:
+                        event["block_id"] = outcome["ledger_block"].get("block_id")
+                    if outcome["prediction"]:
+                        event["prediction"] = outcome["prediction"].get("prediction")
+                        event["threat_level"] = outcome["prediction"].get("threat_level")
+            except Exception:  # a bad event must not kill the worker
+                logger.exception("pipeline failed for %s", event.get("file_path"))
+            finally:
+                _work.task_done()
+    finally:
+        client.close()
+
+
+def _ensure_worker() -> None:
+    global _worker
+    if _worker is None or not _worker.is_alive():
+        _worker = threading.Thread(target=_drain, name="monitor-pipeline", daemon=True)
+        _worker.start()
+
+
+class MonitorHandler(FileSystemEventHandler):
+    def on_created(self, event):
+        if not event.is_directory:
+            handle_event(event.src_path, "created")
+
+    def on_modified(self, event):
+        if not event.is_directory:
+            handle_event(event.src_path, "modified")
+
+    def on_moved(self, event):
+        if not event.is_directory:
+            handle_event(event.dest_path, "renamed")
+
+    def on_deleted(self, event):
+        if not event.is_directory:
+            handle_event(event.src_path, "deleted")
+
+
+# -------------------------------------------------------------------- endpoints
 
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "healthy", "service": "monitor", "placeholder": True}
+    return {
+        "status": "healthy",
+        "service": "monitor",
+        "monitoring": _observer is not None and _observer.is_alive(),
+        "entropy_threshold": ENTROPY_THRESHOLD,
+    }
 
 
 @app.post("/monitor/start")
-def start_monitoring(payload: MonitorStartRequest) -> dict:
-    global RUNNING, STARTED_AT, observer
+def start_monitoring(payload: MonitorStartRequest) -> JSONResponse:
+    global _observer, _monitor_id, _watch_path, STARTED_AT
 
-    RUNNING = True
+    if not os.path.isdir(payload.watch_path):
+        return JSONResponse(
+            status_code=400,
+            content=build_error(
+                "INVALID_WATCH_PATH",
+                f"{payload.watch_path} is not a directory",
+                {"watch_path": payload.watch_path},
+            ),
+        )
+
+    if _observer is not None:
+        _observer.stop()
+        _observer.join(timeout=5)
+
+    _ensure_worker()
+
+    _observer = Observer()
+    _observer.schedule(MonitorHandler(), payload.watch_path, recursive=payload.recursive)
+    _observer.start()
+
+    _monitor_id = f"mon_{uuid4().hex[:6]}"
+    _watch_path = payload.watch_path
     STARTED_AT = time()
 
-    # Stop existing observer if already running
-    if observer:
-        observer.stop()
-        observer.join()
-
-    event_handler = MonitorHandler()
-
-    observer = Observer()
-    observer.schedule(
-        event_handler,
-        payload.watch_path,
-        recursive=payload.recursive
+    logger.info("monitoring %s (recursive=%s) as %s", _watch_path, payload.recursive, _monitor_id)
+    return JSONResponse(
+        content={
+            "status": "monitoring",
+            "monitor_id": _monitor_id,
+            "watch_path": _watch_path,
+            "recursive": payload.recursive,
+            "file_patterns": payload.file_patterns,
+            "start_time": utc_now(),
+        }
     )
-
-    observer.start()
-
-    return {
-        "status": "monitoring",
-        "monitor_id": f"mon_{uuid4().hex[:6]}",
-        "start_time": utc_now(),
-        "watch_path": payload.watch_path
-    }
 
 
 @app.post("/monitor/stop")
 def stop_monitoring() -> dict:
-    global RUNNING, observer
+    global _observer, _monitor_id
 
-    RUNNING = False
+    if _observer is not None:
+        _observer.stop()
+        _observer.join(timeout=5)
+        _observer = None
 
-    if observer:
-        observer.stop()
-        observer.join()
-        observer = None
+    stopped = _monitor_id
+    _monitor_id = None
+    return {"status": "stopped", "monitor_id": stopped, "stop_time": utc_now()}
 
-    return {
-        "status": "stopped",
-        "stop_time": utc_now()
-    }
 
 @app.get("/monitor/status")
 def monitor_status() -> dict:
-    
+    with _LOCK:
+        files_monitored = len(_SEEN_FILES)
+        events_captured = len(EVENTS)
+    running = _observer is not None and _observer.is_alive()
     return {
-        "status": "active" if RUNNING else "stopped",
-        "files_monitored": len(EVENTS),
-        "events_captured": len(EVENTS),
+        "status": "active" if running else "stopped",
+        "monitor_id": _monitor_id,
+        "watch_path": _watch_path,
+        "files_monitored": files_monitored,
+        "events_captured": events_captured,
         "uptime_seconds": int(time() - STARTED_AT),
     }
 
 
 @app.get("/monitor/events")
 def monitor_events(limit: int = 20) -> dict:
-    return {
-        "events": list(reversed(EVENTS[-limit:]))
-    }
+    with _LOCK:
+        events = list(EVENTS)[-limit:]
+    return {"events": list(reversed(events)), "total": len(events)}
 
 
 @app.post("/features")
-def extract_features(payload: FeatureRequest) -> dict:
-    # AS Module: Calculate real Shannon entropy
-    entropy = calculate_entropy(payload.path)
-    return {
-        "shannon_entropy": entropy,
-        "file_size": os.path.getsize(payload.path),
-        "magic_bytes": get_magic_bytes(payload.path),
-        "modification_rate": round(min(1.0, entropy / 8.2), 2),
-        "pe_imports_count": randint(5, 80),
-        "api_calls": ["CreateFile", "WriteFile", "CryptEncrypt"] if entropy > 7 else ["CreateFile", "ReadFile"],
-    }
+def features_endpoint(payload: FeatureRequest) -> JSONResponse:
+    if not os.path.isfile(payload.path):
+        return JSONResponse(
+            status_code=404,
+            content=build_error("FILE_NOT_FOUND", f"{payload.path} does not exist", {"path": payload.path}),
+        )
+    return JSONResponse(content=extract_features(payload.path))

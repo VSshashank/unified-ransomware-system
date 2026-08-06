@@ -332,7 +332,13 @@ def test_recover_endpoint_rejects_an_empty_file_list(client):
     response = client.post(
         "/response/recover", json={"snapshot_id": "snap1", "files": [], "verify_integrity": True}
     )
-    assert response.status_code == 422
+    # Was 422 with FastAPI's raw {"detail": [...]} body. The response service now
+    # has the same validation handler as the gateway and ledger, so this is a 400
+    # carrying the project's error envelope.
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "BAD_REQUEST"
+    assert set(body["error"]) == {"code", "message", "timestamp", "request_id"}
 
 
 def test_status_endpoint_explains_the_platform(client):
@@ -343,10 +349,25 @@ def test_status_endpoint_explains_the_platform(client):
 
 
 def test_teammate_endpoints_are_untouched(client):
-    """terminate/isolate belong to AS and must keep working."""
-    response = client.post(
+    """terminate/isolate belong to AS and must keep working.
+
+    These were placeholders returning a fixed 200 when this test was written, so
+    it used an arbitrary PID. They are real now: a PID that does not exist is
+    refused rather than reported as terminated. The point of the test is that
+    SI's router still mounts alongside AS's endpoints, so it checks they are
+    routed and answering in-contract, not that any PID can be killed.
+    """
+    terminate = client.post(
         "/response/terminate",
         json={"process_id": 1234, "incident_id": "i-1", "reason": "test", "force": True},
     )
-    assert response.status_code == 200
-    assert response.json()["status"] == "terminated"
+    assert terminate.status_code in {200, 409}
+    if terminate.status_code == 409:
+        assert terminate.json()["error"]["code"] == "TERMINATION_REFUSED"
+
+    isolate = client.post(
+        "/response/isolate",
+        json={"isolation_level": "full", "duration_seconds": 60, "allow_localhost": True},
+    )
+    assert isolate.status_code == 200
+    assert "enforced" in isolate.json()

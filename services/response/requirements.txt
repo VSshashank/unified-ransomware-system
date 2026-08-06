@@ -2,6 +2,9 @@ fastapi==0.115.6
 uvicorn[standard]==0.32.1
 pydantic==2.10.4
 
+# AS terminate / isolate
+psutil==7.2.2          # process inspection and termination
+
 # SI recovery module
 httpx==0.28.1          # talks to the ledger service
 APScheduler==3.11.0    # 6-hourly VSS snapshot job
