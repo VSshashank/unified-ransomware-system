@@ -1,8 +1,26 @@
 # Unified Ransomware Detection & Recovery System
 
-URDS is a college capstone microservices project. This branch contains SH's integration and DevOps scope for Weeks 1-16: API Gateway, Dashboard v1, Docker Compose orchestration, OpenAPI contract, and lightweight placeholder backend services for end-to-end testing.
+URDS is a college capstone microservices project covering Phases 1-4 (Weeks 1-16): detection, classification, tamper-evident audit, response, recovery, and the integration layer that ties them together.
 
-The Monitor, ML Engine, Ledger, and Response service internals are teammate-owned. The implementations in this repo are clearly marked stubs so the gateway and dashboard can be tested before those real services are merged.
+## Service status
+
+All six services are implemented. Nothing in `services/` is a stub any more.
+
+| Service | Port | Owner | State |
+|---|---|---|---|
+| Monitor | 8001 | AS | Real. Watchdog file events, Shannon entropy, magic-byte false-positive mitigation, SHA-256 hashing, and fan-out to ML → Ledger → Response. |
+| ML Engine | 8002 | NI | Real. Serves two trained XGBoost models: the EMBER static-PE classifier (`ember_vector`) and a behavioural classifier over the Monitor's feature dict. Metrics are read from disk, not hardcoded. |
+| Ledger | 8003 | SI | Real. SQLite hash chain with tamper detection; full-chain verification measured at ~3.7ms against a <50ms target. |
+| Response | 8004 | AS + SI | Real. AS owns terminate/isolate/trigger (psutil process termination, platform-aware network isolation); SI owns `recovery/` (VSS snapshots, restore, integrity verification). |
+| Gateway | 8000 | SH | Real. JWT auth, per-tier rate limiting, service proxies, and the `/analyze` orchestration. |
+| Dashboard | 8501 | SH | Real. Streamlit, 1s auto-refresh, live event feed and ledger evidence. |
+
+Two things are deliberately *not* real, and both say so at runtime rather than faking a result:
+
+- **VSS snapshots** need Windows. On Linux/macOS `VSSManager` reports `supported: false` with the reason, and recovery falls back to a directory-backed snapshot root so the path stays exercisable.
+- **Network isolation** builds real `iptables`/`pfctl`/`netsh` rules but only applies them when `RESPONSE_ISOLATION_ENABLED=true`. Otherwise it returns `enforced: false` along with the rules it would have applied.
+
+Trained model artifacts (`models/`) and datasets (`data/`) are gitignored. Rebuild them with `python src/train_behavioral_model.py` and, once a dataset is fetched via `src/fetch_ember_subset.py`, `python src/train_ember_model.py`.
 
 ## Quick Start
 
@@ -58,10 +76,12 @@ The gateway OpenAPI contract lives at `docs/openapi/gateway.yaml`. It covers:
 
 - Monitor routes: `/monitor/start`, `/monitor/stop`, `/monitor/status`, `/monitor/events`
 - ML routes: `/predict`, `/model/metrics`
-- Ledger routes: `/ledger/log`, `/ledger/entries`
+- Ledger routes: `/ledger/log`, `/ledger/entries`, `/ledger/verify`, `/ledger/blocks`
 - Response routes: `/response/terminate`, `/response/isolate`, `/response/recover`, `/response/trigger`
 - Composite route: `/analyze`
 - Health and development auth endpoints
+
+`tests/test_gateway.py` asserts the contract and the implementation match in both directions, so a route added to one without the other fails the suite.
 
 Every gateway error uses:
 
@@ -91,23 +111,30 @@ Use conventional commits:
 - `fix(dashboard): handle empty event feed`
 - `test(gateway): cover JWT rejection`
 
-## Swapping Stubs for Real Services
+## Service Wiring
 
-The current backend services are placeholders:
-
-- `services/monitor`
-- `services/ml-engine`
-- `services/ledger`
-- `services/response`
-
-To swap in teammate implementations, keep the same container ports and endpoint contracts, or update the gateway environment variables in `.env`/`docker-compose.yml`:
+Services find each other by URL, so any one of them can be run outside Compose (natively, or against a remote host) by pointing the others at it:
 
 - `MONITOR_URL`
 - `ML_URL`
 - `LEDGER_URL`
 - `RESPONSE_URL`
 
-The gateway should not need internal service logic changes as long as the contracts remain stable.
+This is how the Response service gets run on Windows for real VSS snapshots while the rest of the stack stays in Compose.
+
+The gateway needs no internal service logic changes as long as the contracts in `docs/openapi/gateway.yaml` hold.
+
+## Running the Tests
+
+```bash
+for svc in gateway ledger monitor ml-engine response; do (cd services/$svc && python -m pytest -q); done
+```
+
+Benchmarks that assert the spec's numeric targets are marked `benchmark`; run them with output shown to see the measured values:
+
+```bash
+cd services/monitor && python -m pytest -m benchmark -q -s
+```
 
 ## Future Work
 

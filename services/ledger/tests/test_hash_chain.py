@@ -110,6 +110,55 @@ def test_edited_event_data_is_detected(ledger):
     assert result["invalid_block_id"] == 2
 
 
+def test_journal_mode_is_not_wal(ledger):
+    """WAL must stay off, and this is not a style preference.
+
+    WAL coordinates connections through a shared-memory index (-shm), which does
+    not survive Docker Desktop's bind mount from a macOS/Windows host into its
+    Linux VM. The observed consequence was the running service answering
+    /ledger/verify from a snapshot taken before a row was rewritten underneath
+    it - a tamper reported as a valid chain, which is precisely the failure
+    TC-05 exists to catch. The rollback journal uses POSIX file locks, which do
+    cross that boundary.
+    """
+    mode = ledger.conn.execute("PRAGMA journal_mode").fetchone()[0]
+    assert mode.lower() != "wal", (
+        "journal_mode is WAL; external tampering can go undetected on a "
+        "bind-mounted volume"
+    )
+
+
+def test_tamper_by_a_live_external_connection_is_detected(ledger):
+    """The TC-05 threat model: the ledger is up and serving when the file is edited."""
+    ledger.add_block("file_encrypted", {"file_path": "/a.doc", "entropy": 7.9})
+    ledger.add_block("file_encrypted", {"file_path": "/b.doc", "entropy": 7.5})
+
+    # Read through the service's own connection first, so any cached view of the
+    # table is populated before the edit lands.
+    assert ledger.verify_chain()["valid"] is True
+
+    tamper(
+        ledger.db_path,
+        "UPDATE blocks SET event_data = ? WHERE id = 2",
+        ('{"file_path":"/harmless.txt"}',),
+    )
+
+    result = ledger.verify_chain()
+    assert result["valid"] is False, "tamper went undetected by a live ledger"
+    assert result["invalid_block_id"] == 2
+
+
+def test_verification_still_meets_the_50ms_target_with_a_fresh_connection(ledger):
+    """Re-opening the database per verify must not cost the Table 5.9 target."""
+    for index in range(1000):
+        ledger.add_block("file_event", {"file_path": f"/f{index}.doc", "entropy": 7.9})
+
+    result = ledger.verify_chain()
+    assert result["valid"] is True
+    assert result["blocks_checked"] == 1000
+    assert result["verification_time_ms"] < 50, result["verification_time_ms"]
+
+
 def test_relabelled_event_type_is_detected(ledger):
     """event_type is inside the preimage, so it can't be rewritten silently."""
     ledger.add_block("file_encrypted", {"file_path": "/a.doc"})

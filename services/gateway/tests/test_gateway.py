@@ -64,6 +64,36 @@ def client(monkeypatch):
             return httpx.Response(200, json={"block_id": 42, "current_hash": "abc123", "previous_hash": "def456", "timestamp": "2026-01-31T10:01:10Z", "tamper_proof": True})
         if path == "/ledger/entries":
             return httpx.Response(200, json={"entries": [{"block_id": 42, "current_hash": "abc123", "previous_hash": "def456", "timestamp": "2026-01-31T10:01:10Z", "tamper_proof": True}]})
+        if path == "/ledger/verify":
+            return httpx.Response(200, json={"valid": True, "blocks_checked": 128, "invalid_block_id": None, "verification_time_ms": 3.7})
+        if path == "/ledger/blocks":
+            return httpx.Response(
+                200,
+                json={
+                    "blocks": [
+                        {
+                            "block_id": 42,
+                            "timestamp": "2026-01-31T10:01:10Z",
+                            "event_type": "file_event",
+                            "event_data": {"file_path": "/watch/file.doc", "file_hash": "a" * 64},
+                            "previous_hash": "d" * 64,
+                            "current_hash": "c" * 64,
+                            "blockchain_anchor": None,
+                        }
+                    ],
+                    "total": 1,
+                    "offset": 0,
+                    "limit": 50,
+                },
+            )
+        if path == "/response/terminate":
+            return httpx.Response(200, json={"status": "terminated", "process_id": 4512, "timestamp": "2026-01-31T10:02:40Z", "exit_code": 0})
+        if path == "/response/isolate":
+            return httpx.Response(200, json={"status": "simulated", "enforced": False, "isolation_level": "full", "timestamp": "2026-01-31T10:02:41Z"})
+        if path == "/response/recover":
+            return httpx.Response(200, json={"status": "success", "files_recovered": 1, "integrity_verified": True, "timestamp": "2026-01-31T10:03:00Z"})
+        if path == "/monitor/stop":
+            return httpx.Response(200, json={"status": "stopped", "stop_time": "2026-01-31T10:05:00Z"})
         if path == "/response/trigger":
             return httpx.Response(200, json={"status": "success", "actions_taken": ["process_terminated", "network_isolated", "admin_notified"], "timestamp": "2026-01-31T10:02:45Z"})
         return httpx.Response(404, json={"message": f"Unhandled test path: {path}"})
@@ -155,3 +185,147 @@ def test_rate_limit_returns_standard_429(client, monkeypatch):
     body = response.json()
     assert body["error"]["code"] == "RATE_LIMIT_EXCEEDED"
     assert body["details"]["tier"] == "free"
+
+
+# ------------------------------------------------------------- ledger proxies
+
+
+def test_ledger_verify_is_reachable_through_the_gateway(client):
+    """SI's chain verification had no gateway route, so 8000 could not reach it."""
+    response = client.get("/ledger/verify", headers=auth_headers())
+    assert response.status_code == 200
+    body = response.json()
+    assert body["valid"] is True
+    assert body["blocks_checked"] == 128
+    assert client.calls[-1]["path"] == "/ledger/verify"
+
+
+def test_ledger_blocks_is_reachable_through_the_gateway(client):
+    response = client.get("/ledger/blocks", headers=auth_headers())
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert client.calls[-1]["path"] == "/ledger/blocks"
+
+
+def test_ledger_blocks_forwards_its_query_parameters(client):
+    """offset/limit/event_type/file_path/newest_first have to reach the ledger."""
+    client.get(
+        "/ledger/blocks",
+        params={"offset": "10", "limit": "5", "event_type": "file_event",
+                "file_path": "/watch/a.doc", "newest_first": "true"},
+        headers=auth_headers(),
+    )
+    params = client.calls[-1]["params"]
+    assert params["offset"] == "10"
+    assert params["limit"] == "5"
+    assert params["event_type"] == "file_event"
+    assert params["file_path"] == "/watch/a.doc"
+    assert params["newest_first"] == "true"
+
+
+def test_ledger_routes_require_a_token(client):
+    for path in ("/ledger/verify", "/ledger/blocks"):
+        assert client.get(path).status_code == 401, path
+
+
+def test_full_64_character_hashes_survive_the_proxy(client):
+    """Ledger hashes are full SHA-256 now, not the old stub's truncated 32."""
+    block = client.get("/ledger/blocks", headers=auth_headers()).json()["blocks"][0]
+    assert len(block["current_hash"]) == 64
+    assert len(block["previous_hash"]) == 64
+    assert len(block["event_data"]["file_hash"]) == 64
+
+
+# ------------------------------------------------------------ TC-10 auth
+
+
+def test_malformed_token_is_rejected(client):
+    response = client.get("/monitor/status", headers={"Authorization": "Bearer not-a-jwt"})
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "UNAUTHORIZED"
+
+
+def test_token_signed_with_the_wrong_secret_is_rejected(client):
+    from jose import jwt
+
+    forged = jwt.encode(
+        {"sub": "attacker", "role": "admin", "tier": "enterprise", "exp": 9_999_999_999},
+        "not-the-real-secret",
+        algorithm="HS256",
+    )
+    response = client.get("/monitor/status", headers={"Authorization": f"Bearer {forged}"})
+    assert response.status_code == 401
+
+
+def test_expired_token_is_rejected(client):
+    from datetime import datetime, timedelta, timezone
+
+    from jose import jwt
+
+    import auth as gateway_auth
+
+    expired = jwt.encode(
+        {
+            "sub": "u",
+            "role": "admin",
+            "tier": "enterprise",
+            "exp": int((datetime.now(timezone.utc) - timedelta(hours=1)).timestamp()),
+        },
+        gateway_auth.JWT_SECRET,
+        algorithm=gateway_auth.JWT_ALGORITHM,
+    )
+    response = client.get("/monitor/status", headers={"Authorization": f"Bearer {expired}"})
+    assert response.status_code == 401
+
+
+# ------------------------------------------------- spec / implementation parity
+
+
+def test_every_documented_path_is_implemented():
+    """The contract is only useful if 8000 actually serves what it promises."""
+    from openapi_spec_validator.readers import read_from_filename
+
+    spec_path = Path(__file__).resolve().parents[3] / "docs" / "openapi" / "gateway.yaml"
+    spec, _ = read_from_filename(str(spec_path))
+
+    documented = {
+        (path, method.upper())
+        for path, operations in spec["paths"].items()
+        for method in operations
+        if method.lower() in {"get", "post", "put", "patch", "delete"}
+    }
+    implemented = {
+        (route.path, method)
+        for route in main.app.routes
+        if getattr(route, "methods", None)
+        for method in route.methods
+        if method not in {"HEAD", "OPTIONS"}
+    }
+
+    missing = documented - implemented
+    assert not missing, f"documented in gateway.yaml but not implemented: {sorted(missing)}"
+
+
+def test_every_implemented_route_is_documented():
+    from openapi_spec_validator.readers import read_from_filename
+
+    spec_path = Path(__file__).resolve().parents[3] / "docs" / "openapi" / "gateway.yaml"
+    spec, _ = read_from_filename(str(spec_path))
+
+    documented = {
+        (path, method.upper())
+        for path, operations in spec["paths"].items()
+        for method in operations
+        if method.lower() in {"get", "post", "put", "patch", "delete"}
+    }
+    ignored = {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+    implemented = {
+        (route.path, method)
+        for route in main.app.routes
+        if getattr(route, "methods", None) and route.path not in ignored
+        for method in route.methods
+        if method not in {"HEAD", "OPTIONS"}
+    }
+
+    undocumented = implemented - documented
+    assert not undocumented, f"served by the gateway but absent from gateway.yaml: {sorted(undocumented)}"

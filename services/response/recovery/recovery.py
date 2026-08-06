@@ -16,7 +16,9 @@ would be worse than admitting we could not.
 
 import hashlib
 import logging
+import ntpath
 import os
+import posixpath
 import shutil
 from datetime import datetime, timezone
 from typing import Optional
@@ -59,8 +61,15 @@ def to_relative(file_path: str) -> str:
 
     C:\\data\\report.doc -> data\\report.doc
     /data/report.doc     -> data/report.doc
+
+    `os.path.splitdrive` is `posixpath.splitdrive` off Windows, which does not
+    recognise a drive letter and hands the path back untouched. The response
+    service runs in a Linux container, so a Windows-sourced path has to be
+    split with `ntpath` explicitly or it never gets re-rooted.
     """
-    _, tail = os.path.splitdrive(file_path)
+    _, tail = ntpath.splitdrive(file_path)
+    if tail == file_path:  # no drive letter; may still be a POSIX path
+        _, tail = posixpath.splitdrive(file_path)
     return tail.lstrip("\\/")
 
 
