@@ -1,0 +1,60 @@
+========================================================================
+SI demo - TC-04 file recovery, TC-05 tamper detection
+run at 2026-08-06T06:43:15.978095+00:00
+========================================================================
+[health] ledger    healthy
+[health] response  healthy
+
+--- BEFORE THE ATTACK --------------------------------------------------
+  path            C:\Users\i3\Documents\urds\unified-ransomware-system\data\si_demo\thesis.doc
+  size            5760 bytes
+  sha256          1302caa254905004af8e7ecb9c5be5337371c4371047b1138e2bf0eb13a68e3f
+  entropy         4.250  (low - readable text)
+  first 48 bytes  b'Chapter 1. The original, uncorrupted thesis.\nCha'
+  ledger block    #1 file_baseline  hash=7d23223bbe344da1...
+  snapshot        snap_demo taken (ledger block #2)
+
+--- AFTER THE ATTACK ---------------------------------------------------
+  sha256          8ece4f777b4916f76d318c404225e830c2f87f57b8bdad6d22a03e69e5dada86
+  entropy         7.966  (high - encrypted)
+  first 48 bytes  b'\xa4\x82\xa9\xf0k\x83\xfbRBS\xe3\x88\x9d\xe9\xceY\x81\xdfd|\xec\x11\xac\r\xdeM9\xa4sNWb\x9f7\xae\xc4av\xedfz\xa08\xf7\xef\x86\x82W'
+  ledger block    #3 file_encrypted
+
+--- TC-04 RECOVERY -----------------------------------------------------
+  POST /response/recover -> HTTP 200
+{
+  "status": "success",
+  "files_recovered": 1,
+  "integrity_verified": true,
+  "timestamp": "2026-08-06T06:43:21.382996Z",
+  "files": [
+    {
+      "file_path": "C:\\Users\\i3\\Documents\\urds\\unified-ransomware-system\\data\\si_demo\\thesis.doc",
+      "restored": true,
+      "integrity_verified": true,
+      "restored_hash": "1302caa254905004af8e7ecb9c5be5337371c4371047b1138e2bf0eb13a68e3f",
+      "expected_hash": "1302caa254905004af8e7ecb9c5be5337371c4371047b1138e2bf0eb13a68e3f",
+      "reason": null
+    }
+  ]
+}
+  sha256          1302caa254905004af8e7ecb9c5be5337371c4371047b1138e2bf0eb13a68e3f
+  entropy         4.250
+  first 48 bytes  b'Chapter 1. The original, uncorrupted thesis.\nCha'
+  matches pre-attack hash: True
+  TC-04: PASS
+
+--- CHAIN AFTER RECOVERY -----------------------------------------------
+  {"valid": true, "blocks_checked": 5, "invalid_block_id": null, "verification_time_ms": 0.161}
+  valid and under 50ms: PASS
+
+--- TC-05 TAMPERING ----------------------------------------------------
+  attacker edits block #3 to hide the encryption
+  {"valid": false, "blocks_checked": 3, "invalid_block_id": 3, "verification_time_ms": 0.118}
+  detected at the right block: True
+  TC-05: PASS
+
+========================================================================
+TC-04 file recovery + integrity : PASS
+TC-05 tamper detection          : PASS
+========================================================================

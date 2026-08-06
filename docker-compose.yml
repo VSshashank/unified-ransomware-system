@@ -53,6 +53,14 @@ services:
     container_name: ransomware_ledger
     ports:
       - "8003:8003"
+    volumes:
+      # The hash chain must outlive the container - a wiped ledger is a wiped
+      # audit trail.
+      - ./data/ledger:/app/data
+      - ./logs:/app/logs
+    environment:
+      - LEDGER_DB_PATH=${LEDGER_DB_PATH:-/app/data/ledger.db}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     restart: unless-stopped
     networks:
       - ransomware_net
@@ -68,6 +76,20 @@ services:
     container_name: ransomware_response
     ports:
       - "8004:8004"
+    volumes:
+      # Recovery restores files back to the paths the monitor watches.
+      - ./watched_files:/watch
+      - ./data/snapshots:/app/snapshots
+      - ./logs:/app/logs
+    environment:
+      - LEDGER_URL=${LEDGER_URL:-http://ledger:8003}
+      # VSS does not exist in a Linux container; this directory stands in as the
+      # snapshot source so recovery is exercisable in compose. See README-SI.md.
+      - RECOVERY_SNAPSHOT_ROOT=${RECOVERY_SNAPSHOT_ROOT:-/app/snapshots}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      ledger:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - ransomware_net
