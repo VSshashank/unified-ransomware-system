@@ -1,13 +1,34 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+# SI: recovery module. Owns /response/recover and the VSS snapshot schedule.
+from recovery.recovery import router as recovery_router
+from recovery.vss_manager import VSSManager
+
 
 # PLACEHOLDER STUB: the real Response service owner should replace this file.
 # It returns contract-shaped fake actions for SH integration testing only.
+# SI note: /response/recover is no longer a stub - it is served by recovery/.
+# terminate, isolate and trigger below are still placeholders and belong to AS.
 
-app = FastAPI(title="URDS Response Stub", version="0.1.0")
+_vss_manager = VSSManager()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Snapshot every 6 hours. On non-Windows hosts - including this Linux
+    # container - this logs why it cannot run and returns False; startup
+    # continues either way.
+    _vss_manager.start_scheduler()
+    yield
+    _vss_manager.stop_scheduler()
+
+
+app = FastAPI(title="URDS Response Stub", version="0.1.0", lifespan=lifespan)
+app.include_router(recovery_router)
 
 
 class TerminateRequest(BaseModel):
@@ -21,12 +42,6 @@ class IsolateRequest(BaseModel):
     isolation_level: str
     duration_seconds: int
     allow_localhost: bool
-
-
-class RecoverRequest(BaseModel):
-    snapshot_id: str
-    files: list[str]
-    verify_integrity: bool
 
 
 class TriggerRequest(BaseModel):
@@ -61,16 +76,6 @@ def isolate(payload: IsolateRequest) -> dict:
         "status": "isolated",
         "isolation_level": payload.isolation_level,
         "duration_seconds": payload.duration_seconds,
-        "timestamp": utc_now(),
-    }
-
-
-@app.post("/response/recover")
-def recover(payload: RecoverRequest) -> dict:
-    return {
-        "status": "success",
-        "files_recovered": len(payload.files),
-        "integrity_verified": payload.verify_integrity,
         "timestamp": utc_now(),
     }
 

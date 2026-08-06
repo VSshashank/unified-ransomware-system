@@ -1,2 +1,8 @@
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
+pydantic==2.10.4
+
+# SI recovery module
+httpx==0.28.1          # talks to the ledger service
+APScheduler==3.11.0    # 6-hourly VSS snapshot job
+pywin32==308; sys_platform == "win32"   # VSS via WMI; skipped in the Linux image
