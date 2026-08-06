@@ -35,6 +35,7 @@ from watchdog.observers import Observer
 import pipeline
 from detection import (
     DEFAULT_ENTROPY_THRESHOLD,
+    byte_statistics,
     calculate_entropy,
     classify,
     get_magic_bytes,
@@ -139,9 +140,12 @@ def extract_features(path: str) -> dict:
         "ransom_extension": verdict["ransom_extension"],
         "suspicious": verdict["suspicious"],
         "verdict": verdict["verdict"],
-        # Normalised 0-1 view of entropy; the ML stub and the dashboard both
-        # read this as "how encrypted-looking is it".
+        # Normalised 0-1 view of entropy; the dashboard reads this as "how
+        # encrypted-looking is it".
         "modification_rate": round(min(1.0, entropy / 8.0), 2),
+        # Measured, not estimated - the ML engine's behavioural model takes
+        # these three directly rather than deriving them from entropy.
+        **byte_statistics(path),
     }
 
 
@@ -219,6 +223,7 @@ def handle_event(path: str, event_type: str) -> dict | None:
             "modification_rate": round(min(1.0, entropy / 8.0), 2),
             "container_format": verdict["container_format"],
             "ransom_extension": verdict["ransom_extension"],
+            **byte_statistics(path),
         }
         _work.put((event, features, verdict))
 

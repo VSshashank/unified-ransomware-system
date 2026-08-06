@@ -90,6 +90,42 @@ def entropy_of(data: bytes) -> float:
     return round(entropy, 2)
 
 
+def byte_statistics(file_path: str) -> dict:
+    """Byte-distribution stats the ML engine's behavioural model consumes.
+
+    Measured here because the Monitor has already read the file. Without them
+    the ML service has to estimate all three from entropy alone, which is much
+    weaker on the cases that matter - header-spoofed ciphertext and partially
+    encrypted files both sit in the middle of that estimate.
+
+    Note that uniform random bytes are ~37% printable ASCII (95 of the 256 byte
+    values), so a *low* printable ratio means text, not ciphertext.
+    """
+    try:
+        with open(file_path, "rb") as handle:
+            data = handle.read(ENTROPY_SAMPLE_BYTES)
+    except (OSError, ValueError):
+        data = b""
+
+    total = len(data)
+    if not total:
+        return {"printable_ratio": 0.0, "byte_value_std": 0.0, "chi_square_uniformity": 0.0}
+
+    counts = Counter(data)
+    printable = sum(count for value, count in counts.items() if 32 <= value < 127) / total
+    mean = sum(value * count for value, count in counts.items()) / total
+    variance = sum(count * (value - mean) ** 2 for value, count in counts.items()) / total
+    expected = total / 256
+    chi_square = sum((counts.get(value, 0) - expected) ** 2 for value in range(256)) / expected
+
+    return {
+        "printable_ratio": round(printable, 4),
+        "byte_value_std": round(math.sqrt(variance), 4),
+        # Normalised so file size does not dominate the statistic.
+        "chi_square_uniformity": round(chi_square / total, 4),
+    }
+
+
 def read_magic(file_path: str) -> bytes:
     try:
         with open(file_path, "rb") as handle:
