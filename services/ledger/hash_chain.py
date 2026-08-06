@@ -106,12 +106,30 @@ class HashChainLedger:
 
         Single query plus an in-memory walk - the sub-50ms target (Table 5.9)
         does not survive a query per block.
+
+        The read goes through a *fresh* connection, not `self.conn`. The threat
+        TC-05 models is an attacker editing the SQLite file directly, and a
+        long-lived connection can answer from a snapshot taken before that edit
+        - which was observed in Docker, where the service kept certifying a
+        chain as valid after a row had been rewritten underneath it. An
+        integrity check that trusts its own cache cannot detect the one thing it
+        exists to detect, so this one always re-reads from disk.
         """
         started = time.perf_counter()
 
-        rows = self.conn.execute(
-            f"SELECT {_BLOCK_COLUMNS} FROM blocks ORDER BY id ASC"
-        ).fetchall()
+        if self.db_path == ":memory:":
+            # No file to re-open; an in-memory database has no external writer.
+            rows = self.conn.execute(
+                f"SELECT {_BLOCK_COLUMNS} FROM blocks ORDER BY id ASC"
+            ).fetchall()
+        else:
+            reader = connect(self.db_path)
+            try:
+                rows = reader.execute(
+                    f"SELECT {_BLOCK_COLUMNS} FROM blocks ORDER BY id ASC"
+                ).fetchall()
+            finally:
+                reader.close()
 
         expected_previous = GENESIS_HASH
         invalid_block_id: Optional[int] = None
