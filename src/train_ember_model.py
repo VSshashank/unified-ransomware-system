@@ -12,6 +12,8 @@ Run from your project's src/ folder:
 
 import os
 import json
+from datetime import datetime, timezone
+
 import numpy as np
 import pandas as pd
 import xgboost as xgb
@@ -26,11 +28,24 @@ import joblib
 
 # --- 1. Paths ---
 script_dir = os.path.dirname(os.path.abspath(__file__))
-data_path = os.path.join(script_dir, "..", "data", "ember_subset", "ember_50k.parquet")
+data_dir = os.path.join(script_dir, "..", "data", "ember_subset")
 model_dir = os.path.join(script_dir, "..", "models")
 reports_dir = os.path.join(script_dir, "..", "reports")
 os.makedirs(model_dir, exist_ok=True)
 os.makedirs(reports_dir, exist_ok=True)
+
+# Either subset builder's output works: download_ember.py writes ember_50k,
+# fetch_ember_subset.py writes ember_subset.
+_candidates = [
+    os.path.join(data_dir, "ember_subset.parquet"),
+    os.path.join(data_dir, "ember_50k.parquet"),
+]
+data_path = next((p for p in _candidates if os.path.exists(p)), None)
+if data_path is None:
+    raise SystemExit(
+        "No EMBER parquet found. Run:  python src/fetch_ember_subset.py --per-class 10000\n"
+        f"Looked in: {data_dir}"
+    )
 
 # --- 2. Load data ---
 print("Loading EMBER dataset...")
@@ -114,9 +129,24 @@ model_path = os.path.join(model_dir, "xgboost_model.pkl")
 joblib.dump(model, model_path)
 print(f"Model saved to: {model_path}")
 
+metrics.update(
+    {
+        "trained_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "train_samples": int(X_train.shape[0]),
+        "test_samples": int(X_test.shape[0]),
+        "features": int(X.shape[1]),
+        "dataset": os.path.basename(data_path),
+    }
+)
+
+payload = json.dumps(metrics, indent=2)
+# models/ is the directory mounted into the ML container, so the metrics go
+# there as well as reports/ - otherwise /model/metrics has nothing to read.
+with open(os.path.join(model_dir, "model_metrics.json"), "w") as f:
+    f.write(payload)
 metrics_path = os.path.join(reports_dir, "model_metrics.json")
 with open(metrics_path, "w") as f:
-    json.dump(metrics, f, indent=2)
-print(f"Metrics saved to: {metrics_path}")
+    f.write(payload)
+print(f"Metrics saved to: {metrics_path} (+ models/)")
 
 print("\nDone. Next: SHAP analysis, then wrap this model in the FastAPI /predict service.")

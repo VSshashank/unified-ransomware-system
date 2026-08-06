@@ -1,4 +1,6 @@
-FROM python:3.11-slim
+# 3.13 to match the environment the models were trained in. xgboost 3.4 also
+# requires >=3.12, so 3.11-slim cannot install the pinned versions at all.
+FROM python:3.13-slim
 
 WORKDIR /app
 COPY requirements.txt .

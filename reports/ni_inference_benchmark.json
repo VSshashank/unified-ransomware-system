@@ -1,7 +1,7 @@
 {
   "samples": 60,
-  "end_to_end_mean_ms": 0.753,
-  "end_to_end_p95_ms": 1.058,
-  "model_only_ms": 0.292,
+  "end_to_end_mean_ms": 1.348,
+  "end_to_end_p95_ms": 2.366,
+  "model_only_ms": 0.582,
   "target_ms": 100.0
 }
