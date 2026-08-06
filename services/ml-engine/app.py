@@ -92,7 +92,14 @@ def load_artifacts() -> None:
     """Load whatever is present. A missing model degrades that one path only."""
     global _ember_model, _behavioral_model, _metrics, _feature_order
 
-    reports = Path(__file__).resolve().parents[2] / "reports"
+    # Dev fallback only: in a source checkout this resolves to <repo>/reports.
+    # In the container app.py sits at /app/app.py, which has no second parent -
+    # indexing blindly here raised IndexError and killed startup. Metrics come
+    # from MODEL_DIR there anyway, since that is the mounted directory.
+    resolved = Path(__file__).resolve()
+    reports = (
+        resolved.parents[2] / "reports" if len(resolved.parents) > 2 else MODEL_DIR
+    )
 
     if EMBER_MODEL_PATH.is_file():
         try:
