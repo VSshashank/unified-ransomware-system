@@ -1,3 +1,5 @@
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 import os
 import math
 from collections import Counter
@@ -17,6 +19,7 @@ app = FastAPI(title="URDS Monitor Stub", version="0.1.0")
 STARTED_AT = time()
 RUNNING = True
 EVENTS = []
+observer = None
 
 
 class MonitorStartRequest(BaseModel):
@@ -65,7 +68,59 @@ def get_magic_bytes(file_path: str) -> str:
     except Exception as e:
         print(f"Magic Byte Error: {e}")
         return "UNKNOWN"
-        
+# ==========================
+# AS Module: Real File Monitoring
+# ==========================
+class MonitorHandler(FileSystemEventHandler):
+
+    def on_created(self, event):
+        if event.is_directory:
+            return
+
+        EVENTS.append({
+        "event_id": f"evt_{uuid4().hex[:10]}",
+        "file_path": event.src_path,
+        "event_type": "created",
+        "entropy": calculate_entropy(event.src_path),
+        "file_size": os.path.getsize(event.src_path),
+        "magic_bytes": get_magic_bytes(event.src_path),
+        "timestamp": utc_now(),
+        "process_id": 0,
+        "user": "system"
+    })
+
+    def on_modified(self, event):
+        if event.is_directory:
+            return
+
+        EVENTS.append({
+        "event_id": f"evt_{uuid4().hex[:10]}",
+        "file_path": event.src_path,
+        "event_type": "created",
+        "entropy": calculate_entropy(event.src_path),
+        "file_size": os.path.getsize(event.src_path),
+        "magic_bytes": get_magic_bytes(event.src_path),
+        "timestamp": utc_now(),
+        "process_id": 0,
+        "user": "system"
+    })
+
+    def on_deleted(self, event):
+        if event.is_directory:
+            return
+
+        EVENTS.append({
+            "event_id": f"evt_{uuid4().hex[:10]}",
+            "file_path": event.src_path,
+            "event_type": "deleted",
+            "entropy": 0,
+            "timestamp": utc_now(),
+            "process_id": 0,
+            "user": "system"
+        })
+
+        del EVENTS[:-50]
+                
 def make_event(path: str | None = None) -> dict:
     event_type = choice(["created", "modified", "renamed", "encrypted"])
     suffix = choice(["doc", "pdf", "jpg", "xlsx"])
@@ -90,31 +145,57 @@ def health() -> dict:
 
 @app.post("/monitor/start")
 def start_monitoring(payload: MonitorStartRequest) -> dict:
-    global RUNNING, STARTED_AT
+    global RUNNING, STARTED_AT, observer
+
     RUNNING = True
     STARTED_AT = time()
-    make_event(payload.watch_path)
+
+    # Stop existing observer if already running
+    if observer:
+        observer.stop()
+        observer.join()
+
+    event_handler = MonitorHandler()
+
+    observer = Observer()
+    observer.schedule(
+        event_handler,
+        payload.watch_path,
+        recursive=payload.recursive
+    )
+
+    observer.start()
+
     return {
         "status": "monitoring",
         "monitor_id": f"mon_{uuid4().hex[:6]}",
         "start_time": utc_now(),
+        "watch_path": payload.watch_path
     }
 
 
 @app.post("/monitor/stop")
 def stop_monitoring() -> dict:
-    global RUNNING
-    RUNNING = False
-    return {"status": "stopped", "stop_time": utc_now()}
+    global RUNNING, observer
 
+    RUNNING = False
+
+    if observer:
+        observer.stop()
+        observer.join()
+        observer = None
+
+    return {
+        "status": "stopped",
+        "stop_time": utc_now()
+    }
 
 @app.get("/monitor/status")
 def monitor_status() -> dict:
-    if RUNNING and (not EVENTS or time() % 2 < 1):
-        make_event()
+    
     return {
         "status": "active" if RUNNING else "stopped",
-        "files_monitored": 1523 + len(EVENTS),
+        "files_monitored": len(EVENTS),
         "events_captured": len(EVENTS),
         "uptime_seconds": int(time() - STARTED_AT),
     }
@@ -122,14 +203,13 @@ def monitor_status() -> dict:
 
 @app.get("/monitor/events")
 def monitor_events(limit: int = 20) -> dict:
-    if RUNNING:
-        make_event()
-    return {"events": list(reversed(EVENTS[-limit:]))}
+    return {
+        "events": list(reversed(EVENTS[-limit:]))
+    }
 
 
 @app.post("/features")
 def extract_features(payload: FeatureRequest) -> dict:
-    event = make_event(payload.path)
     # AS Module: Calculate real Shannon entropy
     entropy = calculate_entropy(payload.path)
     return {
