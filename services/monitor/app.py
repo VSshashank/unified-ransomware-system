@@ -118,10 +118,11 @@ def monitor_events(limit: int = 20) -> dict:
 @app.post("/features")
 def extract_features(payload: FeatureRequest) -> dict:
     event = make_event(payload.path)
-    entropy = event["entropy"]
+    # AS Module: Calculate real Shannon entropy
+    entropy = calculate_entropy(payload.path)
     return {
         "shannon_entropy": entropy,
-        "file_size": randint(64_000, 5_000_000),
+        "file_size": os.path.getsize(payload.path),
         "magic_bytes": choice(["4D5A", "25504446", "FFD8FFE0"]),
         "modification_rate": round(min(1.0, entropy / 8.2), 2),
         "pe_imports_count": randint(5, 80),
