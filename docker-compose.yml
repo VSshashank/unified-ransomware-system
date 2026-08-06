@@ -12,6 +12,14 @@ services:
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - WATCH_PATH=${WATCH_PATH:-/watch}
+      # The monitor drives the detection pipeline, so it needs the same service
+      # URLs the gateway has. Without these it falls back to its own defaults
+      # and only works while those happen to match the container names - which
+      # silently stops being true the moment a service moves.
+      - ML_URL=${ML_URL:-http://ml_engine:8002}
+      - LEDGER_URL=${LEDGER_URL:-http://ledger:8003}
+      - RESPONSE_URL=${RESPONSE_URL:-http://response:8004}
+      - ENTROPY_THRESHOLD=${ENTROPY_THRESHOLD:-7.5}
     restart: unless-stopped
     networks:
       - ransomware_net

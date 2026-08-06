@@ -1,0 +1,20 @@
+{
+  "all_services_healthy": true,
+  "tc03_no_false_positive": true,
+  "tc01_detected": true,
+  "tc02_flagged_as_ransomware": true,
+  "detection_latency_under_100ms": true,
+  "file_hash_is_sha256": true,
+  "tc06_ml_classified": true,
+  "ledger_logged": true,
+  "response_triggered": true,
+  "ledger_event_carries_file_hash": true,
+  "ledger_hash_is_64_chars": true,
+  "tc08_chain_verified": true,
+  "chain_verify_under_50ms": true,
+  "response_action_audited": true,
+  "tc07_process_terminated": null,
+  "kill_time_under_2s": null,
+  "tc09_dashboard_within_1s": true,
+  "tc10_auth_rejects": true
+}

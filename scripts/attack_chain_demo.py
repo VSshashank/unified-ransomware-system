@@ -211,7 +211,13 @@ def main() -> int:
         params={"limit": 50, "newest_first": "true"},
         headers=auth,
     ).json()
+    # Prefer the file_event block: response_action blocks name the same file but
+    # carry the action, not the detection.
     matching = [
+        b for b in blocks.get("blocks", [])
+        if str(b.get("event_data", {}).get("file_path", "")).endswith(victim.name)
+        and b.get("event_type") == "file_event"
+    ] or [
         b for b in blocks.get("blocks", [])
         if str(b.get("event_data", {}).get("file_path", "")).endswith(victim.name)
     ]

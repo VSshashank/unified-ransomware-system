@@ -1,24 +1,24 @@
 ========================================================================
 SI demo - TC-04 file recovery, TC-05 tamper detection
-run at 2026-08-06T06:43:15.978095+00:00
+run at 2026-08-06T16:49:37.193058+00:00
 ========================================================================
 [health] ledger    healthy
 [health] response  healthy
 
 --- BEFORE THE ATTACK --------------------------------------------------
-  path            C:\Users\i3\Documents\urds\unified-ransomware-system\data\si_demo\thesis.doc
+  path            /Users/shashankvs/Unified-randsomware-system /data/si_demo/thesis.doc
   size            5760 bytes
   sha256          1302caa254905004af8e7ecb9c5be5337371c4371047b1138e2bf0eb13a68e3f
   entropy         4.250  (low - readable text)
   first 48 bytes  b'Chapter 1. The original, uncorrupted thesis.\nCha'
-  ledger block    #1 file_baseline  hash=7d23223bbe344da1...
-  snapshot        snap_demo taken (ledger block #2)
+  ledger block    #14 file_baseline  hash=2cdce084b8cd145f...
+  snapshot        snap_demo taken (ledger block #15)
 
 --- AFTER THE ATTACK ---------------------------------------------------
-  sha256          8ece4f777b4916f76d318c404225e830c2f87f57b8bdad6d22a03e69e5dada86
-  entropy         7.966  (high - encrypted)
-  first 48 bytes  b'\xa4\x82\xa9\xf0k\x83\xfbRBS\xe3\x88\x9d\xe9\xceY\x81\xdfd|\xec\x11\xac\r\xdeM9\xa4sNWb\x9f7\xae\xc4av\xedfz\xa08\xf7\xef\x86\x82W'
-  ledger block    #3 file_encrypted
+  sha256          8fa32d7d5563a8227b7ac331fbbbbeb06f563341673f755f1cbb8be8bd532f97
+  entropy         7.968  (high - encrypted)
+  first 48 bytes  b'V\x9b\xc5!D\n\xce\x8ai\x8e\x830,\xbf^6\xe9\x0c\xde=\x9a\xeb\xfc\xdf-O\xc7~\xe8\t\xd2=\xeb\x81\xf2pf\x04\r\xa6\t\xbd\xbe\x86\x06\xd6\x98\xb9'
+  ledger block    #16 file_encrypted
 
 --- TC-04 RECOVERY -----------------------------------------------------
   POST /response/recover -> HTTP 200
@@ -26,10 +26,10 @@ run at 2026-08-06T06:43:15.978095+00:00
   "status": "success",
   "files_recovered": 1,
   "integrity_verified": true,
-  "timestamp": "2026-08-06T06:43:21.382996Z",
+  "timestamp": "2026-08-06T16:49:37.272343Z",
   "files": [
     {
-      "file_path": "C:\\Users\\i3\\Documents\\urds\\unified-ransomware-system\\data\\si_demo\\thesis.doc",
+      "file_path": "/Users/shashankvs/Unified-randsomware-system /data/si_demo/thesis.doc",
       "restored": true,
       "integrity_verified": true,
       "restored_hash": "1302caa254905004af8e7ecb9c5be5337371c4371047b1138e2bf0eb13a68e3f",
@@ -45,12 +45,12 @@ run at 2026-08-06T06:43:15.978095+00:00
   TC-04: PASS
 
 --- CHAIN AFTER RECOVERY -----------------------------------------------
-  {"valid": true, "blocks_checked": 5, "invalid_block_id": null, "verification_time_ms": 0.161}
+  {"valid": true, "blocks_checked": 18, "invalid_block_id": null, "verification_time_ms": 1.516}
   valid and under 50ms: PASS
 
 --- TC-05 TAMPERING ----------------------------------------------------
-  attacker edits block #3 to hide the encryption
-  {"valid": false, "blocks_checked": 3, "invalid_block_id": 3, "verification_time_ms": 0.118}
+  attacker edits block #16 to hide the encryption
+  {"valid": false, "blocks_checked": 16, "invalid_block_id": 16, "verification_time_ms": 0.618}
   detected at the right block: True
   TC-05: PASS
 

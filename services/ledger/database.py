@@ -84,8 +84,22 @@ def connect(db_path: str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     if db_path != ":memory:":
-        # WAL keeps the paginated dashboard read from blocking appends.
-        conn.execute("PRAGMA journal_mode=WAL")
+        # Deliberately NOT WAL. WAL coordinates readers and writers through a
+        # shared-memory index (the -shm file), and that coordination does not
+        # survive a bind mount from a macOS/Windows host into the Linux VM that
+        # Docker Desktop runs. Observed consequence: the service kept answering
+        # /ledger/verify from a snapshot taken before a row was rewritten in the
+        # file underneath it, so a tamper went undetected - the exact failure
+        # TC-05 exists to catch.
+        #
+        # The rollback journal uses only POSIX locks on the database file, which
+        # do cross that boundary. The ledger appends small audit rows and is read
+        # by one dashboard, so WAL's concurrency advantage was never load-bearing
+        # and is not worth a hole in the integrity guarantee.
+        conn.execute("PRAGMA journal_mode=DELETE")
+        # Readers and writers can now briefly block each other; wait rather than
+        # returning "database is locked".
+        conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA synchronous=FULL")
     return conn
 
