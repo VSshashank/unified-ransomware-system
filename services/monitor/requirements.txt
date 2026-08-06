@@ -1,2 +1,7 @@
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
+pydantic==2.10.4
+
+# AS monitor
+watchdog==6.0.0        # filesystem event source
+httpx==0.28.1          # ML / ledger / response fan-out
