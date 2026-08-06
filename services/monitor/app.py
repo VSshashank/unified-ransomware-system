@@ -53,7 +53,19 @@ def calculate_entropy(file_path):
     except Exception as e:
         print(f"Entropy Error: {e}")
         return 0.0
-    
+# ==========================
+# AS Module: Magic Byte Detection
+# ==========================
+def get_magic_bytes(file_path: str) -> str:
+    try:
+        with open(file_path, "rb") as file:
+            magic = file.read(4)
+            return magic.hex().upper()
+
+    except Exception as e:
+        print(f"Magic Byte Error: {e}")
+        return "UNKNOWN"
+        
 def make_event(path: str | None = None) -> dict:
     event_type = choice(["created", "modified", "renamed", "encrypted"])
     suffix = choice(["doc", "pdf", "jpg", "xlsx"])
@@ -123,7 +135,7 @@ def extract_features(payload: FeatureRequest) -> dict:
     return {
         "shannon_entropy": entropy,
         "file_size": os.path.getsize(payload.path),
-        "magic_bytes": choice(["4D5A", "25504446", "FFD8FFE0"]),
+        "magic_bytes": get_magic_bytes(payload.path),
         "modification_rate": round(min(1.0, entropy / 8.2), 2),
         "pe_imports_count": randint(5, 80),
         "api_calls": ["CreateFile", "WriteFile", "CryptEncrypt"] if entropy > 7 else ["CreateFile", "ReadFile"],
