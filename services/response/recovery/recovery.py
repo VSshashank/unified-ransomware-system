@@ -59,18 +59,25 @@ def sha256_file(path: str) -> str:
 def to_relative(file_path: str) -> str:
     """Strip the volume so a path can be re-rooted inside a snapshot.
 
-    C:\\data\\report.doc -> data\\report.doc
+    C:\\data\\report.doc -> data/report.doc
     /data/report.doc     -> data/report.doc
 
     `os.path.splitdrive` is `posixpath.splitdrive` off Windows, which does not
     recognise a drive letter and hands the path back untouched. The response
     service runs in a Linux container, so a Windows-sourced path has to be
     split with `ntpath` explicitly or it never gets re-rooted.
+
+    Separators are normalised to `/` for the same reason, and it is the half
+    that stripping the drive alone does not fix. A backslash is an ordinary
+    filename character on Linux, so joining `data\\report.doc` onto the snapshot
+    root there yields one oddly-named file rather than a path into a directory,
+    and the restore misses a file that is present. Forward slashes open
+    correctly on both platforms, so normalising one way suits both.
     """
     _, tail = ntpath.splitdrive(file_path)
     if tail == file_path:  # no drive letter; may still be a POSIX path
         _, tail = posixpath.splitdrive(file_path)
-    return tail.lstrip("\\/")
+    return tail.replace("\\", "/").lstrip("/")
 
 
 # ------------------------------------------------------------------- API models
@@ -148,8 +155,13 @@ class RecoveryManager:
             # sees both places we looked.
             searched.append(f"VSS unavailable ({exc})")
         except VSSError as exc:
-            # VSS exists but the query failed - a real operational problem.
-            raise RecoveryError(f"Cannot access snapshot {snapshot_id}: {exc}") from exc
+            # VSS exists but the query failed - a real operational problem, and
+            # the default state on a non-elevated Windows box, where both
+            # enumeration paths need admin. Where we already looked still
+            # belongs in the message: a configured snapshot root is often the
+            # answer, and dropping it made the dev fallback look broken.
+            where = f" Already searched: {'; '.join(searched)}." if searched else ""
+            raise RecoveryError(f"Cannot access snapshot {snapshot_id}: {exc}{where}") from exc
 
         raise RecoveryError(
             f"Snapshot {snapshot_id} not found. Searched: {'; '.join(searched) or 'nowhere configured'}"

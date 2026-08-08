@@ -16,6 +16,26 @@ from recovery.recovery import (
     sha256_file,
     to_relative,
 )
+from recovery.vss_manager import VSSManager
+
+
+class HostIndependentVSS(VSSManager):
+    """Reports VSS unavailable regardless of the machine underneath.
+
+    These tests cover the recovery logic over the directory-backed snapshot
+    source, so they must not consult the host. Off Windows that was true by
+    accident. On Windows the real VSSManager answers for itself: VSS is
+    supported, but enumerating shadow copies needs an elevated process, so
+    recover() raised an operational error instead of "not found" and two tests
+    failed for a reason that had nothing to do with recovery.
+    """
+
+    def platform_status(self) -> dict:
+        return {
+            "supported": False,
+            "platform": "test",
+            "reason": "VSS is switched off for the recovery tests",
+        }
 
 
 class FakeLedger:
@@ -62,7 +82,11 @@ def snapshot_root(tmp_path):
 
 @pytest.fixture
 def manager(ledger, snapshot_root):
-    return RecoveryManager(ledger_client=ledger, snapshot_root=str(snapshot_root))
+    return RecoveryManager(
+        vss_manager=HostIndependentVSS(ledger_client=ledger),
+        ledger_client=ledger,
+        snapshot_root=str(snapshot_root),
+    )
 
 
 def make_snapshot(snapshot_root, snapshot_id, files: dict):
@@ -81,13 +105,22 @@ def make_snapshot(snapshot_root, snapshot_id, files: dict):
 @pytest.mark.parametrize(
     "path,expected",
     [
-        ("C:\\data\\report.doc", "data\\report.doc"),
+        ("C:\\data\\report.doc", "data/report.doc"),
         ("/data/report.doc", "data/report.doc"),
         ("data/report.doc", "data/report.doc"),
-        ("D:\\a\\b\\c.txt", "a\\b\\c.txt"),
+        ("D:\\a\\b\\c.txt", "a/b/c.txt"),
+        ("C:\\data\\report.doc".replace("\\", "/"), "data/report.doc"),
     ],
 )
 def test_paths_are_re_rooted_without_their_volume(path, expected):
+    """Separators come back as `/` whatever went in.
+
+    These used to assert backslashes survived, which is what a Windows host
+    sends. Joining that onto the snapshot root inside the Linux container makes
+    one file named `data\\report.doc` instead of descending into `data/`, so
+    TC-04 reported a file "not present in the snapshot" that was sitting right
+    there. Verified against the running stack from a Windows host.
+    """
     assert to_relative(path) == expected
 
 
