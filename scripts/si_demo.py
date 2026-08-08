@@ -186,25 +186,45 @@ def main() -> int:
     else:
         say(f"  attacker edits block #{attack_block['block_id']} to hide the encryption")
         conn = sqlite3.connect(str(db_path))
-        conn.execute(
-            "UPDATE blocks SET event_data = ? WHERE id = ?",
-            (
-                json.dumps(
-                    {"entropy": 1.1, "file_path": str(document), "process_id": 4, "user": "admin"},
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ),
-                attack_block["block_id"],
-            ),
-        )
-        conn.commit()
-        conn.close()
 
-        tampered = client.get(f"{args.ledger}/ledger/verify").json()
-        say(f"  {json.dumps(tampered)}")
-        tc05 = tampered["valid"] is False and tampered["invalid_block_id"] == attack_block["block_id"]
-        say(f"  detected at the right block: {tc05}")
-        say(f"  TC-05: {'PASS' if tc05 else 'FAIL'}")
+        # Keep the real row so the edit can be undone. Without this the demo
+        # leaves the chain permanently broken: the next run trips over *this*
+        # run's tamper before reaching its own, and reports a false failure for
+        # every check downstream of it.
+        original = conn.execute(
+            "SELECT event_data FROM blocks WHERE id = ?", (attack_block["block_id"],)
+        ).fetchone()[0]
+
+        try:
+            conn.execute(
+                "UPDATE blocks SET event_data = ? WHERE id = ?",
+                (
+                    json.dumps(
+                        {"entropy": 1.1, "file_path": str(document), "process_id": 4, "user": "admin"},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    attack_block["block_id"],
+                ),
+            )
+            conn.commit()
+
+            tampered = client.get(f"{args.ledger}/ledger/verify").json()
+            say(f"  {json.dumps(tampered)}")
+            tc05 = tampered["valid"] is False and tampered["invalid_block_id"] == attack_block["block_id"]
+            say(f"  detected at the right block: {tc05}")
+            say(f"  TC-05: {'PASS' if tc05 else 'FAIL'}")
+        finally:
+            # Restore even if the assertion above raised - a half-finished demo
+            # must not be the thing that corrupts the audit log.
+            conn.execute(
+                "UPDATE blocks SET event_data = ? WHERE id = ?", (original, attack_block["block_id"])
+            )
+            conn.commit()
+            conn.close()
+
+        restored_chain = client.get(f"{args.ledger}/ledger/verify").json()
+        say(f"  chain restored after the test: {restored_chain['valid']}")
     say()
 
     say("=" * 72)
