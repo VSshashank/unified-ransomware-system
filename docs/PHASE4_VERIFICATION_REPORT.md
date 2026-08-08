@@ -1,7 +1,13 @@
 # Phase 1–4 Verification Report
 
-**Repo:** `VSshashank/unified-ransomware-system` · **Verified:** 6 August 2026
+**Repo:** `VSshashank/unified-ransomware-system` · **Verified:** 6 August 2026 (macOS), 8 August 2026 (Windows)
 **Scope:** Phases 1–4 (Weeks 1–16). Phase 5+ items are flagged as correctly deferred, not as gaps.
+
+> **Second pass, 8 August 2026.** The first pass ran on macOS, which left every
+> Windows-only path unexecuted and — as it turned out — hid three defects that
+> only appear on Windows. §7 records that pass. The VSS `<30 s` target in §3.1 is
+> now **measured, not deferred**, and the headline test count is **227**, not 213.
+> Where §1–§6 and §7 disagree, §7 is current.
 
 ---
 
@@ -78,7 +84,7 @@ reported here because the number would otherwise look better than the work.
 | 5–8 | Tamper detection (TC-05) | Passed **in unit tests only**. Against the running stack, editing a block in the SQLite file returned `valid: true` — **the chain was tampered and the ledger certified it intact** | Detected: `valid: false`, `invalid_block_id: 2` | §2 below |
 | 9–12 | Chain verification <50 ms | ~3.7 ms claimed | **2.3 ms / 1000 blocks**, re-measured after the fix | `test_hash_chain.py` benchmark |
 | 9–12 | File recovery (TC-04) | Complete | Passes end-to-end over HTTP | `reports/si_demo_evidence.txt` |
-| 9–12 | VSS snapshot <30 s | Unverified | **Not measurable — no Windows hardware.** See §3 | `scripts/verify_vss.py` output |
+| 9–12 | VSS snapshot <30 s | Unverified | **2.8 s** on Windows 11 build 26200, elevated. See §7.4 | `scripts/verify_vss.py` output |
 | 13–16 | Cross-platform path handling | **2 failing tests**; broken in the Linux container | Fixed with `ntpath`/`posixpath` | `test_recovery.py` 54/54 |
 
 ### SH — Integration & DevOps
@@ -124,10 +130,10 @@ after fix:   {"valid": false, "blocks_checked": 2, "invalid_block_id": 2}
 
 ## 3. Not done, or not verifiable here
 
-1. **Windows VSS snapshot timing — not measured.** No Windows hardware in this environment.
-   `scripts/verify_vss.py --volume C:\` reports `supported: false`, `platform: Darwin`, with a
-   clear reason. `VSSManager` degrades correctly rather than faking a snapshot. The `<30 s`
-   target is **unverified**, not failed.
+1. ~~**Windows VSS snapshot timing — not measured.**~~ **CLOSED 8 Aug 2026 — see §7.**
+   Measured on Windows 11 Home build 26200 from an elevated shell: a real shadow copy of `C:\`
+   created in **2.8 s** against the 30 s target, listed, and logged to the ledger. The
+   degradation path described here was correct; it is simply no longer the only path exercised.
 
 2. **PE feature extractor — not built.** The system consumes EMBER's *precomputed* 2381-feature
    vectors; it cannot featurise an arbitrary PE file at runtime. The brief scoped NI's
@@ -173,7 +179,7 @@ adversarial-ML robustness.
 | TC-01 | File event detected and captured | **PASS** | `test_api.py::test_tc01_*`; live chain §4 |
 | TC-02 | High-entropy write flagged | **PASS** | `test_detection.py::test_tc02_*`; live chain §4 |
 | TC-03 | Legitimate compression not flagged | **PASS** | 0/40 false positives; live control file `benign_compressed` |
-| TC-04 | File recovery + integrity | **PASS** | `si_demo.py`: restored hash == pre-attack hash |
+| TC-04 | File recovery + integrity | **PASS** (native) / **N-A** (Compose on Windows) | `si_demo.py`: restored hash == pre-attack hash. §7.5 |
 | TC-05 | Audit-log tamper detected | **PASS** *(was silently failing — §2)* | `valid: false, invalid_block_id: 16` |
 | TC-06 | ML classifies ransomware | **PASS** | 97.7 % EMBER / 88.6 % behavioural; live: `ransomware (critical)` |
 | TC-07 | Process terminated <2 s | **PASS** (unit) / **SKIP** (Compose) | 0.5 ms; container cannot see host PIDs |
@@ -242,3 +248,155 @@ python scripts/attack_chain_demo.py
 python scripts/si_demo.py
 for s in gateway ledger monitor ml-engine response; do (cd services/$s && python -m pytest -q); done
 ```
+
+---
+
+## 7. Windows verification pass — 8 August 2026
+
+Windows 11 Home Single Language, build 26200 · Python 3.13.9 · Docker Desktop 4.85.0 (WSL 2)
+
+The first pass ran entirely on macOS. Every Windows-only branch was therefore
+unexecuted, and the platform-portability fixes made in that pass had never been run
+against the platform they were written for. Three defects surfaced here, one of them
+severe enough that the system did nothing at all while reporting itself healthy.
+
+### 7.1 The most important finding
+
+**The Monitor detected nothing on Windows, and said it was healthy.**
+
+Docker Desktop passes a Windows bind mount into the Linux VM as `9p`. inotify watches
+on that filesystem are **accepted and then never fire**. Watchdog reports the observer
+alive, `/health` returns healthy, and no event ever arrives — silence that is
+indistinguishable from a quiet disk.
+
+Isolated with a discriminating test: a host-side write into the watched path produced
+**0 events**; the byte-identical write made inside the container produced **10**,
+correctly classified `suspected_encryption` at entropy 8.0. Detection, entropy, hashing
+and classification were all correct. Only the event source was dead.
+
+```
+tc01_detected                FAIL      →  PASS
+tc02_flagged_as_ransomware   FAIL      →  PASS
+tc03_no_false_positive       FAIL      →  PASS
+attack chain                 1/3       →  18/18
+```
+
+**Fix.** `services/monitor/app.py` now selects the watchdog backend from the filesystem
+backing the watch path, read from `/proc/mounts`: `PollingObserver` where the mount
+carries no notifications, native inotify everywhere else, overridable with
+`MONITOR_OBSERVER=auto|native|polling`. `/monitor/status` reports the chosen backend and
+the reason, because a silent native watch cannot otherwise be told from an idle one.
+
+Live confirmation: `observer_backend: polling`, reason
+`/watch is on '9p', which delivers no inotify events to this container`.
+
+### 7.2 Detection latency regression, introduced by the lock fix
+
+The Windows file-lock retry added in the same pass retried **per read helper**, and
+`handle_event` opens the same file twice. Measured against a real deny-share handle:
+
+| | Before | After |
+|---|---|---|
+| `read_magic` | 151.7 ms | — |
+| `calculate_entropy` | 151.8 ms | — |
+| **`handle_event` (locked)** | **303.5 ms** | **40.9 ms** |
+| `handle_event` (unlocked) | 13.9 ms | 13.9 ms |
+
+Target is 100 ms, so the correctness fix had been bought at 3× the budget. The retry is
+now bounded by a time budget rather than an attempt count, and the lock is probed once
+per event instead of once per read.
+
+### 7.3 Path portability was only half-fixed
+
+The first pass fixed `to_relative` to strip a drive letter with `ntpath`. It did not
+normalise separators. A Windows host sends `D:\...\thesis.doc`; in the Linux container
+`\` is an ordinary filename character, so `os.path.join` produced a single file named
+`data\si_demo\thesis.doc` rather than descending into `data/`. TC-04 reported a file
+"not present in the snapshot" that was sitting right there. Separators are now
+normalised to `/`, which opens correctly on both platforms.
+
+This never appeared on macOS because the paths involved were already POSIX.
+
+### 7.4 VSS — measured, from an elevated shell
+
+`platform_status()` returned `supported: true` for the first time; every prior run
+reported `platform: Darwin`. This exercised the version gate, `client` edition derived
+from `CoreSingleLanguage`, and WMI backend selection.
+
+```
+supported True · platform Windows · version 10.0.26200 · edition client
+backend wmi:Win32_ShadowCopy · elevated True
+
+snapshot id     {F001EA19-04D1-42CB-A3C5-2829F79D27F1}
+creation time   2.8s  (target <30s)          PASS
+snapshot listed True                          PASS
+logged to ledger True                         PASS
+```
+
+Ledger block #6 carries `device_object:
+\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy3` and `duration_seconds: 2.427`, which
+means `_create_via_wmi()`, `_device_object_for()` and elevated `_list_via_wmi()` all ran
+for real. Two supporting defects were fixed on the way: `vssadmin` writes its errors to
+**stdout**, not stderr, so the previous code reported a blank reason for every failure
+(confirmed: stderr 0 bytes, exit 2); and COM was being torn down while a chained
+`com_error` still held a pointer, printing `Win32 exception occurred releasing IUnknown`
+once per failed enumeration.
+
+### 7.5 TC-04 — corrected status
+
+TC-04 passes against the Response service **running natively on Windows**, which is the
+deployment the README prescribes for real recovery:
+
+```
+restored True · integrity_verified True
+entropy 7.968 (encrypted) → 4.250 (restored) · hash matches pre-attack
+```
+
+It **cannot** pass through Compose from a Windows host. `restore_file` writes to the
+literal path it is given, and a Linux container cannot write `D:\...`. This is the same
+class as TC-07 — a documented deployment constraint, not a defect. The earlier unqualified
+PASS should be read with this caveat.
+
+### 7.6 TC-05 holds on Windows
+
+The §2 fix replaced WAL with a rollback journal to survive Docker Desktop's **macOS**
+bind mount. Windows uses an entirely different mechanism, so this needed re-proving:
+`{"valid": false, "blocks_checked": 3, "invalid_block_id": 3}` — detected at exactly the
+tampered block. The fix is not macOS-specific.
+
+`si_demo.py` also tampered a block and never restored it, leaving the chain permanently
+broken so the next run reported false failures downstream of the previous run's damage.
+It now restores the row in a `finally`, and two consecutive runs both pass.
+
+### 7.7 Suites — Windows native
+
+| Suite | Result |
+|---|---|
+| gateway | 17 passed |
+| ledger | 42 passed |
+| monitor | 68 passed |
+| ml-engine | 19 passed |
+| response | 81 passed, 2 skipped |
+| **Total** | **227 passed, 2 skipped, 0 failed** |
+
+The 2 skips are correct: `psutil.terminate()` maps to `TerminateProcess` on Windows,
+which no process can ignore, so the SIGTERM-escalation tests assert a POSIX guarantee
+with no Windows equivalent. A Windows-specific test covers the same ground.
+
+The ml-engine skips from the first pass are gone — `models/behavioral_model.pkl` was
+absent, not broken. Retrained here: accuracy 0.884, ROC AUC 0.959.
+
+**Not a defect:** a gateway contract test fails under FastAPI ≥ 0.141, which wraps
+included routers in `_IncludedRouter` objects and breaks the test's route introspection.
+Against the pinned `fastapi==0.115.6` it passes. Pin-drift, not a code fault.
+
+### 7.8 Still open
+
+- **Table 5.8 reconciliation** against the source PDF (§3.6). Unchanged, and gates submission.
+- **PE feature extractor** (§3.2). Unchanged, correctly scoped out.
+- **The `unreadable` verdict does not escalate.** A file that cannot be read is no longer
+  reported `benign` — that fabrication is fixed — but `suspicious` stays `False` and no
+  response triggers. Defensible, since most locks are Defender or the search indexer, and
+  escalating would be a false-positive firehose. It does mean in-place encryption that
+  holds an exclusive handle and keeps the original filename is recorded rather than acted
+  on. This is a detection-policy decision and should be made deliberately.

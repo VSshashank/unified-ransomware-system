@@ -8,7 +8,7 @@ All six services are implemented. Nothing in `services/` is a stub any more.
 
 | Service | Port | Owner | State |
 |---|---|---|---|
-| Monitor | 8001 | AS | Real. Watchdog file events, Shannon entropy, magic-byte false-positive mitigation, SHA-256 hashing, and fan-out to ML → Ledger → Response. |
+| Monitor | 8001 | AS | Real. Watchdog file events, Shannon entropy, magic-byte false-positive mitigation, SHA-256 hashing, and fan-out to ML → Ledger → Response. Picks a polling watcher on mounts that carry no inotify — a Windows bind mount is `9p`, where native watches are accepted and never fire. |
 | ML Engine | 8002 | NI | Real. Serves two trained XGBoost models: the EMBER static-PE classifier (`ember_vector`) and a behavioural classifier over the Monitor's feature dict. Metrics are read from disk, not hardcoded. |
 | Ledger | 8003 | SI | Real. SQLite hash chain with tamper detection; full-chain verification measured at ~3.7ms against a <50ms target. |
 | Response | 8004 | AS + SI | Real. AS owns terminate/isolate/trigger (psutil process termination, platform-aware network isolation); SI owns `recovery/` (VSS snapshots, restore, integrity verification). |
@@ -17,7 +17,7 @@ All six services are implemented. Nothing in `services/` is a stub any more.
 
 Two things are deliberately *not* real, and both say so at runtime rather than faking a result:
 
-- **VSS snapshots** need Windows. On Linux/macOS `VSSManager` reports `supported: false` with the reason, and recovery falls back to a directory-backed snapshot root so the path stays exercisable.
+- **VSS snapshots** need Windows *and an elevated process*. Verified on Windows 11 build 26200: a real shadow copy of `C:\` in 2.8s against the 30s target. On Linux/macOS `VSSManager` reports `supported: false` with the reason, and recovery falls back to a directory-backed snapshot root so the path stays exercisable.
 - **Network isolation** builds real `iptables`/`pfctl`/`netsh` rules but only applies them when `RESPONSE_ISOLATION_ENABLED=true`. Otherwise it returns `enforced: false` along with the rules it would have applied.
 
 Trained model artifacts (`models/`) and datasets (`data/`) are gitignored. Rebuild them with `python src/train_behavioral_model.py` and, once a dataset is fetched via `src/fetch_ember_subset.py`, `python src/train_ember_model.py`.
