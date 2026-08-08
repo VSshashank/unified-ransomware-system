@@ -22,6 +22,7 @@ import logging
 import platform
 import re
 import subprocess
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -69,6 +70,34 @@ class VSSUnavailableError(VSSError):
 
 class SnapshotCreationError(VSSError):
     """VSS is available but this particular snapshot failed."""
+
+
+_com_apartment = threading.local()
+
+
+def ensure_com_apartment() -> None:
+    """Initialise COM once per thread, and leave it initialised.
+
+    Pairing CoInitialize/CoUninitialize around each call reads as tidier, but
+    it is wrong here. A failed WMI query raises `com_error`, and that exception
+    keeps a COM pointer alive inside its own traceback - which outlives the
+    call it was raised in, because callers chain it (`raise VSSError(...) from
+    exc`). Releasing that pointer after the apartment has been torn down is
+    what makes pywin32 print "Win32 exception occurred releasing IUnknown" to
+    stderr at shutdown, once per failed enumeration. Verified on Windows 11
+    build 26200: keeping the apartment up for the thread's lifetime removes it,
+    on both the request thread and the scheduler's worker.
+
+    An apartment is per-thread state that the OS reclaims with the thread, so
+    there is nothing to leak by holding it.
+    """
+    if getattr(_com_apartment, "ready", False):
+        return
+
+    import pythoncom  # type: ignore
+
+    pythoncom.CoInitialize()
+    _com_apartment.ready = True
 
 
 def utc_now() -> str:
@@ -240,12 +269,9 @@ class VSSManager:
         return shadow_id
 
     def _create_via_wmi(self, volume: str) -> str:
-        import pythoncom  # type: ignore
         import win32com.client  # type: ignore
 
-        # The scheduler calls this from a worker thread, which needs its own
-        # COM apartment.
-        pythoncom.CoInitialize()
+        ensure_com_apartment()
         try:
             wmi = win32com.client.GetObject("winmgmts:\\\\.\\root\\cimv2")
             shadow_class = wmi.Get("Win32_ShadowCopy")
@@ -266,8 +292,6 @@ class VSSManager:
             raise
         except Exception as exc:  # COM errors are not a useful type to callers
             raise SnapshotCreationError(f"Shadow copy creation failed for {volume}: {exc}") from exc
-        finally:
-            pythoncom.CoUninitialize()
 
     # -------------------------------------------------------------- enumeration
 
@@ -277,31 +301,40 @@ class VSSManager:
         Tries WMI, then falls back to parsing `vssadmin list shadows` - that verb
         does exist on client editions, unlike Create.
         """
-        self.ensure_supported()
+        status = self.ensure_supported()
         try:
             return self._list_via_wmi()
         except Exception as exc:
             logger.warning("WMI enumeration failed (%s), falling back to vssadmin", exc)
-            return self._list_via_vssadmin()
+            try:
+                return self._list_via_vssadmin()
+            except VSSError as fallback:
+                # Both paths need admin: querying Win32_ShadowCopy as a standard
+                # user fails with a bare OLE 0x80041014, and vssadmin refuses
+                # outright. Say that once, instead of making the operator decode
+                # a COM error followed by an exit code.
+                if not status.get("elevated", False):
+                    raise VSSError(
+                        "Enumerating shadow copies requires an elevated process. "
+                        "Neither Win32_ShadowCopy nor vssadmin is readable as a standard "
+                        "user; start the Response service from an Administrator shell."
+                    ) from fallback
+                raise
 
     def _list_via_wmi(self) -> list:
-        import pythoncom  # type: ignore
         import win32com.client  # type: ignore
 
-        pythoncom.CoInitialize()
-        try:
-            wmi = win32com.client.GetObject("winmgmts:\\\\.\\root\\cimv2")
-            snapshots = [
-                Snapshot(
-                    snapshot_id=str(item.ID),
-                    volume=str(item.VolumeName or ""),
-                    device_object=str(item.DeviceObject or ""),
-                    created_at=self._parse_wmi_datetime(str(item.InstallDate or "")),
-                ).as_dict()
-                for item in wmi.ExecQuery("SELECT * FROM Win32_ShadowCopy")
-            ]
-        finally:
-            pythoncom.CoUninitialize()
+        ensure_com_apartment()
+        wmi = win32com.client.GetObject("winmgmts:\\\\.\\root\\cimv2")
+        snapshots = [
+            Snapshot(
+                snapshot_id=str(item.ID),
+                volume=str(item.VolumeName or ""),
+                device_object=str(item.DeviceObject or ""),
+                created_at=self._parse_wmi_datetime(str(item.InstallDate or "")),
+            ).as_dict()
+            for item in wmi.ExecQuery("SELECT * FROM Win32_ShadowCopy")
+        ]
         return sorted(snapshots, key=lambda s: s["created_at"], reverse=True)
 
     def _list_via_vssadmin(self) -> list:
@@ -316,10 +349,13 @@ class VSSManager:
             raise VSSError(f"vssadmin enumeration failed: {exc}") from exc
 
         if completed.returncode != 0:
+            # vssadmin writes its errors to stdout, not stderr - reading stderr
+            # here reported an empty reason for every failure.
+            detail = (completed.stdout or completed.stderr or "").strip()
+            detail = " ".join(line for line in detail.splitlines() if line.strip().startswith("Error"))
             raise VSSError(
-                "vssadmin list shadows failed "
-                f"(exit {completed.returncode}); it requires an elevated shell. "
-                f"{completed.stderr.strip()[:200]}"
+                f"vssadmin list shadows failed (exit {completed.returncode}). "
+                f"{detail[:200] or 'No detail reported; it usually requires an elevated shell.'}"
             )
         return self.parse_vssadmin_output(completed.stdout)
 
