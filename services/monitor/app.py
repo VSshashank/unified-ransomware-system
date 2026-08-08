@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 
 import pipeline
 from detection import (
@@ -39,6 +40,7 @@ from detection import (
     calculate_entropy,
     classify,
     get_magic_bytes,
+    looks_unreadable,
     read_magic,
     sha256_file,
 )
@@ -52,6 +54,22 @@ ENTROPY_THRESHOLD = float(os.getenv("ENTROPY_THRESHOLD", DEFAULT_ENTROPY_THRESHO
 # Off in unit tests and anywhere the downstream services are not running.
 PIPELINE_ENABLED = os.getenv("PIPELINE_ENABLED", "true").lower() not in {"false", "0", "no"}
 MAX_EVENTS = int(os.getenv("MAX_EVENTS", "500"))
+
+# auto | native | polling. `native` is inotify on Linux and ReadDirectoryChangesW
+# on Windows; `polling` stats the tree on an interval instead.
+OBSERVER_MODE = os.getenv("MONITOR_OBSERVER", "auto").lower()
+POLLING_INTERVAL_SECONDS = float(os.getenv("MONITOR_POLLING_INTERVAL", "1.0"))
+
+# Filesystems that carry no change notifications into this container. A bind
+# mount from a Windows host is the one that matters here: Docker Desktop passes
+# D:\ through to the Linux VM as virtiofs/9p, and inotify watches on it are
+# accepted and then never fire. Verified on Windows 11 build 26200 - a host-side
+# write produced zero events while the identical write made inside the container
+# produced ten. Silence is indistinguishable from "nothing happened", so the
+# detector reported healthy and saw nothing at all.
+NON_INOTIFY_FILESYSTEMS = frozenset(
+    {"9p", "virtiofs", "drvfs", "fuse.grpcfs", "osxfs", "cifs", "smb3", "smbfs", "nfs", "nfs4", "vboxsf"}
+)
 
 STARTED_AT = time()
 
@@ -67,6 +85,56 @@ _watch_path: str | None = None
 
 _work: queue.Queue = queue.Queue()
 _worker: threading.Thread | None = None
+
+_observer_backend: str = "none"
+_observer_reason: str = ""
+
+
+def filesystem_for(path: str) -> str:
+    """Filesystem type backing `path`, per /proc/mounts. Empty when unknown.
+
+    Longest matching mountpoint wins, so /watch inside /  resolves to the bind
+    mount rather than the root filesystem.
+    """
+    try:
+        with open("/proc/mounts", "r") as handle:
+            mounts = [line.split() for line in handle]
+    except OSError:
+        return ""  # not Linux, or no /proc - fall through to the native backend
+
+    target = os.path.realpath(path)
+    best_type = ""
+    best_len = -1
+    for fields in mounts:
+        if len(fields) < 3:
+            continue
+        mountpoint, fstype = fields[1], fields[2]
+        if target == mountpoint or target.startswith(mountpoint.rstrip("/") + "/"):
+            if len(mountpoint) > best_len:
+                best_type, best_len = fstype, len(mountpoint)
+    return best_type
+
+
+def build_observer(path: str):
+    """Pick a watchdog backend for `path`, and record why it was picked.
+
+    Polling costs a directory stat per interval, so it is not the default. It is
+    selected only where the native backend cannot work, because there the native
+    backend fails *silently* - watches are accepted and no event ever arrives.
+    """
+    if OBSERVER_MODE == "polling":
+        return PollingObserver(timeout=POLLING_INTERVAL_SECONDS), "polling", "MONITOR_OBSERVER=polling"
+    if OBSERVER_MODE == "native":
+        return Observer(), "native", "MONITOR_OBSERVER=native"
+
+    fstype = filesystem_for(path)
+    if fstype in NON_INOTIFY_FILESYSTEMS:
+        return (
+            PollingObserver(timeout=POLLING_INTERVAL_SECONDS),
+            "polling",
+            f"{path} is on '{fstype}', which delivers no inotify events to this container",
+        )
+    return Observer(), "native", f"{path} is on '{fstype or 'unknown'}'"
 
 
 class MonitorStartRequest(BaseModel):
@@ -125,13 +193,18 @@ async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:
 def extract_features(path: str) -> dict:
     """Feature vector for one file. Every value is measured, none are invented."""
     magic = read_magic(path)
-    entropy = calculate_entropy(path)
     try:
         size = os.path.getsize(path)
     except OSError:
         size = 0
 
-    verdict = classify(path, entropy, magic, ENTROPY_THRESHOLD)
+    # read_magic already waited out the lock budget. If it came back empty on a
+    # file with bytes in it, the remaining reads would each wait the same budget
+    # to reach the same empty result, so they are told not to.
+    readable = not looks_unreadable(magic, size)
+    entropy = calculate_entropy(path, retry=readable)
+
+    verdict = classify(path, entropy, magic, ENTROPY_THRESHOLD, readable=readable)
     return {
         "shannon_entropy": entropy,
         "file_size": size,
@@ -145,7 +218,7 @@ def extract_features(path: str) -> dict:
         "modification_rate": round(min(1.0, entropy / 8.0), 2),
         # Measured, not estimated - the ML engine's behavioural model takes
         # these three directly rather than deriving them from entropy.
-        **byte_statistics(path),
+        **byte_statistics(path, retry=readable),
     }
 
 
@@ -181,20 +254,29 @@ def handle_event(path: str, event_type: str) -> dict | None:
         return None
 
     magic = read_magic(path)
-    entropy = calculate_entropy(path)
     try:
         size = os.path.getsize(path)
     except OSError:
         return None
 
-    verdict = classify(path, entropy, magic, ENTROPY_THRESHOLD)
-    file_hash = sha256_file(path)
+    # read_magic already waited out the lock budget; see extract_features.
+    readable = not looks_unreadable(magic, size)
+    entropy = calculate_entropy(path, retry=readable)
+
+    verdict = classify(path, entropy, magic, ENTROPY_THRESHOLD, readable=readable)
+    # Hashing a file we could not read only pays the retry cost again to reach
+    # the same None, and it is on the sub-100ms detection path.
+    file_hash = sha256_file(path) if readable else None
 
     event = {
         "event_id": f"evt_{uuid4().hex[:10]}",
         "file_path": path,
         "event_type": event_type,
-        "entropy": entropy,
+        # verdict's entropy, not the raw one: it is None for a file we could not
+        # read, where the raw value is a 0.0 that was never measured. The ledger
+        # already records the verdict's value, so taking the raw one here made
+        # /monitor/events and the ledger disagree about the same event.
+        "entropy": verdict["entropy"],
         "file_size": size,
         "magic_bytes": magic[:4].hex().upper() if magic else "UNKNOWN",
         "file_hash": file_hash,
@@ -301,7 +383,7 @@ def health() -> dict:
 
 @app.post("/monitor/start")
 def start_monitoring(payload: MonitorStartRequest) -> JSONResponse:
-    global _observer, _monitor_id, _watch_path, STARTED_AT
+    global _observer, _monitor_id, _watch_path, STARTED_AT, _observer_backend, _observer_reason
 
     if not os.path.isdir(payload.watch_path):
         return JSONResponse(
@@ -319,9 +401,10 @@ def start_monitoring(payload: MonitorStartRequest) -> JSONResponse:
 
     _ensure_worker()
 
-    _observer = Observer()
+    _observer, _observer_backend, _observer_reason = build_observer(payload.watch_path)
     _observer.schedule(MonitorHandler(), payload.watch_path, recursive=payload.recursive)
     _observer.start()
+    logger.info("watching %s with the %s backend: %s", payload.watch_path, _observer_backend, _observer_reason)
 
     _monitor_id = f"mon_{uuid4().hex[:6]}"
     _watch_path = payload.watch_path
@@ -367,6 +450,11 @@ def monitor_status() -> dict:
         "files_monitored": files_monitored,
         "events_captured": events_captured,
         "uptime_seconds": int(time() - STARTED_AT),
+        # Which backend is watching, and why. A native watch on a mount that
+        # carries no notifications looks identical to a quiet filesystem from
+        # the outside, so the choice is reported rather than left to be guessed.
+        "observer_backend": _observer_backend,
+        "observer_reason": _observer_reason,
     }
 
 

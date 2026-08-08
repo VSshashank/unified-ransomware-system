@@ -4,6 +4,7 @@ Covers TC-01 (a file event on the watched path is detected and captured) and the
 request/response shapes the gateway and dashboard depend on.
 """
 
+import io
 import os
 import time
 
@@ -196,3 +197,75 @@ def test_features_on_missing_file_returns_404_envelope(client):
     response = client.post("/features", json={"path": "/nonexistent/file.bin"})
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "FILE_NOT_FOUND"
+
+
+# ------------------------------------------------------- observer selection
+
+
+def test_polling_is_chosen_on_a_mount_that_carries_no_inotify(monkeypatch, tmp_path):
+    """A Windows bind mount accepts inotify watches and never fires them.
+
+    Verified on Windows 11 build 26200 against Docker Desktop: a host-side write
+    into the bind-mounted watch path produced zero events, while the identical
+    write made inside the container produced ten. The native backend reports
+    healthy throughout, so the mount type has to drive the choice.
+    """
+    monkeypatch.setattr(monitor_app, "OBSERVER_MODE", "auto")
+    monkeypatch.setattr(monitor_app, "filesystem_for", lambda path: "virtiofs")
+
+    observer, backend, reason = monitor_app.build_observer(str(tmp_path))
+    observer.stop()
+
+    assert backend == "polling"
+    assert "virtiofs" in reason
+
+
+def test_native_is_kept_on_a_normal_filesystem(monkeypatch, tmp_path):
+    """Polling costs a stat sweep per interval; it is not the default."""
+    monkeypatch.setattr(monitor_app, "OBSERVER_MODE", "auto")
+    monkeypatch.setattr(monitor_app, "filesystem_for", lambda path: "ext4")
+
+    observer, backend, _ = monitor_app.build_observer(str(tmp_path))
+    observer.stop()
+
+    assert backend == "native"
+
+
+@pytest.mark.parametrize("mode,expected", [("polling", "polling"), ("native", "native")])
+def test_the_backend_can_be_forced(monkeypatch, tmp_path, mode, expected):
+    monkeypatch.setattr(monitor_app, "OBSERVER_MODE", mode)
+    monkeypatch.setattr(monitor_app, "filesystem_for", lambda path: "ext4")
+
+    observer, backend, reason = monitor_app.build_observer(str(tmp_path))
+    observer.stop()
+
+    assert backend == expected
+    assert "MONITOR_OBSERVER" in reason
+
+
+def test_filesystem_for_picks_the_longest_matching_mountpoint(monkeypatch):
+    """/watch must resolve to its own bind mount, not to the root filesystem."""
+    mounts = "/dev/sda1 / ext4 rw 0 0\ndrvfs /watch virtiofs rw 0 0\n"
+    monkeypatch.setattr(monitor_app.os.path, "realpath", lambda p: "/watch/docs")
+    monkeypatch.setattr("builtins.open", lambda *a, **k: io.StringIO(mounts))
+
+    assert monitor_app.filesystem_for("/watch/docs") == "virtiofs"
+
+
+def test_filesystem_for_is_quiet_where_there_is_no_proc(monkeypatch):
+    """Off Linux there is no /proc/mounts; that is not an error."""
+
+    def no_proc(*args, **kwargs):
+        raise OSError("no /proc")
+
+    monkeypatch.setattr("builtins.open", no_proc)
+    assert monitor_app.filesystem_for("/watch") == ""
+
+
+def test_status_reports_which_backend_is_watching(client, tmp_path):
+    """A silent native watch is indistinguishable from a quiet disk otherwise."""
+    client.post("/monitor/start", json={"watch_path": str(tmp_path), "recursive": False})
+    body = client.get("/monitor/status").json()
+
+    assert body["observer_backend"] in {"native", "polling"}
+    assert body["observer_reason"]
