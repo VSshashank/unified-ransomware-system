@@ -5,6 +5,7 @@ guards that stop a wrong PID from taking the host down with it.
 """
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -18,6 +19,14 @@ from actions import TerminationError, build_plan, guard, isolate_host, terminate
 
 REPORTS = Path(__file__).resolve().parents[3] / "reports"
 KILL_TIME_TARGET_S = 2.0
+
+# Windows has no signal to ignore: psutil's terminate() and kill() both call
+# TerminateProcess, which is unconditional. A test for "the process survived
+# SIGTERM, so we escalated" is asserting a POSIX guarantee, not a bug in
+# actions.py - the Windows outcome (dead on the first call) is the better one.
+posix_signals_only = pytest.mark.skipif(
+    os.name == "nt", reason="SIGTERM cannot be ignored on Windows; terminate() is TerminateProcess"
+)
 
 
 @pytest.fixture
@@ -74,6 +83,7 @@ def test_tc07_termination_completes_within_2_seconds(victim):
     assert elapsed_s < KILL_TIME_TARGET_S
 
 
+@posix_signals_only
 def test_process_ignoring_sigterm_is_escalated_to_sigkill(stubborn_victim):
     result = terminate_process(stubborn_victim.pid, force=True)
 
@@ -82,9 +92,26 @@ def test_process_ignoring_sigterm_is_escalated_to_sigkill(stubborn_victim):
     stubborn_victim.wait(timeout=5)
 
 
+@posix_signals_only
 def test_process_ignoring_sigterm_without_force_is_reported_not_silently_left(stubborn_victim):
     with pytest.raises(TerminationError, match="ignored SIGTERM"):
         terminate_process(stubborn_victim.pid, force=False)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows-only termination semantics")
+def test_on_windows_a_stubborn_process_still_dies(stubborn_victim):
+    """The escalation path has no Windows equivalent, and needs none.
+
+    psutil maps both terminate() and kill() to TerminateProcess, which no
+    process can ignore or handle. So SIG_IGN on SIGTERM changes nothing here:
+    the first call already ends the process, and the <2s target still holds.
+    """
+    result = terminate_process(stubborn_victim.pid, force=True)
+
+    assert result["status"] == "terminated"
+    assert result["termination_time_ms"] / 1000 < KILL_TIME_TARGET_S
+    stubborn_victim.wait(timeout=5)
+    assert not psutil.pid_exists(stubborn_victim.pid)
 
 
 # ------------------------------------------------------------------- guards

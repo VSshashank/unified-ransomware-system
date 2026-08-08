@@ -178,6 +178,7 @@ def test_missing_byte_statistics_are_estimated_not_zeroed():
     assert vector[FEATURE_ORDER.index("chi_square_uniformity")] == pytest.approx(0.0, abs=0.2)
 
 
+@needs_behavioral
 def test_estimated_statistics_classify_the_same_way_as_measured_ones(client):
     """A caller that omits the byte stats must not get the opposite verdict."""
     measured = client.post("/predict", json={"features": ENCRYPTED}).json()
