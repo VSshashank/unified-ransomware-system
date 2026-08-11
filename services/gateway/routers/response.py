@@ -1,13 +1,19 @@
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
-from auth import get_current_user
+from auth import get_current_user, require_role
 from models import IsolateRequest, RecoverRequest, TerminateRequest, TriggerRequest
 from rate_limit import enforce_rate_limit
 from routers.proxy import RESPONSE_URL, proxy_request
 
 
-router = APIRouter(prefix="/response", tags=["response"], dependencies=[Depends(get_current_user), Depends(enforce_rate_limit)])
+# Admin only, at the router: every response action kills a process, cuts the
+# network, or overwrites files on disk. Enterprise is deliberately not enough.
+router = APIRouter(
+    prefix="/response",
+    tags=["response"],
+    dependencies=[Depends(get_current_user), Depends(require_role("admin")), Depends(enforce_rate_limit)],
+)
 
 
 @router.post("/terminate")

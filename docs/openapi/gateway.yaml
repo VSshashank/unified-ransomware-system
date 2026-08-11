@@ -24,7 +24,20 @@ paths:
   /auth/token:
     post:
       summary: Development-only JWT token generator
+      description: >-
+        Phase 4 placeholder; verifies no identity and must be replaced with real
+        identity management. An empty body yields a `free` token, which can read
+        but cannot act. Any role or tier above `free` requires the shared secret
+        in the `X-Bootstrap-Secret` header. The whole endpoint returns 403
+        `DEV_TOKENS_DISABLED` when `ALLOW_DEV_TOKENS` is false.
       security: []
+      parameters:
+        - in: header
+          name: X-Bootstrap-Secret
+          required: false
+          schema:
+            type: string
+          description: Shared bootstrap secret. Required only for a role or tier above `free`.
       requestBody:
         required: false
         content:
@@ -38,9 +51,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /monitor/start:
     post:
       summary: Start file monitoring
+      description: "Requires role: admin or enterprise."
       requestBody:
         required: true
         content:
@@ -56,6 +72,8 @@ paths:
                 $ref: "#/components/schemas/MonitorStartResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "503":
@@ -63,6 +81,7 @@ paths:
   /monitor/stop:
     post:
       summary: Stop file monitoring
+      description: "Requires role: admin. Stopping the monitor blinds detection for the whole host."
       responses:
         "200":
           description: Monitor stopped.
@@ -72,6 +91,8 @@ paths:
                 $ref: "#/components/schemas/MonitorStopResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /monitor/status:
@@ -105,6 +126,7 @@ paths:
   /predict:
     post:
       summary: Predict ransomware risk from file features
+      description: "Requires role: admin or enterprise."
       requestBody:
         required: true
         content:
@@ -122,6 +144,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /model/metrics:
@@ -141,6 +165,7 @@ paths:
   /ledger/log:
     post:
       summary: Log an event to the ledger
+      description: "Requires role: admin or enterprise. The chain is append-only, so a write is permanent."
       requestBody:
         required: true
         content:
@@ -162,6 +187,8 @@ paths:
                 $ref: "#/components/schemas/LedgerLogResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /ledger/entries:
@@ -238,6 +265,7 @@ paths:
   /response/terminate:
     post:
       summary: Terminate a suspicious process
+      description: "Requires role: admin."
       requestBody:
         required: true
         content:
@@ -253,11 +281,14 @@ paths:
                 $ref: "#/components/schemas/TerminateResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /response/isolate:
     post:
       summary: Isolate host/network
+      description: "Requires role: admin."
       requestBody:
         required: true
         content:
@@ -273,11 +304,14 @@ paths:
                 $ref: "#/components/schemas/IsolateResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /response/recover:
     post:
       summary: Recover files from a snapshot
+      description: "Requires role: admin."
       requestBody:
         required: true
         content:
@@ -293,11 +327,14 @@ paths:
                 $ref: "#/components/schemas/RecoverResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /response/trigger:
     post:
       summary: Trigger automated incident response
+      description: "Requires role: admin."
       requestBody:
         required: true
         content:
@@ -313,11 +350,14 @@ paths:
                 $ref: "#/components/schemas/TriggerResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /analyze:
     post:
       summary: Analyze a file through Monitor, ML Engine, and Ledger
+      description: "Requires role: admin or enterprise."
       requestBody:
         required: true
         content:
@@ -335,6 +375,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "503":
@@ -354,6 +396,15 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     Unauthorized:
       description: Missing or invalid JWT.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: >-
+        Authenticated, but the token's role may not perform this action.
+        `details.role` carries the role presented and `details.required_roles`
+        the roles that would have been accepted.
       content:
         application/json:
           schema:
@@ -406,10 +457,14 @@ components:
           default: user_id_123
         role:
           type: string
-          default: admin
+          default: free
+          enum: [free, premium, enterprise, admin]
+          description: Anything other than `free` requires the `X-Bootstrap-Secret` header.
         tier:
           type: string
-          default: enterprise
+          default: free
+          enum: [free, premium, enterprise]
+          description: Rate-limit tier. Anything other than `free` requires the `X-Bootstrap-Secret` header.
     TokenResponse:
       type: object
       required: [access_token, token_type]

@@ -4,9 +4,12 @@ from pydantic import BaseModel, Field
 
 
 class TokenRequest(BaseModel):
+    # Defaults are the least-privileged role. They used to be admin/enterprise,
+    # which made an empty POST to /auth/token a full-privilege token dispenser.
+    # Anything above "free" now needs the bootstrap secret - see main.py.
     sub: str = "user_id_123"
-    role: str = "admin"
-    tier: str = "enterprise"
+    role: str = "free"
+    tier: str = "free"
 
 
 class TokenResponse(BaseModel):

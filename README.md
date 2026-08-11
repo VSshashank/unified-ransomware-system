@@ -54,12 +54,18 @@ pip install -r requirements.txt
 pytest
 ```
 
-The gateway exposes a development-only token endpoint:
+The gateway exposes a development-only token endpoint. An empty POST returns a
+`free` token, which can read but cannot act:
 
 ```bash
-curl -X POST http://localhost:8000/auth/token \
-  -H "Content-Type: application/json" \
-  -d '{"sub":"user_id_123","role":"admin","tier":"enterprise"}'
+curl -X POST http://localhost:8000/auth/token
+```
+
+Anything above `free` needs the shared bootstrap secret
+(`DEV_TOKEN_BOOTSTRAP_SECRET`, defaulted in `docker-compose.yml`):
+
+```bash
+curl -X POST http://localhost:8000/auth/token -H "Content-Type: application/json" -H "X-Bootstrap-Secret: dev-bootstrap-change-me" -d '{"sub":"user_id_123","role":"admin","tier":"enterprise"}'
 ```
 
 Use the returned token as:
@@ -68,7 +74,27 @@ Use the returned token as:
 Authorization: Bearer <token>
 ```
 
-This endpoint is only a Phase 4 placeholder and must be replaced with real identity management later.
+This endpoint is only a Phase 4 placeholder — it verifies no identity — and must
+be replaced with real identity management later. Set `ALLOW_DEV_TOKENS=false` to
+remove it entirely.
+
+### Roles
+
+Authentication (401) and authorization (403) are separate. Roles, least
+privileged first: `free`, `premium`, `enterprise`, `admin`.
+
+| Routes | Required role |
+|---|---|
+| All `GET` routes | any authenticated role |
+| `POST /monitor/start`, `/analyze`, `/predict`, `/ledger/log` | `admin` or `enterprise` |
+| `POST /monitor/stop`, all `/response/*` | `admin` |
+
+### Ports
+
+Only the gateway (`8000`) and dashboard (`8501`) are published on all
+interfaces. Monitor, ML engine, ledger, and response bind to `127.0.0.1` — they
+carry no authentication of their own, so they are reachable from the host but
+not from the network.
 
 ## API Contract
 

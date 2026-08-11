@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -6,14 +7,30 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from auth import create_access_token, get_current_user
+from auth import (
+    BOOTSTRAP_SECRET_HEADER,
+    bootstrap_secret_matches,
+    create_access_token,
+    dev_tokens_allowed,
+    get_current_user,
+    require_role,
+    requires_bootstrap_secret,
+    verify_jwt_secret_configuration,
+)
 from models import AnalyzeRequest, TokenRequest, TokenResponse
 from rate_limit import enforce_rate_limit
 from routers import ledger, ml, monitor, response
 from routers.proxy import LEDGER_URL, ML_URL, MONITOR_URL, SERVICE_URLS, call_downstream
 
 
-app = FastAPI(title="URDS API Gateway", version="1.0.0")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # Refuses to boot on a committed secret outside development, warns inside it.
+    verify_jwt_secret_configuration()
+    yield
+
+
+app = FastAPI(title="URDS API Gateway", version="1.0.0", lifespan=lifespan)
 app.include_router(monitor.router)
 app.include_router(ml.router)
 app.include_router(ledger.router)
@@ -98,13 +115,51 @@ async def health() -> JSONResponse:
 
 
 @app.post("/auth/token", response_model=TokenResponse)
-async def issue_dev_token(payload: TokenRequest | None = None) -> TokenResponse:
-    # Phase 4 placeholder only. Replace with real identity management before production.
+async def issue_dev_token(request: Request, payload: TokenRequest | None = None) -> TokenResponse:
+    # =====================================================================
+    # PHASE 4 PLACEHOLDER - THIS IS NOT AUTHENTICATION.
+    #
+    # This endpoint verifies no identity whatsoever. It exists so local
+    # development and the demo scripts can obtain a token without an
+    # identity provider standing behind them. It must be replaced with real
+    # identity management before this gateway is exposed to anyone.
+    #
+    # Two guards keep the blast radius small in the meantime:
+    #   * ALLOW_DEV_TOKENS=false switches the endpoint off entirely.
+    #   * Anything above the "free" floor requires the shared bootstrap
+    #     secret in the X-Bootstrap-Secret header. An empty POST yields a
+    #     free token, which can read but cannot act.
+    # =====================================================================
+    if not dev_tokens_allowed():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "DEV_TOKENS_DISABLED",
+                "message": "The development token endpoint is disabled on this deployment",
+                "details": {"env": "ALLOW_DEV_TOKENS"},
+            },
+        )
+
     payload = payload or TokenRequest()
+
+    if requires_bootstrap_secret(payload.role, payload.tier):
+        if not bootstrap_secret_matches(request.headers.get(BOOTSTRAP_SECRET_HEADER)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "FORBIDDEN",
+                    "message": f"A valid {BOOTSTRAP_SECRET_HEADER} header is required to issue a token above 'free'",
+                    "details": {"requested_role": payload.role, "requested_tier": payload.tier},
+                },
+            )
+
     return TokenResponse(access_token=create_access_token(payload.sub, payload.role, payload.tier))
 
 
-@app.post("/analyze", dependencies=[Depends(get_current_user), Depends(enforce_rate_limit)])
+@app.post(
+    "/analyze",
+    dependencies=[Depends(get_current_user), Depends(require_role("admin", "enterprise")), Depends(enforce_rate_limit)],
+)
 async def analyze_file(payload: AnalyzeRequest, request: Request) -> JSONResponse:
     monitor_resp = await call_downstream("POST", MONITOR_URL, "/features", json_body={"path": payload.file_path})
     if monitor_resp.status_code >= 400:
