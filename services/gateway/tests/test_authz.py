@@ -209,6 +209,21 @@ def test_an_unset_bootstrap_secret_cannot_be_matched_by_an_empty_header(client, 
     assert response.status_code == 403
 
 
+def test_a_non_ascii_bootstrap_secret_header_is_a_clean_403(client, monkeypatch):
+    """Headers arrive latin-1 decoded; compare_digest rejects non-ASCII str.
+
+    Sent as raw bytes because httpx will not ASCII-encode a str header value -
+    which is exactly how a non-ASCII byte reaches the server in the wild.
+    """
+    monkeypatch.setenv("DEV_TOKEN_BOOTSTRAP_SECRET", "s3cret")
+    response = client.post(
+        "/auth/token",
+        json={"sub": "u", "role": "admin", "tier": "enterprise"},
+        headers={BOOTSTRAP_HEADER: "s3crét".encode("latin-1")},
+    )
+    assert response.status_code == 403, f"expected a clean 403, got {response.status_code}"
+
+
 def test_an_elevated_tier_also_needs_the_secret(client, monkeypatch):
     """tier outranks role in resolve_tier, so free+enterprise buys 1000 rpm."""
     monkeypatch.setenv("DEV_TOKEN_BOOTSTRAP_SECRET", "s3cret")

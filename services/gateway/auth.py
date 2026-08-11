@@ -69,11 +69,15 @@ def bootstrap_secret_matches(presented: str | None) -> bool:
     An unset secret must not be matchable by an absent header - that would make
     "no secret configured" mean "admin for everyone", which is the bug this
     whole check exists to close.
+
+    Compared as bytes, not str: Starlette decodes headers as latin-1, and
+    secrets.compare_digest raises TypeError on a non-ASCII str, which would turn
+    an odd header into a 500 instead of a clean 403.
     """
     expected = bootstrap_secret()
     if not expected:
         return False
-    return secrets.compare_digest(presented or "", expected)
+    return secrets.compare_digest((presented or "").encode("utf-8"), expected.encode("utf-8"))
 
 
 def verify_jwt_secret_configuration() -> None:
