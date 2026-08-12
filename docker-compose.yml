@@ -38,11 +38,22 @@ services:
       retries: 5
       start_period: 10s
 
+  # No container_name, and no fixed host port. Listing 3.21 documents
+  #   docker compose up -d --scale ml_engine=3
+  # as a supported command, and both of those settings block it: Docker requires
+  # a unique name per container, and three replicas cannot all bind host 8002.
+  # Listing 3.20's own compose file sets both, so the document contradicts
+  # itself - the deployment it specifies cannot run the command it specifies.
+  #
+  # An ephemeral host mapping keeps a loopback port available per replica for
+  # host-side tooling (`docker compose port ml_engine 8002` reports it) while
+  # letting the count vary. Nothing needs the fixed 8002: the gateway and the
+  # monitor both reach this service as http://ml_engine:8002 over the compose
+  # network, where Docker's embedded DNS returns every replica's address.
   ml_engine:
     build: ./services/ml-engine
-    container_name: ransomware_ml
     ports:
-      - "127.0.0.1:8002:8002"
+      - "127.0.0.1::8002"
     volumes:
       - ./models:/models
       - ./logs:/app/logs
