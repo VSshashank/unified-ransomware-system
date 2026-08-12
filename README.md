@@ -162,6 +162,15 @@ Benchmarks that assert the spec's numeric targets are marked `benchmark`; run th
 cd services/monitor && python -m pytest -m benchmark -q -s
 ```
 
+Benchmarks always measure and always assert, but they only write their numbers
+back to `reports/` when asked. Those files are committed evidence, so a plain
+test run leaves them alone rather than producing diffs anyone could commit by
+accident. To refresh them deliberately:
+
+```bash
+URDS_WRITE_REPORTS=1 python -m pytest -m benchmark -q -s
+```
+
 ## Future Work
 
 Out of scope for Weeks 1-16:

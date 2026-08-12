@@ -23,6 +23,14 @@ from detection import calculate_entropy, classify, read_magic
 REPORTS = Path(__file__).resolve().parents[3] / "reports"
 MEASUREMENTS: dict = {}
 
+# Recording is opt-in. These tests always measure and always assert; what this
+# gates is whether the numbers are written back to reports/, which is committed
+# evidence. Without the gate a plain `pytest -q` left three report files
+# modified in the working tree, so anyone running the suite could commit
+# re-measured numbers by accident and silently move the figures the write-up
+# cites. Set URDS_WRITE_REPORTS=1 to refresh them deliberately.
+WRITE_REPORTS = os.getenv("URDS_WRITE_REPORTS", "").lower() in {"1", "true", "yes"}
+
 DETECTION_LATENCY_TARGET_MS = 100.0
 FALSE_POSITIVE_TARGET = 0.05
 CPU_TARGET_PERCENT = 15.0
@@ -43,6 +51,8 @@ def write_measurements():
     response, which rewrote its key afterwards.
     """
     yield
+    if not WRITE_REPORTS:
+        return
     REPORTS.mkdir(exist_ok=True)
     path = REPORTS / "as_benchmarks.json"
     existing = {}

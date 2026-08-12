@@ -20,6 +20,10 @@ from features import FEATURE_ORDER, features_to_vector
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 REPORTS = REPO_ROOT / "reports"
+
+# Opt-in, so a plain `pytest -q` leaves committed evidence untouched. See the
+# note in services/monitor/tests/test_benchmarks.py.
+WRITE_REPORTS = os.getenv("URDS_WRITE_REPORTS", "").lower() in {"1", "true", "yes"}
 EMBER_MODEL = Path(os.environ["MODEL_PATH"])
 BEHAVIORAL_MODEL = Path(os.environ["BEHAVIORAL_MODEL_PATH"])
 
@@ -257,19 +261,20 @@ def test_inference_latency_under_100ms(client):
     p95 = samples[int(len(samples) * 0.95) - 1]
     model_only = response.json()["inference_time_ms"]
 
-    REPORTS.mkdir(exist_ok=True)
-    (REPORTS / "ni_inference_benchmark.json").write_text(
-        json.dumps(
-            {
-                "samples": len(samples),
-                "end_to_end_mean_ms": round(mean, 3),
-                "end_to_end_p95_ms": round(p95, 3),
-                "model_only_ms": model_only,
-                "target_ms": INFERENCE_TARGET_MS,
-            },
-            indent=2,
+    if WRITE_REPORTS:
+        REPORTS.mkdir(exist_ok=True)
+        (REPORTS / "ni_inference_benchmark.json").write_text(
+            json.dumps(
+                {
+                    "samples": len(samples),
+                    "end_to_end_mean_ms": round(mean, 3),
+                    "end_to_end_p95_ms": round(p95, 3),
+                    "model_only_ms": model_only,
+                    "target_ms": INFERENCE_TARGET_MS,
+                },
+                indent=2,
+            )
         )
-    )
     print(
         f"\ninference: mean={mean:.2f}ms p95={p95:.2f}ms end-to-end, "
         f"model-only={model_only:.3f}ms (target <100ms)"

@@ -20,6 +20,10 @@ from actions import TerminationError, build_plan, guard, isolate_host, terminate
 REPORTS = Path(__file__).resolve().parents[3] / "reports"
 KILL_TIME_TARGET_S = 2.0
 
+# Opt-in, so a plain `pytest -q` leaves committed evidence untouched. See the
+# note in services/monitor/tests/test_benchmarks.py.
+WRITE_REPORTS = os.getenv("URDS_WRITE_REPORTS", "").lower() in {"1", "true", "yes"}
+
 # Windows has no signal to ignore: psutil's terminate() and kill() both call
 # TerminateProcess, which is unconditional. A test for "the process survived
 # SIGTERM, so we escalated" is asserting a POSIX guarantee, not a bug in
@@ -71,13 +75,14 @@ def test_tc07_termination_completes_within_2_seconds(victim):
     result = terminate_process(victim.pid, force=True)
     elapsed_s = result["termination_time_ms"] / 1000
 
-    REPORTS.mkdir(exist_ok=True)
-    existing = {}
-    path = REPORTS / "as_benchmarks.json"
-    if path.exists():
-        existing = json.loads(path.read_text())
-    existing["process_kill_time_s"] = {"measured": round(elapsed_s, 4), "target": KILL_TIME_TARGET_S}
-    path.write_text(json.dumps(existing, indent=2))
+    if WRITE_REPORTS:
+        REPORTS.mkdir(exist_ok=True)
+        existing = {}
+        path = REPORTS / "as_benchmarks.json"
+        if path.exists():
+            existing = json.loads(path.read_text())
+        existing["process_kill_time_s"] = {"measured": round(elapsed_s, 4), "target": KILL_TIME_TARGET_S}
+        path.write_text(json.dumps(existing, indent=2))
 
     print(f"\nprocess kill time: {elapsed_s * 1000:.1f}ms (target <2000ms)")
     assert elapsed_s < KILL_TIME_TARGET_S

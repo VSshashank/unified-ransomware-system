@@ -11,6 +11,7 @@ Measurements are written to reports/gateway_benchmarks.json.
 """
 
 import json
+import os
 from pathlib import Path
 from time import perf_counter
 
@@ -19,6 +20,10 @@ import pytest
 REPORTS = Path(__file__).resolve().parents[3] / "reports"
 MEASUREMENTS: dict = {}
 
+# Opt-in, so a plain `pytest -q` leaves committed evidence untouched. See the
+# note in services/monitor/tests/test_benchmarks.py.
+WRITE_REPORTS = os.getenv("URDS_WRITE_REPORTS", "").lower() in {"1", "true", "yes"}
+
 API_P95_TARGET_MS = 200.0
 SAMPLES = 200
 
@@ -26,7 +31,7 @@ SAMPLES = 200
 @pytest.fixture(scope="module", autouse=True)
 def write_measurements():
     yield
-    if MEASUREMENTS:
+    if MEASUREMENTS and WRITE_REPORTS:
         REPORTS.mkdir(exist_ok=True)
         (REPORTS / "gateway_benchmarks.json").write_text(json.dumps(MEASUREMENTS, indent=2))
 
