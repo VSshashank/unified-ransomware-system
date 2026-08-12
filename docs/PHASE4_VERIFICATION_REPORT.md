@@ -395,7 +395,7 @@ Against the pinned `fastapi==0.115.6` it passes. Pin-drift, not a code fault.
 
 - ~~**Table 5.8 reconciliation** against the source PDF (§3.6).~~ **CLOSED — §8.**
 - ~~**PE feature extractor** (§3.2).~~ **CLOSED — §8.** Built as
-  `services/monitor/pe_features.py`, 64 features.
+  `services/monitor/pe_features.py`, 70 features.
 - **The `unreadable` verdict does not escalate.** A file that cannot be read is no longer
   reported `benign` — that fabrication is fixed — but `suspicious` stays `False` and no
   response triggers. Defensible, since most locks are Defender or the search indexer, and
@@ -433,7 +433,7 @@ being edited to match the code.
 | TC-10 no audit trail | `audit_access_denial()` writes an `auth_failure` block on every 401/403 | Best-effort; a dead ledger cannot turn a 401 into a 500 (tested) |
 | API p95 unmeasured (Table 5.9) | `services/gateway/tests/test_benchmarks.py` | **2.87 ms** p95 over 1000 requests, target <200 ms |
 | TC-01 had no sample | `scripts/ransomware_simulator.py` | Detected and terminated after **1 file**, bound <5 |
-| PE feature extractor (§3.2) | `services/monitor/pe_features.py` — **64 features** | Tested against real system binaries |
+| PE feature extractor (§3.2) | `services/monitor/pe_features.py` — **70 features** | Tested against real system binaries |
 
 ### 8.3 A contract that was quietly broken
 

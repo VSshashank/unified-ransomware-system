@@ -67,7 +67,8 @@ def client(monkeypatch):
         if path == "/model/metrics":
             return httpx.Response(200, json={"accuracy": 0.92, "precision": 0.91, "recall": 0.93, "f1_score": 0.92, "roc_auc": 0.95, "last_trained": "2026-01-30T14:00:00Z"})
         if path == "/ledger/log":
-            return httpx.Response(200, json={"block_id": 42, "current_hash": "abc123", "previous_hash": "def456", "timestamp": "2026-01-31T10:01:10Z", "tamper_proof": True})
+            # 201, matching the real ledger - an append creates a block.
+            return httpx.Response(201, json={"block_id": 42, "current_hash": "abc123", "previous_hash": "def456", "timestamp": "2026-01-31T10:01:10Z", "tamper_proof": True})
         if path == "/ledger/entries":
             return httpx.Response(200, json={"entries": [{"block_id": 42, "current_hash": "abc123", "previous_hash": "def456", "timestamp": "2026-01-31T10:01:10Z", "tamper_proof": True}]})
         if path == "/ledger/verify":

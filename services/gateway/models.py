@@ -43,6 +43,13 @@ class MonitorStartRequest(BaseModel):
     file_patterns: list[str]
 
 
+class MonitorStopRequest(BaseModel):
+    # Optional: only one monitor runs per Monitor process, so an omitted id
+    # means "stop what is running". When present it is forwarded and the Monitor
+    # checks it against the running monitor.
+    monitor_id: str | None = None
+
+
 class AnalyzeRequest(BaseModel):
     file_path: str
 

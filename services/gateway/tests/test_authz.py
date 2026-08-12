@@ -121,7 +121,9 @@ def test_free_role_cannot_reach_operator_writes(client, path, body):
 )
 def test_admin_and_enterprise_reach_operator_writes(client, role, tier, path, body):
     response = client.post(path, json=body, headers=headers_for(role, tier))
-    assert response.status_code == 200, f"{path} refused {role}: {response.text}"
+    # Any 2xx: this asserts the role was allowed through, not which success code
+    # the route returns. /ledger/log answers 201.
+    assert response.is_success, f"{path} refused {role}: {response.text}"
 
 
 @pytest.mark.parametrize(

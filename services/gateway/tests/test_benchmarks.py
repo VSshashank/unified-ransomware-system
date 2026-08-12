@@ -47,7 +47,9 @@ def _measure(client, method: str, path: str, headers: dict, json_body=None) -> l
         started = perf_counter()
         response = client.request(method, path, headers=headers, json=json_body)
         samples.append((perf_counter() - started) * 1000)
-        assert response.status_code == 200, response.text
+        # Any 2xx - /ledger/log answers 201, and what matters here is that the
+        # request succeeded so the timing means something.
+        assert response.is_success, response.text
     return samples
 
 

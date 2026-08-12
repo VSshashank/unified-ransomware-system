@@ -44,7 +44,8 @@ def test_health_reports_healthy(client):
 
 def test_log_returns_the_contract_shape(client):
     response = log(client)
-    assert response.status_code == 200
+    # 201, per Table 3.2, which names a ledger entry as its Created example.
+    assert response.status_code == 201
 
     body = response.json()
     assert set(body) == {"block_id", "current_hash", "previous_hash", "timestamp", "tamper_proof"}
@@ -76,7 +77,7 @@ def test_log_accepts_the_gateways_nested_analysis_payload(client):
             },
         },
     )
-    assert response.status_code == 200
+    assert response.status_code == 201
     assert client.get("/ledger/verify").json()["valid"] is True
 
 

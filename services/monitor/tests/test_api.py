@@ -98,6 +98,39 @@ def test_stop_marks_the_monitor_inactive(client, tmp_path):
     assert client.get("/monitor/status").json()["status"] == "stopped"
 
 
+def test_stop_accepts_the_documented_monitor_id(client, tmp_path):
+    """Listing 3.3 sends {monitor_id}; it used to be ignored entirely."""
+    started = client.post("/monitor/start", json={"watch_path": str(tmp_path)}).json()
+
+    stop = client.post("/monitor/stop", json={"monitor_id": started["monitor_id"]})
+
+    assert stop.status_code == 200
+    assert stop.json()["monitor_id"] == started["monitor_id"]
+    assert client.get("/monitor/status").json()["status"] == "stopped"
+
+
+def test_stop_refuses_a_monitor_id_that_is_not_running(client, tmp_path):
+    """Accepting an id and ignoring it lets a caller believe it stopped one
+    monitor while another kept running."""
+    client.post("/monitor/start", json={"watch_path": str(tmp_path)})
+
+    stop = client.post("/monitor/stop", json={"monitor_id": "mon_nope"})
+
+    assert stop.status_code == 404
+    assert stop.json()["error"]["code"] == "UNKNOWN_MONITOR_ID"
+    # Still running: a refused stop must not have stopped anything.
+    assert client.get("/monitor/status").json()["status"] == "active"
+
+
+def test_stop_without_a_body_still_stops_what_is_running(client, tmp_path):
+    """The id stays optional - one monitor runs per process, and every existing
+    caller posts an empty body."""
+    client.post("/monitor/start", json={"watch_path": str(tmp_path)})
+
+    assert client.post("/monitor/stop").status_code == 200
+    assert client.get("/monitor/status").json()["status"] == "stopped"
+
+
 def test_validation_error_uses_the_shared_envelope(client):
     response = client.post("/monitor/start", json={})
     assert response.status_code == 400

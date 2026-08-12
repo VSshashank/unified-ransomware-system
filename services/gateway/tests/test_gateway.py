@@ -136,6 +136,32 @@ def test_ledger_blocks_forwards_its_query_parameters(client):
     assert params["newest_first"] == "true"
 
 
+def test_ledger_log_returns_201_through_the_gateway(client):
+    """Table 3.2 names a ledger entry as its 201 Created example, and the proxy
+    has to pass the downstream code through rather than flattening it to 200."""
+    response = client.post(
+        "/ledger/log",
+        json={"event_type": "file_event", "event_data": {"file_path": "/watch/a.doc"}},
+        headers=auth_headers(),
+    )
+    assert response.status_code == 201
+    assert response.json()["block_id"] == 42
+
+
+def test_monitor_stop_forwards_the_monitor_id(client):
+    """The gateway used to send {} regardless, so a monitor_id the caller
+    supplied never reached the service that validates it."""
+    client.post("/monitor/stop", json={"monitor_id": "mon_a1b2c3"}, headers=auth_headers())
+
+    stop_call = client.calls[-1]
+    assert stop_call["path"] == "/monitor/stop"
+    assert stop_call["json"]["monitor_id"] == "mon_a1b2c3"
+
+
+def test_monitor_stop_still_works_with_no_body(client):
+    assert client.post("/monitor/stop", headers=auth_headers()).status_code == 200
+
+
 def test_ledger_routes_require_a_token(client):
     for path in ("/ledger/verify", "/ledger/blocks"):
         assert client.get(path).status_code == 401, path

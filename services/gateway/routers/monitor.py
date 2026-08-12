@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from auth import get_current_user, require_role
-from models import MonitorStartRequest
+from models import MonitorStartRequest, MonitorStopRequest
 from rate_limit import enforce_rate_limit
 from routers.proxy import MONITOR_URL, proxy_request
 
@@ -20,8 +20,11 @@ async def start_monitoring(payload: MonitorStartRequest, request: Request) -> JS
 # Admin only: stopping the monitor blinds detection for the whole host, which is
 # the same order of consequence as a response action.
 @router.post("/stop", dependencies=[Depends(require_role("admin"))])
-async def stop_monitoring(request: Request) -> JSONResponse:
-    return await proxy_request(request, "POST", MONITOR_URL, "/monitor/stop", {})
+async def stop_monitoring(request: Request, payload: MonitorStopRequest | None = None) -> JSONResponse:
+    # Forwarded rather than dropped: the gateway used to send {} regardless, so
+    # a monitor_id the caller supplied never reached the service that checks it.
+    body = payload.model_dump() if payload else {}
+    return await proxy_request(request, "POST", MONITOR_URL, "/monitor/stop", body)
 
 
 @router.get("/status")

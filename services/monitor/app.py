@@ -178,6 +178,15 @@ def matches_patterns(path: str, patterns: list[str]) -> bool:
     return any(fnmatch(name, pattern) or fnmatch(path, pattern) for pattern in patterns)
 
 
+class MonitorStopRequest(BaseModel):
+    # Optional, though Listing 3.3 shows it sent. Only one monitor runs per
+    # process, so an omitted id still means "stop what is running" - which is
+    # what every existing caller does. When it *is* sent it is checked, because
+    # accepting an identifier and ignoring it is how a caller ends up believing
+    # it stopped one monitor while another kept running.
+    monitor_id: str | None = None
+
+
 class FeatureRequest(BaseModel):
     path: str
 
@@ -493,8 +502,19 @@ def start_monitoring(payload: MonitorStartRequest) -> JSONResponse:
 
 
 @app.post("/monitor/stop")
-def stop_monitoring() -> dict:
-    global _observer, _monitor_id
+def stop_monitoring(payload: MonitorStopRequest | None = None) -> JSONResponse:
+    global _observer, _monitor_id, _file_patterns
+
+    requested = payload.monitor_id if payload else None
+    if requested is not None and requested != _monitor_id:
+        return JSONResponse(
+            status_code=404,
+            content=build_error(
+                "UNKNOWN_MONITOR_ID",
+                f"{requested} is not the monitor that is running",
+                {"requested": requested, "running": _monitor_id},
+            ),
+        )
 
     if _observer is not None:
         _observer.stop()
@@ -503,7 +523,10 @@ def stop_monitoring() -> dict:
 
     stopped = _monitor_id
     _monitor_id = None
-    return {"status": "stopped", "monitor_id": stopped, "stop_time": utc_now()}
+    _file_patterns = []
+    return JSONResponse(
+        content={"status": "stopped", "monitor_id": stopped, "stop_time": utc_now()}
+    )
 
 
 @app.get("/monitor/status")

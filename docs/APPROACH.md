@@ -234,7 +234,7 @@ is RanSAP-derived.
 ### 3.3 The PE feature extractor
 
 Table 5.4 asks for "50+ features from PE files". `services/monitor/pe_features.py`
-extracts **64**: DOS/COFF/Optional headers, per-section entropy and
+extracts **70**: DOS/COFF/Optional headers, per-section entropy and
 characteristics, import/export counts, resources, and directory presence.
 
 Three decisions worth stating:
@@ -249,7 +249,7 @@ Three decisions worth stating:
   a human reading an alert, which a raw EMBER index does not.
 - **Every failure returns zeros with the same keys.** A model cannot be handed a
   dict whose keys depend on the input, and a hostile PE must not take down the
-  Monitor's event thread. Malformed input yields `is_pe: 0` and the full 64-key
+  Monitor's event thread. Malformed input yields `is_pe: 0` and the full 70-key
   shape.
 
 Its immediate job was closing a contract that had been silently broken:

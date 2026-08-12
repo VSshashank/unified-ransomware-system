@@ -82,6 +82,12 @@ paths:
     post:
       summary: Stop file monitoring
       description: "Requires role: admin. Stopping the monitor blinds detection for the whole host."
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MonitorStopRequest"
       responses:
         "200":
           description: Monitor stopped.
@@ -93,6 +99,12 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "404":
+          description: The supplied monitor_id is not the monitor that is running.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /monitor/status:
@@ -514,6 +526,16 @@ components:
         start_time:
           type: string
           format: date-time
+    MonitorStopRequest:
+      type: object
+      description: >-
+        Optional. Only one monitor runs per Monitor process, so an omitted
+        monitor_id means "stop whatever is running". When supplied it is checked
+        against the running monitor, and a mismatch is refused with 404.
+      properties:
+        monitor_id:
+          type: string
+          example: mon_a1b2c3
     MonitorStopResponse:
       type: object
       required: [status, stop_time]

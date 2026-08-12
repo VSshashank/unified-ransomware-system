@@ -1,7 +1,7 @@
 """Static PE feature extraction - NI's Week 5-8 deliverable, at runtime.
 
 Table 5.4 asks for a feature pipeline that extracts "50+ features from PE
-files". This module is that pipeline. `extract_pe_features()` returns **64**
+files". This module is that pipeline. `extract_pe_features()` returns **70**
 named, measured features from a Portable Executable, grouped the way the
 literature groups them (Chapter 2.2): DOS/COFF/Optional headers, section
 statistics, imports, exports, resources, and directory presence.
@@ -92,13 +92,13 @@ def empty_pe_features() -> dict:
     """The same keys with zero values, so the feature vector has a fixed shape.
 
     A model cannot be handed a dict whose keys depend on the input; every
-    non-PE file has to produce the same 64 columns.
+    non-PE file has to produce the same 70 columns.
     """
     return {name: 0 for name in _FEATURE_NAMES}
 
 
 def extract_pe_features(path: str) -> dict:
-    """64 static features from a PE file. Non-PE or malformed input -> zeros."""
+    """70 static features from a PE file. Non-PE or malformed input -> zeros."""
     if pefile is None or not is_pe(path):
         return empty_pe_features()
 

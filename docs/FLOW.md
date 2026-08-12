@@ -184,7 +184,7 @@ Pure functions, no I/O beyond reading the file under inspection.
 ### `pe_features.py` (287 lines)
 
 - `is_pe(path)` — cheap MZ + PE signature check without full parsing.
-- `extract_pe_features(path)` — **64 features**. Any failure returns
+- `extract_pe_features(path)` — **70 features**. Any failure returns
   `empty_pe_features()` — same keys, zero values, so the vector shape is fixed.
 - `suspicious_api_names(path)` — the behaviourally interesting imports
   (`CryptEncrypt`, `WriteFile`, `TerminateProcess`, …) for the `api_calls` field.
