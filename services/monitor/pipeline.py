@@ -29,6 +29,39 @@ DOWNSTREAM_TIMEOUT = float(os.getenv("DOWNSTREAM_TIMEOUT", "3.0"))
 # Threat levels that justify killing a process.
 ACTIONABLE_THREAT_LEVELS = {"high", "critical"}
 
+# Ascending severity. Anything unrecognised ranks lowest.
+THREAT_LEVEL_ORDER = ("low", "medium", "high", "critical")
+
+
+def _rank(threat_level: str) -> int:
+    try:
+        return THREAT_LEVEL_ORDER.index(threat_level)
+    except ValueError:
+        return 0
+
+
+def effective_threat_level(model_threat_level: str | None, suspicious: bool) -> str:
+    """Combine the model's score with the Monitor's own verdict, taking the higher.
+
+    The ML engine refines the Monitor's verdict; it does not overrule it. The
+    behavioural classifier's operating point needs Shannon entropy of roughly
+    7.995 before it calls something ransomware with confidence, and ciphertext
+    under about 40KB cannot reach that through sampling noise alone. So a small
+    file encrypted in place scored "low" here while the Monitor had already
+    classified it `suspected_encryption` - and because the response gate read
+    only the model's answer, nothing acted on it. Measured on this machine, that
+    was every trial at 4KB, 8KB and 32KB.
+
+    Treating the Monitor as a floor rather than a fallback keeps one detector
+    from silently cancelling the other, and keeps the level coherent downstream:
+    the Response service runs network isolation on `high`/`critical` only, so
+    forwarding "low" for a file we are confident is encrypted would trigger a
+    response that then declined to do most of its job.
+    """
+    monitor_threat_level = "high" if suspicious else "low"
+    model_threat_level = model_threat_level or "low"
+    return max(model_threat_level, monitor_threat_level, key=_rank)
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -102,7 +135,8 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
             result["prediction"] = prediction
             result["stages"].append("ml_predicted")
 
-        threat_level = (prediction or {}).get("threat_level", "high" if verdict["suspicious"] else "low")
+        model_threat_level = (prediction or {}).get("threat_level")
+        threat_level = effective_threat_level(model_threat_level, verdict["suspicious"])
         label = (prediction or {}).get("prediction", "ransomware" if verdict["suspicious"] else "benign")
 
         # file_hash is the field SI's recovery integrity check depends on.
@@ -119,6 +153,11 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
             "prediction": label,
             "confidence": (prediction or {}).get("confidence"),
             "threat_level": threat_level,
+            # What the model said before the Monitor's verdict was applied as a
+            # floor. Recorded so an escalated entry ("prediction": "benign",
+            # "threat_level": "high") reads as a deliberate override with both
+            # inputs visible, rather than as two fields contradicting each other.
+            "model_threat_level": model_threat_level,
         }
 
         block = log_to_ledger(client, "file_event", event_data)
