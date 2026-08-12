@@ -1,0 +1,152 @@
+{
+  "generated_at": "2026-08-12T16:51:50.403017Z",
+  "datasets": {
+    "EMBER": {
+      "available": true,
+      "path": "data/ember_subset/ember_50k.parquet",
+      "role": "training input - the primary static-PE classifier (models/xgboost_model.pkl)",
+      "samples": 50000,
+      "features_per_sample": 2381,
+      "class_balance": {
+        "benign_0": 25000,
+        "malicious_1": 25000
+      },
+      "imbalance_ratio": 1.0,
+      "unique_sha256": 50000,
+      "appeared_range": [
+        "2006-12",
+        "2018-04"
+      ],
+      "feature_family": "EMBER v2 static feature vector: byte histogram, byte-entropy histogram, string statistics, general file info, PE header, section table, imports, exports and data directories"
+    },
+    "CLEAR": {
+      "available": true,
+      "path": "data/clear_io/wannacry_io_sample.csv",
+      "role": "training input - the I/O behaviour classifier (models/io_behavior_model.pkl)",
+      "operations": 1000,
+      "columns": [
+        "Timestamp",
+        "OpCode",
+        "Offset",
+        "Size",
+        "Label",
+        "Process Name",
+        "Process ID",
+        "Path",
+        "WAR",
+        "RAR",
+        "RAW",
+        "WAW",
+        "WAR Lapse",
+        "RAR Lapse",
+        "RAW Lapse",
+        "WAW Lapse"
+      ],
+      "class_balance": {
+        "benign_0": 447,
+        "ransomware_1": 553
+      },
+      "processes": {
+        "MRT.exe (label 0)": 194,
+        "SearchFilterHost.exe (label 0)": 143,
+        "SearchIndexer.exe (label 0)": 9,
+        "System (label 0)": 101,
+        "System (label 1)": 144,
+        "sample_BlackMatter_e4fd.bin (label 1)": 409
+      },
+      "opcode_counts": {
+        "2": 667,
+        "1": 333
+      },
+      "access_pattern_means_by_label": {
+        "0": {
+          "WAR": 0.1074,
+          "RAR": 9.4206,
+          "RAW": 1.0201,
+          "WAW": 2.613
+        },
+        "1": {
+          "WAR": 0.0,
+          "RAR": 0.0,
+          "RAW": 0.0018,
+          "WAW": 14.3363
+        }
+      },
+      "io_size_bytes": {
+        "mean": 37307.9,
+        "median": 8192.0,
+        "max": 1048576
+      },
+      "note": "Rows are individual I/O operations from one instrumented run, not per-file samples. There is no key on which a CLEAR row could be joined to an EMBER row, so the two corpora train two models rather than one merged feature matrix."
+    },
+    "RanSAP": {
+      "available": true,
+      "role": "training input - the I/O behaviour classifier (models/io_behavior_model.pkl)",
+      "traces": {
+        "ransomware_write": {
+          "available": true,
+          "path": "data/ransap_logs/ransomware/wannacry/wannacry_write.csv",
+          "operations": 454596,
+          "size_bytes": {
+            "mean": 4095.6,
+            "median": 4096.0,
+            "fraction_4096": 0.9999
+          },
+          "duration_seconds": 93,
+          "write_entropy_normalised": {
+            "mean": 0.1918,
+            "std": 0.3222,
+            "median": 0.0,
+            "p95": 0.9943,
+            "max": 0.9996,
+            "fraction_above_0.9": 0.0976,
+            "fraction_below_0.05": 0.6862
+          }
+        },
+        "ransomware_read": {
+          "available": true,
+          "path": "data/ransap_logs/ransomware/wannacry/wannacry_read.csv",
+          "operations": 95689,
+          "size_bytes": {
+            "mean": 3708.0,
+            "median": 4096.0,
+            "fraction_4096": 0.8392
+          },
+          "duration_seconds": 95
+        },
+        "benign_write": {
+          "available": true,
+          "path": "data/ransap_logs/benign/firefox_write.csv",
+          "operations": 47403,
+          "size_bytes": {
+            "mean": 4090.2,
+            "median": 4096.0,
+            "fraction_4096": 0.9981
+          },
+          "duration_seconds": 222,
+          "write_entropy_normalised": {
+            "mean": 0.3716,
+            "std": 0.2414,
+            "median": 0.4333,
+            "p95": 0.6372,
+            "max": 0.996,
+            "fraction_above_0.9": 0.0268,
+            "fraction_below_0.05": 0.227
+          }
+        },
+        "benign_read": {
+          "available": true,
+          "path": "data/ransap_logs/benign/firefox_read.csv",
+          "operations": 71193,
+          "size_bytes": {
+            "mean": 4038.7,
+            "median": 4096.0,
+            "fraction_4096": 0.9757
+          },
+          "duration_seconds": 192
+        }
+      },
+      "note": "RanSAP write traces carry per-block entropy measured by its own collector, which is the only real (non-synthetic) encryption entropy in the repository. Read traces carry no entropy column."
+    }
+  }
+}
