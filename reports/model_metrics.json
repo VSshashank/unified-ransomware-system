@@ -1,12 +1,18 @@
 {
-  "accuracy": 0.9774127310061602,
-  "precision": 0.976123595505618,
-  "recall": 0.9774964838255977,
-  "f1_score": 0.9768095572733662,
-  "roc_auc": 0.9963741209563995,
-  "trained_at": "2026-08-06T16:27:05.230166Z",
-  "train_samples": 13636,
-  "test_samples": 2922,
+  "accuracy": 0.9577333333333333,
+  "precision": 0.9625437887361897,
+  "recall": 0.9525333333333333,
+  "f1_score": 0.9575123978019032,
+  "roc_auc": 0.992348871111111,
+  "trained_at": "2026-08-12T14:59:23.467606Z",
+  "train_samples": 35000,
+  "val_samples": 7500,
+  "test_samples": 7500,
+  "total_samples": 50000,
+  "class_balance": {
+    "0": 25000,
+    "1": 25000
+  },
   "features": 2381,
-  "dataset": "ember_subset.parquet"
+  "dataset": "ember_50k.parquet"
 }

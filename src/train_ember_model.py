@@ -133,7 +133,13 @@ metrics.update(
     {
         "trained_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "train_samples": int(X_train.shape[0]),
+        # Recorded alongside train/test so the whole 70/15/15 split section 6.1
+        # specifies is checkable from the metrics file, rather than two of its
+        # three parts being visible and the total left to be inferred.
+        "val_samples": int(X_val.shape[0]),
         "test_samples": int(X_test.shape[0]),
+        "total_samples": int(X.shape[0]),
+        "class_balance": {str(label): int(count) for label, count in zip(*np.unique(y, return_counts=True))},
         "features": int(X.shape[1]),
         "dataset": os.path.basename(data_path),
     }
