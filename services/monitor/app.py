@@ -19,6 +19,7 @@ import os
 import queue
 import threading
 from collections import deque
+from fnmatch import fnmatch
 from datetime import datetime, timezone
 from time import perf_counter, time
 from uuid import uuid4
@@ -91,6 +92,7 @@ _LOCK = threading.Lock()
 _observer: Observer | None = None
 _monitor_id: str | None = None
 _watch_path: str | None = None
+_file_patterns: list[str] = []
 
 _work: queue.Queue = queue.Queue()
 _worker: threading.Thread | None = None
@@ -150,6 +152,24 @@ class MonitorStartRequest(BaseModel):
     watch_path: str
     recursive: bool = True
     file_patterns: list[str] = Field(default_factory=list)
+
+
+def matches_patterns(path: str, patterns: list[str]) -> bool:
+    """True when `path` is one the caller asked to watch.
+
+    An empty pattern list means everything, which is both the default and what
+    every existing caller relies on.
+
+    Patterns are matched against the file name (`*.pdf`, the shape Listing 3.1
+    uses) and against the whole path, so a caller who writes a directory-bearing
+    pattern gets what they meant rather than silence. `fnmatch` rather than
+    `fnmatchcase`: it normalises case per platform, so `*.PDF` matches `a.pdf`
+    on Windows, where the filesystem itself does not distinguish them.
+    """
+    if not patterns:
+        return True
+    name = os.path.basename(path)
+    return any(fnmatch(name, pattern) or fnmatch(path, pattern) for pattern in patterns)
 
 
 class FeatureRequest(BaseModel):
@@ -244,6 +264,12 @@ def handle_event(path: str, event_type: str) -> dict | None:
     arriving to a verdict existing. Target is under 100ms.
     """
     started = perf_counter()
+
+    # The caller asked for a subset of files. Applied here rather than at the
+    # watchdog layer so it covers deletions and renames too, and so the filtered
+    # file never reaches the event buffer or the counters.
+    if not matches_patterns(path, _file_patterns):
+        return None
 
     if event_type == "deleted":
         event = {
@@ -410,6 +436,7 @@ def health() -> dict:
 @app.post("/monitor/start")
 def start_monitoring(payload: MonitorStartRequest) -> JSONResponse:
     global _observer, _monitor_id, _watch_path, STARTED_AT, _observer_backend, _observer_reason
+    global _file_patterns
 
     if not os.path.isdir(payload.watch_path):
         return JSONResponse(
@@ -434,6 +461,7 @@ def start_monitoring(payload: MonitorStartRequest) -> JSONResponse:
 
     _monitor_id = f"mon_{uuid4().hex[:6]}"
     _watch_path = payload.watch_path
+    _file_patterns = list(payload.file_patterns)
     STARTED_AT = time()
 
     logger.info("monitoring %s (recursive=%s) as %s", _watch_path, payload.recursive, _monitor_id)
@@ -473,6 +501,9 @@ def monitor_status() -> dict:
         "status": "active" if running else "stopped",
         "monitor_id": _monitor_id,
         "watch_path": _watch_path,
+        # Echoed so a caller can see the filter that is actually in force. An
+        # empty list means every file is processed.
+        "file_patterns": _file_patterns,
         "files_monitored": files_monitored,
         "events_captured": events_captured,
         "uptime_seconds": int(time() - STARTED_AT),

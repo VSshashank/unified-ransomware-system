@@ -25,9 +25,13 @@ def client():
 def clean_state():
     monitor_app.EVENTS.clear()
     monitor_app._SEEN_FILES.clear()
+    # Module state, so a test that starts a filtered monitor would otherwise
+    # silently filter every test that runs after it.
+    monitor_app._file_patterns = []
     yield
     monitor_app.EVENTS.clear()
     monitor_app._SEEN_FILES.clear()
+    monitor_app._file_patterns = []
 
 
 def wait_for_event(predicate, timeout=5.0, interval=0.02):
@@ -132,6 +136,62 @@ def test_detected_event_carries_file_hash_for_the_ledger(client, tmp_path):
     assert event is not None
     assert event["file_hash"] is not None
     assert len(event["file_hash"]) == 64
+
+
+def test_file_patterns_filter_the_files_that_are_processed(client, tmp_path):
+    """Listing 3.1's file_patterns used to be stored and echoed but never applied.
+
+    gateway.yaml marks the field required, so a caller asking to watch only
+    *.pdf got every file instead, with nothing to indicate the filter had been
+    discarded.
+    """
+    client.post("/monitor/start", json={"watch_path": str(tmp_path), "file_patterns": ["*.pdf"]})
+
+    (tmp_path / "report.pdf").write_bytes(b"%PDF-1.4\n" + os.urandom(2048))
+    (tmp_path / "notes.txt").write_text("nothing to see here")
+
+    assert wait_for_event(lambda e: e["file_path"].endswith("report.pdf")) is not None
+    # Give the unwanted event the same chance to show up before ruling it out.
+    assert wait_for_event(lambda e: e["file_path"].endswith("notes.txt"), timeout=1.0) is None
+
+
+def test_an_empty_pattern_list_still_watches_everything(client, tmp_path):
+    client.post("/monitor/start", json={"watch_path": str(tmp_path), "file_patterns": []})
+
+    (tmp_path / "anything.xyz").write_bytes(os.urandom(2048))
+
+    assert wait_for_event(lambda e: e["file_path"].endswith("anything.xyz")) is not None
+
+
+def test_status_reports_the_filter_in_force(client, tmp_path):
+    client.post("/monitor/start", json={"watch_path": str(tmp_path), "file_patterns": ["*.doc", "*.pdf"]})
+
+    assert client.get("/monitor/status").json()["file_patterns"] == ["*.doc", "*.pdf"]
+
+
+@pytest.mark.parametrize(
+    "path,patterns,expected",
+    [
+        ("/watch/report.pdf", ["*.pdf"], True),
+        ("/watch/report.txt", ["*.pdf"], False),
+        ("/watch/report.txt", [], True),
+        ("/watch/a.doc", ["*.doc", "*.pdf", "*.jpg"], True),
+        # Listing 3.1's own example list.
+        ("/watch/photo.jpg", ["*.doc", "*.pdf", "*.jpg"], True),
+        ("/watch/photo.png", ["*.doc", "*.pdf", "*.jpg"], False),
+        # A directory-bearing pattern matches the whole path.
+        ("/watch/reports/q4.pdf", ["*/reports/*"], True),
+        ("/watch/other/q4.pdf", ["*/reports/*"], False),
+    ],
+)
+def test_pattern_matching(path, patterns, expected):
+    assert monitor_app.matches_patterns(path, patterns) is expected
+
+
+def test_pattern_matching_ignores_case_where_the_filesystem_does():
+    """fnmatch normalises case per platform, matching how the FS behaves."""
+    expected = os.path.normcase("A.PDF") == os.path.normcase("a.pdf")
+    assert monitor_app.matches_patterns("/watch/report.PDF", ["*.pdf"]) is expected
 
 
 def test_detected_event_carries_every_feature_the_model_scores(client, tmp_path):

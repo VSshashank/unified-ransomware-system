@@ -540,6 +540,14 @@ components:
         uptime_seconds:
           type: integer
           example: 3600
+        file_patterns:
+          type: array
+          description: >-
+            The glob filter actually in force. An empty list means every file on
+            the watched path is processed.
+          items:
+            type: string
+          example: ["*.doc", "*.pdf", "*.jpg"]
     FileEvent:
       type: object
       required: [event_id, file_path, event_type, entropy, timestamp]
