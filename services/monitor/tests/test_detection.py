@@ -31,6 +31,112 @@ from detection import (
 # --------------------------------------------------------------------- entropy
 
 
+def test_differential_entropy_reports_no_rise_for_a_file_seen_once():
+    """First sighting has no baseline. None means "no evidence", not "no rise"."""
+    history = detection.EntropyHistory()
+    assert history.observe("/watch/report.docx", 4.5, 8192) is None
+
+
+def test_differential_entropy_measures_the_rise_on_the_second_reading():
+    history = detection.EntropyHistory()
+    history.observe("/watch/report.docx", 4.5, 8192)
+    assert history.observe("/watch/report.docx", 7.98, 8192) == pytest.approx(3.48)
+
+
+def test_differential_entropy_compares_against_the_lowest_reading_not_the_last():
+    """An encryptor writing in passes would otherwise walk entropy up in steps
+    small enough that no single delta looks like a rise."""
+    history = detection.EntropyHistory()
+    for entropy in (4.5, 5.6, 6.7):
+        history.observe("/watch/report.docx", entropy, 8192)
+
+    assert history.observe("/watch/report.docx", 7.9, 8192) == pytest.approx(3.4)
+
+
+def test_an_empty_file_never_becomes_a_baseline():
+    """Watchdog reports a creation the moment the file exists, usually at zero
+    bytes. Without this, every file ever written "rose" from 0.0 and creating an
+    archive looked exactly like encrypting one."""
+    history = detection.EntropyHistory()
+    history.observe("/watch/new.zip", 0.0, 0)
+    assert history.observe("/watch/new.zip", 7.95, 262144) is None
+
+
+def test_a_tiny_first_write_never_becomes_a_baseline():
+    history = detection.EntropyHistory()
+    history.observe("/watch/new.zip", 3.2, 64)
+    assert history.observe("/watch/new.zip", 7.95, 262144) is None
+
+
+def test_history_forgets_a_deleted_path():
+    history = detection.EntropyHistory()
+    history.observe("/watch/report.docx", 4.5, 8192)
+    history.forget("/watch/report.docx")
+    assert history.observe("/watch/report.docx", 7.98, 8192) is None
+
+
+def test_history_is_bounded_by_path_count():
+    history = detection.EntropyHistory(max_paths=3)
+    for index in range(10):
+        history.observe(f"/watch/file_{index}.bin", 5.0, 8192)
+    assert len(history) == 3
+
+
+def test_history_keeps_only_the_most_recent_readings_per_path():
+    history = detection.EntropyHistory(window=2)
+    for entropy in (2.0, 6.0, 6.5):
+        history.observe("/watch/f.bin", entropy, 8192)
+    # 2.0 has fallen out of a 2-deep window, leaving [6.0, 6.5] and a 6.0 floor.
+    assert history.observe("/watch/f.bin", 7.9, 8192) == pytest.approx(1.9)
+
+
+# --------------------------------------- differential entropy drives a verdict
+
+
+def test_a_large_rise_is_flagged_even_below_the_static_threshold():
+    """The case a single reading cannot see: encryption landing under 7.5."""
+    verdict = classify("/watch/report.docx", 7.2, b"", entropy_delta=2.7)
+
+    assert verdict["suspicious"] is True
+    assert verdict["verdict"] == "suspected_encryption"
+    assert "rose" in verdict["reason"]
+
+
+def test_a_large_rise_overrides_a_spoofed_container_header():
+    """Magic-byte verification alone clears this file - an encryptor that writes
+    a ZIP header over its ciphertext gets a free pass. The rise does not."""
+    spoofed = classify("/watch/report.docx", 7.95, b"PK\x03\x04", entropy_delta=3.4)
+
+    assert spoofed["suspicious"] is True
+    assert spoofed["verdict"] == "suspected_encryption"
+    assert "does not explain" in spoofed["reason"]
+
+    # Same file, same header, no history: still cleared, as before.
+    without_history = classify("/watch/report.docx", 7.95, b"PK\x03\x04")
+    assert without_history["verdict"] == "benign_compressed"
+
+
+def test_a_small_rise_does_not_flag_an_archive():
+    """An archive built up over two writes rises, but not by much."""
+    verdict = classify("/watch/photos.zip", 7.95, b"PK\x03\x04", entropy_delta=0.6)
+
+    assert verdict["suspicious"] is False
+    assert verdict["verdict"] == "benign_compressed"
+
+
+def test_a_rise_that_lands_at_low_entropy_is_not_encryption():
+    """Plain text replaced with other plain text is editing, not encryption."""
+    verdict = classify("/watch/notes.txt", 4.8, b"", entropy_delta=2.5)
+
+    assert verdict["suspicious"] is False
+    assert verdict["verdict"] == "benign"
+
+
+def test_verdicts_carry_the_delta_that_produced_them():
+    assert classify("/watch/a.bin", 7.9, b"", entropy_delta=3.1)["entropy_delta"] == 3.1
+    assert classify("/watch/a.bin", 4.0, b"")["entropy_delta"] is None
+
+
 def test_entropy_of_empty_data_is_zero():
     assert entropy_of(b"") == 0.0
 

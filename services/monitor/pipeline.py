@@ -145,6 +145,9 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
             "file_hash": file_hash,
             "event_type": event.get("event_type"),
             "entropy": verdict.get("entropy"),
+            # Differential entropy - the rise that made this suspicious, when a
+            # rise is what did. Null for a file seen only once.
+            "entropy_delta": verdict.get("entropy_delta"),
             "verdict": verdict.get("verdict"),
             "reason": verdict.get("reason"),
             "container_format": verdict.get("container_format"),

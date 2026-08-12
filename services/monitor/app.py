@@ -39,6 +39,7 @@ from detection import (
     DEFAULT_ENTROPY_THRESHOLD,
     byte_statistics,
     calculate_entropy,
+    EntropyHistory,
     classify,
     get_magic_bytes,
     looks_unreadable,
@@ -88,6 +89,11 @@ STARTED_AT = time()
 EVENTS: deque = deque(maxlen=MAX_EVENTS)
 _SEEN_FILES: set[str] = set()
 _LOCK = threading.Lock()
+
+# Differential entropy analysis (spec 1.4): entropy per path over time, so a
+# file that *became* random can be told from one that always was. Takes its own
+# lock; the watchdog threads share it.
+ENTROPY_HISTORY = EntropyHistory()
 
 _observer: Observer | None = None
 _monitor_id: str | None = None
@@ -272,6 +278,9 @@ def handle_event(path: str, event_type: str) -> dict | None:
         return None
 
     if event_type == "deleted":
+        # Readings describe content that no longer exists. Keeping them would
+        # also let a new file at the same path inherit a baseline it never had.
+        ENTROPY_HISTORY.forget(path)
         event = {
             "event_id": f"evt_{uuid4().hex[:10]}",
             "file_path": path,
@@ -308,8 +317,13 @@ def handle_event(path: str, event_type: str) -> dict | None:
     # gets the ZIP-versus-ciphertext distinction wrong, which is what the
     # dashboard banner was doing.
     entropy, statistics = measure(read_sample(path, retry=readable))
+    # Differential entropy: how far this reading sits above the lowest one we
+    # have taken on this path. None the first time a file is seen.
+    entropy_delta = ENTROPY_HISTORY.observe(path, entropy, size) if readable else None
 
-    verdict = classify(path, entropy, magic, ENTROPY_THRESHOLD, readable=readable)
+    verdict = classify(
+        path, entropy, magic, ENTROPY_THRESHOLD, readable=readable, entropy_delta=entropy_delta
+    )
     # Hashing a file we could not read only pays the retry cost again to reach
     # the same None, and it is on the sub-100ms detection path.
     file_hash = sha256_file(path) if readable else None
@@ -335,6 +349,7 @@ def handle_event(path: str, event_type: str) -> dict | None:
         # reads the values that were actually measured instead of guessing them
         # back from the file path.
         "ransom_extension": verdict["ransom_extension"],
+        "entropy_delta": entropy_delta,
         **statistics,
         "timestamp": utc_now(),
         # watchdog reports *what* changed, never *who* changed it - attribution

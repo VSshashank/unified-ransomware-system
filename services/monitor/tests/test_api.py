@@ -7,6 +7,7 @@ request/response shapes the gateway and dashboard depend on.
 import io
 import os
 import time
+import zipfile
 
 import pytest
 from fastapi.testclient import TestClient
@@ -28,10 +29,12 @@ def clean_state():
     # Module state, so a test that starts a filtered monitor would otherwise
     # silently filter every test that runs after it.
     monitor_app._file_patterns = []
+    monitor_app.ENTROPY_HISTORY.clear()
     yield
     monitor_app.EVENTS.clear()
     monitor_app._SEEN_FILES.clear()
     monitor_app._file_patterns = []
+    monitor_app.ENTROPY_HISTORY.clear()
 
 
 def wait_for_event(predicate, timeout=5.0, interval=0.02):
@@ -136,6 +139,83 @@ def test_detected_event_carries_file_hash_for_the_ledger(client, tmp_path):
     assert event is not None
     assert event["file_hash"] is not None
     assert len(event["file_hash"]) == 64
+
+
+def test_differential_entropy_catches_in_place_encryption_end_to_end(client, tmp_path):
+    """A document that was ordinary text and is now ciphertext, over the live
+    watcher. The header is left as a valid ZIP throughout, so magic-byte
+    verification clears the file at both readings and only the rise sees it."""
+    client.post("/monitor/start", json={"watch_path": str(tmp_path)})
+
+    # The baseline reading has to be taken by the watcher, so it is written
+    # after monitoring starts.
+    target = tmp_path / "quarterly_report.docx"
+    target.write_bytes(b"PK\x03\x04" + b"quarterly figures, nothing unusual. " * 400)
+
+    baseline = wait_for_event(lambda e: e["file_path"].endswith("quarterly_report.docx"))
+    assert baseline is not None
+    assert baseline["suspicious"] is False
+    monitor_app.EVENTS.clear()
+
+    # Encrypted in place, keeping the name and the container header.
+    target.write_bytes(b"PK\x03\x04" + os.urandom(16384))
+
+    event = wait_for_event(
+        lambda e: e["file_path"].endswith("quarterly_report.docx") and e["suspicious"]
+    )
+    assert event is not None, "in-place encryption behind a valid ZIP header was not detected"
+    assert event["verdict"] == "suspected_encryption"
+    assert event["entropy_delta"] is not None and event["entropy_delta"] >= 2.0
+    assert "rose" in event["reason"]
+
+
+def test_ordinary_file_lifecycles_produce_no_differential_false_positives(tmp_path):
+    """Table 5.7 names differential entropy as a false-positive mitigation, so it
+    had better not be a source of them.
+
+    The static false-positive benchmark scores each file once and never builds
+    history, so it cannot exercise this rule at all. These are the sequences a
+    real desktop produces: archives written in passes, documents edited, office
+    files re-saved. None of them is replacement, and none may be flagged.
+    """
+    monitor_app.ENTROPY_HISTORY.clear()
+    flagged = []
+
+    def drive(name, writes):
+        path = tmp_path / name
+        for index, payload in enumerate(writes):
+            path.write_bytes(payload)
+            event = monitor_app.handle_event(str(path), "created" if index == 0 else "modified")
+            if event and event["suspicious"]:
+                flagged.append((name, index, event["verdict"], event["entropy_delta"]))
+
+    def zip_bytes(count):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            for index in range(count):
+                archive.writestr(f"photo_{index}.bin", os.urandom(16 * 1024))
+        return buffer.getvalue()
+
+    # An archive created empty, then written, then added to.
+    drive("photos.zip", [b"", zip_bytes(2), zip_bytes(6), zip_bytes(12)])
+    # A document edited repeatedly.
+    text = b"the quarterly figures are in line with expectations. "
+    drive("report.txt", [text * 100, text * 400, text * 900])
+    # An office file re-saved: a .docx is a ZIP, so it sits near 8.0 throughout.
+    drive("deck.docx", [zip_bytes(3), zip_bytes(4), zip_bytes(5)])
+    # A large download landing in pieces.
+    drive("movie.mp4", [b"\x00\x00\x00\x20ftypisom" + os.urandom(n) for n in (64_000, 256_000, 900_000)])
+
+    assert not flagged, f"differential entropy produced false positives: {flagged}"
+
+
+def test_a_file_seen_once_reports_no_entropy_delta(client, tmp_path):
+    client.post("/monitor/start", json={"watch_path": str(tmp_path)})
+    (tmp_path / "fresh.bin").write_bytes(os.urandom(8192))
+
+    event = wait_for_event(lambda e: e["file_path"].endswith("fresh.bin"))
+    assert event is not None
+    assert event["entropy_delta"] is None
 
 
 def test_file_patterns_filter_the_files_that_are_processed(client, tmp_path):

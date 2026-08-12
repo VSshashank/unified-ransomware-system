@@ -75,15 +75,50 @@ Shannon entropy near 8.0 bits/byte means "these bytes are unpredictable". That i
 true of AES ciphertext **and** of a ZIP archive, a JPEG, an MP4 and a PDF. A
 detector that flags on entropy alone reports every download folder as an attack.
 
-The mitigation (spec §1.4 "Differential Entropy Analysis", and Kharraz et al. in
-§2.1) is to read the file's magic bytes and ask whether the high entropy is
-*explained* by a declared container format. `detection.py` carries 20 container
-signatures. A file that is high-entropy **and** starts with `PK\x03\x04` is
-someone zipping their photos; a `.docx` that is high-entropy and starts with
-random bytes is not a `.docx` any more.
+Table 5.3 lists two Weeks 9–12 tasks against this, and Table 5.7 names both as
+mitigations for the false-positive risk. They are separate checks and both are
+implemented.
+
+**Magic-byte verification** reads the file's header and asks whether the high
+entropy is *explained* by a declared container format. `detection.py` carries 20
+container signatures. A file that is high-entropy **and** starts with
+`PK\x03\x04` is someone zipping their photos; a `.docx` that is high-entropy and
+starts with random bytes is not a `.docx` any more.
 
 Measured: **0 false positives out of 40**, where 32 of the 40 were deliberately
 high-entropy legitimate files. Target was <5%.
+
+**Differential entropy analysis** is the other one, and it is what spec §1.4
+actually describes: "entropy patterns over time", not a header check. A single
+reading cannot separate an archive from ciphertext, because both are near 8.0.
+A *sequence* can — ransomware overwrites files that already existed, so the
+signature is a large rise on a path already being watched.
+
+`EntropyHistory` keeps the last few readings per path, bounded in both
+directions, and `classify` flags a rise of ≥2.0 bits/byte that lands at ≥7.0.
+The baseline is the lowest substantive reading in the window rather than the
+previous one, so an encryptor writing in several passes cannot walk the entropy
+up in steps too small to notice. A reading only becomes a baseline once the file
+holds at least 1 KB: watchdog reports a creation the moment the file exists,
+usually at zero bytes, so without that floor every file ever written would have
+"risen" from 0.0 and creating an archive would look like encrypting one.
+
+The two checks catch different things, which is why the document asks for both.
+Magic bytes miss an encryptor that writes a container header over its ciphertext
+— the file declares `PK\x03\x04` and gets cleared. The rise still sees it, and
+there is an end-to-end test for exactly that case
+(`test_differential_entropy_catches_in_place_encryption_end_to_end`). Going the
+other way, differential entropy needs a prior reading, so on a file seen once it
+reports nothing and magic bytes carry the decision alone.
+
+Validated in both directions: the rise catches in-place encryption behind a
+valid ZIP header, and 13 writes across four ordinary file lifecycles — an
+archive built in passes, a document edited repeatedly, an office file re-saved,
+a large download landing in pieces — produce **no** false positives
+(`test_ordinary_file_lifecycles_produce_no_differential_false_positives`). The
+static 40-sample benchmark scores each file once and never builds history, so it
+cannot exercise this rule; that test exists because the benchmark cannot cover
+it.
 
 Ransom extensions (`.locked`, `.wncry`, …) are a *secondary* signal only. Families
 rename constantly, so the extension list never decides on its own — it raises

@@ -1,17 +1,25 @@
 """Detection primitives for the Monitor service - AS.
 
 Shannon entropy on its own flags every compressed archive as an attack: a ZIP
-and an AES-encrypted document both sit near 8.0 bits/byte. The magic-byte check
-below is the false-positive mitigation named in the design doc - a file that is
-high entropy *and* declares a known compressed/media container is legitimate
-compression, not encryption.
+and an AES-encrypted document both sit near 8.0 bits/byte. Two checks separate
+the two, and the design doc names them as separate deliverables:
+
+* Magic-byte verification, below: high entropy that a declared compressed or
+  media container explains is compression, not encryption.
+* Differential entropy analysis (spec 1.4, "entropy patterns over time"):
+  entropy tracked per path across a file's create -> modify sequence. A single
+  reading cannot tell an archive from ciphertext, but a *rise* can - a document
+  that was 4.5 bits/byte and is now 7.9 was encrypted in place, which is the
+  ransomware pattern. Magic bytes alone miss that when the encryptor writes a
+  container header over the ciphertext; the rise still shows.
 """
 
 import hashlib
 import math
 import os
+import threading
 import time
-from collections import Counter
+from collections import Counter, OrderedDict, deque
 
 # Entropy at or above this is "encrypted-looking". 7.5 bits/byte is the usual
 # operating point: plain text sits ~4.5, office documents ~6, and both ciphertext
@@ -23,6 +31,32 @@ DEFAULT_ENTROPY_THRESHOLD = 7.5
 ENTROPY_SAMPLE_BYTES = 1024 * 1024
 HASH_CHUNK_BYTES = 1024 * 1024
 MAGIC_BYTES_READ = 16
+
+# ---------------------------------------------- differential entropy analysis
+#
+# A rise this large means the content was replaced rather than edited. Ordinary
+# editing moves entropy by tenths: appending a paragraph to a document, or
+# adding a file to an archive, does not move the distribution of an entire
+# megabyte. 2.0 bits/byte is comfortably above that and comfortably below the
+# ~3.5 a text file gains when it is encrypted.
+ENTROPY_RISE_THRESHOLD = float(os.getenv("ENTROPY_RISE_THRESHOLD", "2.0"))
+
+# A rise only means something if it ends somewhere encrypted-looking. Slightly
+# below DEFAULT_ENTROPY_THRESHOLD on purpose: this is what lets the rise catch
+# encryption that lands just under the static cut-off, which is the case a
+# single reading cannot see at all.
+ENTROPY_RISE_FLOOR = float(os.getenv("ENTROPY_RISE_FLOOR", "7.0"))
+
+# A reading only becomes a baseline once the file has real content in it.
+# Watchdog reports a creation the moment the file exists, usually at zero bytes,
+# and every file that has ever been written therefore "rose" from 0.0. Without
+# this floor, creating any archive would look like encrypting one.
+MIN_BASELINE_BYTES = int(os.getenv("MIN_BASELINE_BYTES", "1024"))
+
+# Readings kept per path, and paths kept overall. Both bounded: a long-running
+# watch over a busy tree must not grow an entry per file forever.
+ENTROPY_HISTORY_WINDOW = int(os.getenv("ENTROPY_HISTORY_WINDOW", "5"))
+ENTROPY_HISTORY_PATHS = int(os.getenv("ENTROPY_HISTORY_PATHS", "4096"))
 
 # Windows holds files open with deny-share far more often than POSIX does: the
 # encrypting process itself, Defender scanning the newly written bytes, and the
@@ -264,12 +298,81 @@ def has_ransom_extension(file_path: str) -> bool:
     return os.path.splitext(file_path)[1].lower() in RANSOM_EXTENSIONS
 
 
+class EntropyHistory:
+    """Entropy readings per path - the "over time" half of the detection.
+
+    One reading says how random a file looks. A sequence says whether it *became*
+    that way, which is the difference between an archive someone created and a
+    document someone encrypted. Ransomware overwrites existing files, so the
+    signature is a large rise on a path that already existed.
+
+    The baseline is the lowest substantive reading in the window rather than the
+    previous one: an encryptor that writes in several passes would otherwise
+    walk the entropy up in steps small enough that no single delta is a rise.
+
+    Bounded in both directions - readings per path, and paths overall, evicted
+    oldest-first. Watchdog threads share one instance, so it takes a lock.
+    """
+
+    def __init__(
+        self,
+        window: int = ENTROPY_HISTORY_WINDOW,
+        max_paths: int = ENTROPY_HISTORY_PATHS,
+        min_baseline_bytes: int = MIN_BASELINE_BYTES,
+    ):
+        self._window = window
+        self._max_paths = max_paths
+        self._min_baseline_bytes = min_baseline_bytes
+        self._readings: OrderedDict[str, deque] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def observe(self, file_path: str, entropy: float, size: int) -> float | None:
+        """Record a reading and return the rise over the baseline before it.
+
+        Returns None when there is no baseline to compare against - a file seen
+        for the first time, or one that has only ever been too small to measure
+        meaningfully. None means "no evidence", which is not the same as 0.0.
+        """
+        substantive = size >= self._min_baseline_bytes and entropy > 0.0
+
+        with self._lock:
+            previous = self._readings.get(file_path)
+            baseline = min(previous) if previous else None
+
+            if substantive:
+                if previous is None:
+                    previous = deque(maxlen=self._window)
+                    self._readings[file_path] = previous
+                previous.append(entropy)
+                self._readings.move_to_end(file_path)
+                while len(self._readings) > self._max_paths:
+                    self._readings.popitem(last=False)
+
+        if baseline is None:
+            return None
+        return round(entropy - baseline, 2)
+
+    def forget(self, file_path: str) -> None:
+        """Drop a path's history. A deleted file's readings describe nothing."""
+        with self._lock:
+            self._readings.pop(file_path, None)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._readings.clear()
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._readings)
+
+
 def classify(
     file_path: str,
     entropy: float,
     magic: bytes,
     threshold: float = DEFAULT_ENTROPY_THRESHOLD,
     readable: bool = True,
+    entropy_delta: float | None = None,
 ) -> dict:
     """Decide whether a file event looks like encryption.
 
@@ -302,6 +405,29 @@ def classify(
             "entropy": None,
             "container_format": None,
             "ransom_extension": ransom_ext,
+            "entropy_delta": entropy_delta,
+        }
+
+    # Differential entropy, checked before the container exemption because it is
+    # the one signal that survives a spoofed header: an encryptor that writes
+    # "PK\x03\x04" over its ciphertext still cannot make the file look like it
+    # was always that random. A rise this size on a path we have already
+    # measured means the content was replaced, not edited.
+    if entropy_delta is not None and entropy_delta >= ENTROPY_RISE_THRESHOLD and entropy >= ENTROPY_RISE_FLOOR:
+        reason = (
+            f"entropy rose {entropy_delta} to {entropy} on a file already being watched, "
+            "which is replacement rather than editing"
+        )
+        if container:
+            reason += f"; the {container} header does not explain a rise this large"
+        return {
+            "suspicious": True,
+            "verdict": "suspected_encryption",
+            "reason": reason,
+            "entropy": entropy,
+            "container_format": container,
+            "ransom_extension": ransom_ext,
+            "entropy_delta": entropy_delta,
         }
 
     if high_entropy and container and not ransom_ext:
@@ -313,6 +439,7 @@ def classify(
             "entropy": entropy,
             "container_format": container,
             "ransom_extension": False,
+            "entropy_delta": entropy_delta,
         }
 
     if high_entropy:
@@ -326,6 +453,7 @@ def classify(
             "entropy": entropy,
             "container_format": container,
             "ransom_extension": ransom_ext,
+            "entropy_delta": entropy_delta,
         }
 
     if ransom_ext:
@@ -336,6 +464,7 @@ def classify(
             "entropy": entropy,
             "container_format": container,
             "ransom_extension": True,
+            "entropy_delta": entropy_delta,
         }
 
     return {
@@ -345,4 +474,5 @@ def classify(
         "entropy": entropy,
         "container_format": container,
         "ransom_extension": False,
+        "entropy_delta": entropy_delta,
     }
