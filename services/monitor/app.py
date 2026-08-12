@@ -41,7 +41,9 @@ from detection import (
     classify,
     get_magic_bytes,
     looks_unreadable,
+    measure,
     read_magic,
+    read_sample,
     sha256_file,
 )
 from pe_features import suspicious_api_names
@@ -274,7 +276,12 @@ def handle_event(path: str, event_type: str) -> dict | None:
 
     # read_magic already waited out the lock budget; see extract_features.
     readable = not looks_unreadable(magic, size)
-    entropy = calculate_entropy(path, retry=readable)
+    # One read, both measurements. Entropy and the byte statistics score exactly
+    # the same prefix, and the statistics are three of the behavioural model's
+    # seven inputs - a consumer that has to estimate them from entropy instead
+    # gets the ZIP-versus-ciphertext distinction wrong, which is what the
+    # dashboard banner was doing.
+    entropy, statistics = measure(read_sample(path, retry=readable))
 
     verdict = classify(path, entropy, magic, ENTROPY_THRESHOLD, readable=readable)
     # Hashing a file we could not read only pays the retry cost again to reach
@@ -297,6 +304,12 @@ def handle_event(path: str, event_type: str) -> dict | None:
         "verdict": verdict["verdict"],
         "reason": verdict["reason"],
         "container_format": verdict["container_format"],
+        # Both of the model's top two features are decided here. Carrying them
+        # on the event means a consumer scoring it later - the dashboard does -
+        # reads the values that were actually measured instead of guessing them
+        # back from the file path.
+        "ransom_extension": verdict["ransom_extension"],
+        **statistics,
         "timestamp": utc_now(),
         # watchdog reports *what* changed, never *who* changed it - attribution
         # needs eBPF/fanotify (Linux) or ETW (Windows), which is Phase 5 work.
@@ -318,7 +331,7 @@ def handle_event(path: str, event_type: str) -> dict | None:
             "modification_rate": round(min(1.0, entropy / 8.0), 2),
             "container_format": verdict["container_format"],
             "ransom_extension": verdict["ransom_extension"],
-            **byte_statistics(path),
+            **statistics,
         }
         _work.put((event, features, verdict))
 

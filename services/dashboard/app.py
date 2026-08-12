@@ -153,14 +153,37 @@ latest_block = ledger_entries[0] if ledger_entries else {}
 
 latest_prediction = None
 if latest_event:
+    # Every value here is read off the event the Monitor actually measured.
+    # These used to be the reference document's illustrative constants, which
+    # meant the banner was scoring a file that did not exist: magic_bytes pinned
+    # to 4D5A held has_container_header - the model's highest-importance feature
+    # - at 0 for everything, so a ZIP the Monitor had correctly cleared as
+    # benign_compressed could still be rendered as a threat.
+    entropy = latest_event.get("entropy") or 0
     feature_payload = {
         "features": {
-            "shannon_entropy": latest_event.get("entropy", 0),
-            "file_size": 1048576,
-            "magic_bytes": "4D5A",
-            "modification_rate": min(1.0, latest_event.get("entropy", 0) / 8.2),
-            "pe_imports_count": 45,
-            "api_calls": ["CreateFile", "WriteFile", "CryptEncrypt"],
+            "shannon_entropy": entropy,
+            "file_size": latest_event.get("file_size", 0),
+            "magic_bytes": latest_event.get("magic_bytes", "UNKNOWN"),
+            # /8.0 to match the Monitor's own normalisation in extract_features.
+            "modification_rate": round(min(1.0, entropy / 8.0), 2),
+            "container_format": latest_event.get("container_format"),
+            "ransom_extension": latest_event.get("ransom_extension", False),
+            # The other three of the model's seven inputs. Omitting them makes
+            # features_to_vector interpolate all three from entropy, which is
+            # what rendered a legitimate ZIP as a threat: measured and estimated
+            # byte statistics diverge most on exactly the compressed-versus-
+            # encrypted case the banner exists to tell apart.
+            **{
+                key: latest_event[key]
+                for key in ("printable_ratio", "byte_value_std", "chi_square_uniformity")
+                if key in latest_event
+            },
+            # Required by the FeatureSet contract, and PE-only. A file event
+            # carries no PE parse, so these report nothing rather than inventing
+            # a count - the same convention extract_features uses for a .docx.
+            "pe_imports_count": 0,
+            "api_calls": [],
         }
     }
     try:
@@ -168,14 +191,31 @@ if latest_event:
     except Exception:
         latest_prediction = None
 
-threat_level = (latest_prediction or {}).get("threat_level", "low")
+THREAT_LEVEL_ORDER = ("low", "medium", "high", "critical")
+
 prediction = (latest_prediction or {}).get("prediction", "benign")
 confidence = (latest_prediction or {}).get("confidence")
-is_threat = prediction == "ransomware"
+model_threat_level = (latest_prediction or {}).get("threat_level", "low")
+
+# The banner reports what the *system* decided, which is the Monitor's verdict
+# and the model's score together - the same rule services/monitor/pipeline.py
+# applies when it decides whether to fire a response. Showing only the model
+# score made the banner disagree with the system standing behind it: the
+# behavioural classifier is not confident on ciphertext under about 40KB, so a
+# small file encrypted in place read "System Secure" on screen while the
+# Monitor had already flagged it and the Response engine had acted on it.
+monitor_flagged = bool(latest_event.get("suspicious"))
+is_threat = prediction == "ransomware" or monitor_flagged
+threat_level = max(
+    model_threat_level,
+    "high" if monitor_flagged else "low",
+    key=lambda level: THREAT_LEVEL_ORDER.index(level) if level in THREAT_LEVEL_ORDER else 0,
+)
+
 banner_color = "#fff1f2" if is_threat else "#ecfdf3"
 border_color = "#fda4af" if is_threat else "#86efac"
 text_color = "#9f1239" if is_threat else "#166534"
-banner_text = "Threat Detected" if prediction == "ransomware" else "System Secure"
+banner_text = "Threat Detected" if is_threat else "System Secure"
 latest_path = latest_event.get("file_path", "Waiting for file event")
 latest_entropy = latest_event.get("entropy", 0)
 event_type = latest_event.get("event_type", "none")
@@ -186,6 +226,7 @@ st.markdown(
       <div class="status-title">{banner_text}</div>
       <div class="status-line">
         Latest event: <strong>{event_type}</strong> on <strong>{latest_path}</strong><br>
+        Monitor verdict: <strong>{status_label(latest_event.get("verdict"))}</strong> |
         Model decision: <strong>{prediction}</strong> | Threat level: <strong>{threat_level.upper()}</strong> |
         Confidence: <strong>{pct(confidence)}</strong> | Entropy: <strong>{latest_entropy}</strong>
       </div>
@@ -312,6 +353,29 @@ with ledger_col:
         st.info("No ledger entries yet.")
 
 st.subheader("Service Health")
+
+# Keys that are not health detail. Everything else a service reports about
+# itself is shown, so the table stays truthful as services add fields.
+_HEALTH_METADATA_KEYS = {"status", "service"}
+
+
+def health_detail(service_data: dict) -> str:
+    """What a service reports about itself, beyond up/down.
+
+    This column used to read `service_data.get("placeholder", name != "gateway")`.
+    No backend /health returns a `placeholder` key, so the default always won and
+    the dashboard labelled monitor, ml_engine, ledger and response as
+    placeholders on every load - contradicting the README, and on screen during
+    the demo. The services do report real detail; this shows that instead.
+    """
+    details = [
+        f"{key.replace('_', ' ')}: {value}"
+        for key, value in service_data.items()
+        if key not in _HEALTH_METADATA_KEYS
+    ]
+    return " | ".join(details) if details else "-"
+
+
 health_rows = []
 for service_name in ["gateway", "monitor", "ml_engine", "ledger", "response"]:
     service_data = health.get("services", {}).get(service_name, {"status": health.get("status") if service_name == "gateway" else "unknown"})
@@ -319,7 +383,7 @@ for service_name in ["gateway", "monitor", "ml_engine", "ledger", "response"]:
         {
             "Service": service_name.replace("_", " ").title(),
             "Status": status_label(service_data.get("status")),
-            "Placeholder": service_data.get("placeholder", service_name != "gateway"),
+            "Reported": health_detail(service_data),
         }
     )
 st.dataframe(pd.DataFrame(health_rows), use_container_width=True, hide_index=True)

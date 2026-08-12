@@ -134,6 +134,35 @@ def test_detected_event_carries_file_hash_for_the_ledger(client, tmp_path):
     assert len(event["file_hash"]) == 64
 
 
+def test_detected_event_carries_every_feature_the_model_scores(client, tmp_path):
+    """The dashboard scores an event straight off /monitor/events.
+
+    Anything missing here is not defaulted by the ML engine - features_to_vector
+    interpolates it from entropy instead, which is what made a legitimate ZIP
+    render as a threat on the banner. All seven of the behavioural model's
+    inputs have to be derivable from the event alone.
+    """
+    client.post("/monitor/start", json={"watch_path": str(tmp_path)})
+    (tmp_path / "scored.bin").write_bytes(os.urandom(8192))
+
+    event = wait_for_event(lambda e: e["file_path"].endswith("scored.bin"))
+    assert event is not None
+    for field in [
+        "entropy",
+        "file_size",
+        "magic_bytes",
+        "container_format",
+        "ransom_extension",
+        "printable_ratio",
+        "byte_value_std",
+        "chi_square_uniformity",
+    ]:
+        assert field in event, f"{field} missing from the event the dashboard scores"
+
+    # Measured, not interpolated: random bytes sit at ~0.371 printable.
+    assert 0.3 < event["printable_ratio"] < 0.45
+
+
 def test_events_endpoint_returns_newest_first(client, tmp_path):
     client.post("/monitor/start", json={"watch_path": str(tmp_path)})
     for index in range(3):
