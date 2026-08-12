@@ -36,7 +36,12 @@ GET /monitor/events  →  dashboard renders it
 ```
 
 No ML call, no ledger write, no response. A benign event is recorded and nothing
-else happens — this is what keeps CPU at 1.7% and the ledger free of noise.
+else happens — this is what keeps CPU near 1% and the ledger free of noise.
+
+This is a deliberate divergence from Figure 3.3, which shows a benign event
+reaching ML and the ledger too. The documented flow is still reachable on demand
+— `POST /analyze` runs Monitor → ML → Ledger for any file regardless of verdict —
+it simply is not automatic on every benign event.
 
 ### 1.2 Ransomware attack (spec §3.6.2)
 
@@ -138,7 +143,7 @@ The only authenticated entry point. Everything else binds to loopback.
 
 ## 3. Monitor — `services/monitor/` (AS)
 
-### `app.py` (398 lines)
+### `app.py` (570 lines)
 
 The service and the detection loop.
 
@@ -153,35 +158,50 @@ The service and the detection loop.
 - `_drain()` / `_ensure_worker()` — the worker thread that runs the downstream
   fan-out, so the watchdog thread returns immediately after the verdict.
 - `handle_event(path, event_type)` — **the detection path.** Times itself from
-  entry to verdict. Reads magic bytes once, decides readability, then entropy and
-  hash, then `classify()`. Records the event and, if suspicious, hands the
-  downstream fan-out to a worker thread.
+  entry to verdict. Skips anything outside `file_patterns`, reads magic bytes
+  once, decides readability, takes entropy and the byte statistics from a single
+  read, records the entropy against the path's history, then `classify()`.
+  Records the event and, if suspicious, hands the downstream fan-out to a worker
+  thread.
+- `matches_patterns(path, patterns)` — the `file_patterns` filter from
+  `/monitor/start`. Matches the file name and the whole path; an empty list means
+  everything.
 - `extract_features(path)` — the `/features` payload. Everything `handle_event`
   measures, plus byte statistics, plus `pe_imports_count` and `api_calls` from
   the PE parser. **Only** called by `/features`, never on the event thread.
 - `_record(event)` — appends under `_LOCK` to the bounded `EVENTS` deque and the
   `_SEEN_FILES` set.
 
-### `detection.py` (268 lines)
+### `detection.py` (478 lines)
 
 Pure functions, no I/O beyond reading the file under inspection.
 
 - `open_for_read(path, retry)` — retries only `PermissionError`, bounded by a
   **time budget** (40 ms default), excluding directories explicitly (the Windows
   CRT reports both as errno 13).
-- `calculate_entropy(path)` — Shannon entropy over the first 1 MB.
+- `read_sample(path)` / `measure(data)` — one read of the first 1 MB, and both
+  measurements derived from a single byte histogram. `calculate_entropy(path)`
+  and `byte_statistics(path)` remain as the one-shot wrappers.
 - `read_magic(path)` / `get_magic_bytes()` — first 16 bytes; container
   identification against 20 signatures, plus the ISO-base-media `ftyp` check at
   offset 4.
-- `classify(path, entropy, magic, threshold, readable)` — the verdict. High
-  entropy **explained** by a container → benign. High entropy **unexplained** →
-  `suspected_encryption`. Unreadable → `unreadable`, not benign.
-- `byte_statistics(path)` — printable ratio, byte-value std, chi-square
-  uniformity. Fed straight to the behavioural model.
+- `EntropyHistory` — **differential entropy analysis** (spec §1.4). Bounded
+  entropy readings per path; `observe(path, entropy, size)` returns the rise over
+  the lowest substantive reading in the window, or `None` for a file seen once.
+  Readings under 1 KB never become a baseline, so a file created empty does not
+  look like one that was encrypted.
+- `classify(path, entropy, magic, threshold, readable, entropy_delta)` — the
+  verdict. A rise of ≥2.0 bits/byte landing at ≥7.0 → `suspected_encryption`,
+  checked **before** the container exemption because it is the one signal a
+  spoofed header cannot defeat. Otherwise: high entropy **explained** by a
+  container → benign; high entropy **unexplained** → `suspected_encryption`;
+  unreadable → `unreadable`, not benign.
+- `byte_statistics(path)` / `statistics_of(data)` — printable ratio, byte-value
+  std, chi-square uniformity. Fed straight to the behavioural model.
 - `sha256_file(path)` — full-file SHA-256, the field SI's recovery integrity
   check reads back.
 
-### `pe_features.py` (287 lines)
+### `pe_features.py` (325 lines)
 
 - `is_pe(path)` — cheap MZ + PE signature check without full parsing.
 - `extract_pe_features(path)` — **70 features**. Any failure returns
@@ -192,10 +212,13 @@ Pure functions, no I/O beyond reading the file under inspection.
   W+X detection, import grouping by behaviour class, exports, resources,
   directory presence.
 
-### `pipeline.py` (120 lines)
+### `pipeline.py` (192 lines)
 
 - `run(event, features, verdict, client)` — orchestrates ML → ledger → response
   and returns `{prediction, ledger_block, response, stages}`.
+- `effective_threat_level(model_level, suspicious)` — the higher of the model's
+  score and the Monitor's own verdict. The ML engine refines the verdict; it does
+  not overrule it, so a low-confidence score cannot cancel a detection.
 - `trigger_response(...)` — requests `terminate_process` **only** when the PID is
   known; otherwise `isolate_and_log`.
 
@@ -203,7 +226,7 @@ Pure functions, no I/O beyond reading the file under inspection.
 
 ## 4. ML Engine — `services/ml-engine/` (NI)
 
-### `app.py` (238 lines)
+### `app.py` (288 lines)
 
 - Loads both models at import: `_ember_model` and `_behavioral_model`. A missing
   model is not fatal — that path returns **503** with the training command to run.
@@ -214,7 +237,7 @@ Pure functions, no I/O beyond reading the file under inspection.
 - `model_metrics()` — read from `reports/*.json` on disk, never hardcoded. The
   deployed service previously returned a fixed `accuracy: 0.92`.
 
-### `features.py` (57 lines)
+### `features.py` (69 lines)
 
 - `FEATURE_ORDER` — seven names that **must** match `src/train_behavioral_model.py`
   exactly. Order mismatch silently scores the wrong columns.
@@ -227,7 +250,7 @@ Pure functions, no I/O beyond reading the file under inspection.
 
 ## 5. Ledger — `services/ledger/` (SI)
 
-### `database.py` (90 lines)
+### `database.py` (111 lines)
 
 - `canonical_json(event_data)` — sorted keys, no whitespace. The single
   definition of the bytes that get hashed.
@@ -240,7 +263,7 @@ Pure functions, no I/O beyond reading the file under inspection.
 - `connect(db_path)` — `journal_mode=DELETE` (**not WAL** — see APPROACH §4.1),
   `busy_timeout=5000`, `synchronous=FULL`.
 
-### `hash_chain.py` (177 lines)
+### `hash_chain.py` (221 lines)
 
 - `compute_hash(timestamp, event_type, event_json, previous_hash)` — SHA-256 over
   the concatenation. `event_json` must be the exact stored text.
@@ -254,7 +277,7 @@ Pure functions, no I/O beyond reading the file under inspection.
 - `get_blocks(...)` — paginated read with optional `event_type` / `file_path`
   filters. The SQL `LIKE` is a prefilter; exact matching happens in Python.
 
-### `main.py` (117 lines)
+### `main.py` (151 lines)
 
 FastAPI routes: `/ledger/log`, `/entries`, `/verify`, `/blocks`, `/health`.
 No authentication — the gateway is the authenticated door, and the port binds to
@@ -264,7 +287,7 @@ loopback.
 
 ## 6. Response — `services/response/` (AS + SI)
 
-### `actions.py` (221 lines) — AS
+### `actions.py` (270 lines) — AS
 
 - `guard(pid)` — refuses PID 0, 1, negatives, and self.
 - `terminate_process(pid, force)` — SIGTERM, wait `TERM_GRACE_SECONDS`, then
@@ -278,7 +301,7 @@ loopback.
   `RESPONSE_ISOLATION_ENABLED=true`; otherwise returns `enforced: false` with the
   rules it would have applied.
 
-### `recovery/vss_manager.py` (380 lines) — SI
+### `recovery/vss_manager.py` (458 lines) — SI
 
 - `platform_status()` — supported / platform / version / edition / backend /
   elevated. Reports `supported: false` with a reason off Windows.
@@ -292,7 +315,7 @@ loopback.
 - `ensure_com_apartment()` — COM initialisation, with teardown ordered so a
   chained `com_error` does not outlive its pointer.
 
-### `recovery/recovery.py` (299 lines) — SI
+### `recovery/recovery.py` (370 lines) — SI
 
 - `to_relative(file_path)` — strips the volume with `ntpath` then `posixpath`,
   and normalises separators to `/`. Both halves are required (APPROACH §5.3).
@@ -308,7 +331,7 @@ loopback.
 - `recover_files()` → `POST /response/recover`; `recovery_status()` →
   `GET /response/recover/status` (VSS platform status and snapshot root).
 
-### `recovery/ledger_client.py` (82 lines)
+### `recovery/ledger_client.py` (102 lines)
 
 Thin HTTP client for the ledger. `last_known_hash(file_path)` queries
 `/ledger/blocks` filtered by `file_path` with `newest_first`, returning the most
@@ -331,7 +354,7 @@ chain verification, ML metrics.
 | File | Purpose |
 |---|---|
 | `fetch_ember_subset.py` | Downloads only the shards holding each class, with resume and retries. |
-| `train_ember_model.py` | Trains the static-PE classifier. 97.7% accuracy, 19,480 samples. |
+| `train_ember_model.py` | Trains the static-PE classifier. 95.8% accuracy, 50,000 samples (70/15/15). |
 | `train_behavioral_model.py` | Builds the corpus (real files + the same content AES-encrypted) and trains the behavioural model. Labels come from **how each file was produced**, not from an entropy rule, so the model may disagree with the Monitor's heuristic. |
 | `analyze_behavioral_signals.py` | **RanSAP + CLEAR EDA.** Entropy distributions, write-rate comparison, CLEAR WAR/RAR/RAW/WAW fingerprint. NI's Weeks 1–4 deliverable. |
 | `analyze_ember.py` | Class-balance chart (`class_balance_chart.png`). |
@@ -363,7 +386,7 @@ chain verification, ML metrics.
 | `services/ml-engine/tests/` | 19 | `test_ml_api.py` — both model paths |
 | `services/response/tests/` + `recovery/tests/` | 84 + 2 skipped | `test_actions.py` (TC-07), `test_tc11_concurrent.py`, `test_recovery.py` (54), `test_vss_manager.py` |
 
-**305 passed, 2 skipped.** The skips assert a POSIX SIGTERM guarantee with no
+**361 passed, 2 skipped.** The skips assert a POSIX SIGTERM guarantee with no
 Windows equivalent; a Windows-specific test covers the same ground.
 
 Run everything:

@@ -1,4 +1,9 @@
 """
+SUPERSEDED helper - drives the retired src/ml_api.py prototype, not the running
+service. The live ML Engine is services/ml-engine/app.py and its tests are
+services/ml-engine/tests/test_ml_api.py, which run under pytest with no server
+to start by hand.
+
 End-to-end test for the ML Engine API's /predict endpoint.
 Unified Ransomware Detection & Recovery System
 NI - Machine Learning Engineer

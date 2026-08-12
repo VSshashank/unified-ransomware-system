@@ -1,9 +1,9 @@
 {
   "detection_latency_ms": {
     "samples": 40,
-    "mean": 13.575,
-    "p95": 37.087,
-    "max": 41.828,
+    "mean": 9.427,
+    "p95": 23.695,
+    "max": 23.934,
     "target": 100.0
   },
   "false_positive_rate": {
@@ -20,21 +20,21 @@
     "rate": 1.0
   },
   "cpu_percent": {
-    "files_written": 96,
-    "raw_percent_of_one_core": 24.4,
-    "percent_of_total_cpu": 1.74,
+    "files_written": 97,
+    "raw_percent_of_one_core": 13.4,
+    "percent_of_total_cpu": 0.96,
     "cores": 14,
     "target": 15.0
   },
   "process_kill_time_s": {
-    "measured": 0.1384,
+    "measured": 0.1256,
     "target": 2.0
   },
   "memory_mb": {
-    "files_processed": 135,
-    "baseline_mb": 66.33,
-    "peak_mb": 68.79,
-    "growth_mb": 2.46,
+    "files_processed": 150,
+    "baseline_mb": 67.57,
+    "peak_mb": 70.26,
+    "growth_mb": 2.69,
     "target": 500.0
   }
 }

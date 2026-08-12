@@ -54,6 +54,18 @@ tamper-*evidence* through cryptographic linkage:
 current_hash = SHA256(timestamp + event_type + event_data + previous_hash)
 ```
 
+> **On the formula:** the reference document specifies it three different ways.
+> §3.2.2 gives `SHA256(Timestamp + Data + Hash_{N-1})`, Listing 4.7 — the code
+> template — computes
+> `f"{timestamp}{event_type}{event_data}{previous_hash}"`, and Figure 4.8 shows
+> `SHA256(id + data + prev_hash)`. They cannot all be right. The implementation
+> follows Listing 4.7, on the grounds that the document's own reference
+> implementation is the most authoritative of the three and is the only one
+> precise enough to implement without guessing. Figure 4.8's `id` variant is the
+> odd one out: including the block id would hash a value the database assigns,
+> which is not part of the event. Genesis is 64 zeros, matching the template's
+> `"0" * 64`.
+
 Editing any historical row changes its hash, which invalidates the `previous_hash`
 of the next block, and the break cascades to the tip. Verification walks the
 chain and reports the first block where recomputation disagrees.
@@ -187,8 +199,8 @@ Real attribution needs eBPF/fanotify on Linux or ETW on Windows. That is Phase 5
 
 | Input | Model | Why |
 |---|---|---|
-| `ember_vector` (2381 floats) | `ember_xgboost` | EMBER's precomputed static-PE vector. **97.7%** accuracy on 19,480 real EMBER-2018 samples. |
-| `features` (dict) | `behavioral_xgboost` | The handful of signals the Monitor can actually measure from a file it just saw change. **88.6%** accuracy, ROC AUC 0.956. |
+| `ember_vector` (2381 floats) | `ember_xgboost` | EMBER's precomputed static-PE vector. **95.8%** accuracy on the 50,000 real EMBER-2018 samples §6.1 specifies (25,000 per class, 7,500 held out). |
+| `features` (dict) | `behavioral_xgboost` | The handful of signals the Monitor can actually measure from a file it just saw change. **88.4%** accuracy, ROC AUC 0.958. |
 
 The EMBER classifier cannot score the Monitor's feature dict — different
 dimensionality, different semantics. Before the second model existed, that path
@@ -260,7 +272,7 @@ FeatureSet for as long as the route existed. Live through the container, a real
 PE now reports **315 imports** and its behavioural API names.
 
 Parsing runs only in `/features`, never on the watchdog event thread — detection
-latency re-measured afterwards at **p95 30.6 ms**, unchanged.
+latency re-measured afterwards at **p95 23.7 ms**, unchanged.
 
 ---
 
@@ -291,8 +303,8 @@ tampered block.
 
 Same reasoning, one level down. An integrity check that answers from its own
 connection cache cannot detect the one thing it exists to detect. `verify_chain`
-re-reads from disk every time. The <50 ms target is unaffected — **2.3 ms per
-1000 blocks**.
+re-reads from disk every time. The <50 ms target is unaffected — **3.1 ms
+median per 1000 blocks**, over 50 warm runs.
 
 ### 4.3 Canonical JSON is the single definition of what gets hashed
 
@@ -322,7 +334,7 @@ If this is demonstrated live, it should be on a throwaway VM with console access
 ### 5.2 Termination guards
 
 `terminate_process()` refuses PID 0, PID 1, negative PIDs, and its own process.
-SIGTERM first, then SIGKILL if `force`. Measured **43.6 ms** against a 2 s target.
+SIGTERM first, then SIGKILL if `force`. Measured **125.6 ms** against a 2 s target.
 
 `AccessDenied` and `NoSuchProcess` are distinguished: a process that died between
 the guard and the signal is a *success* (the goal was "not running"), while one we
@@ -497,7 +509,54 @@ runs.
 
 ---
 
-## 8. What is deliberately not built
+## 8. Where the implementation departs from the specification
+
+Each of these is a deliberate choice rather than an oversight, and each is a
+place a careful reader of the reference document would otherwise find an
+unexplained mismatch.
+
+**No TLS between services.** Table 3.1's Security row specifies TLS 1.3. Every
+service here speaks plain HTTP. This is a real gap against the stack table, not
+a misreading of it. What stands in for it is network placement: only the gateway
+(8000) and dashboard (8501) are published on all interfaces, and the four
+backends bind to `127.0.0.1`, so the unauthenticated inter-service traffic never
+crosses a network boundary (§6.3). That is the right trade for a Weeks 1–16
+prototype on a single host, and the wrong one for anything else — §3.7.3 scopes
+TLS termination to production deployment, which this is not.
+
+**`FileEvent.hash_md5` is `file_hash`, and holds SHA-256.** §3.5.1 names the
+field `hash_md5`. MD5 has practical collision attacks and is unsuitable for the
+one job this field has — deciding whether a restored file matches what was last
+seen, which an attacker has a direct interest in forging. Table 3.1's own Data
+row specifies SHA-256. The field is renamed rather than left as `hash_md5`
+holding a SHA-256 digest, because a name that lies about its contents is worse
+than a name that differs from the spec.
+
+**Benign events do not reach ML or the ledger.** Figure 3.3 shows a benign file
+operation flowing Detect → Predict → Log. Here it stops at Detect and Record.
+Fanning out on every benign event means an HTTP round-trip and a ledger append
+per file touched, which is what the CPU and ledger-noise numbers in §10 are
+avoiding. The documented flow is still reachable on demand: `POST /analyze` runs
+Monitor → ML → Ledger for any file regardless of verdict, so the capability
+exists and is tested — it simply is not automatic.
+
+**SMOTE is not used.** p. 40 prescribes "SMOTE oversampling + class weights in
+XGBoost" as the class-imbalance mitigation. Only the class weights are here
+(`scale_pos_weight` in `train_ember_model.py`). The reason is that the condition
+the mitigation addresses does not arise: the training set is 25,000 benign and
+25,000 malicious, exactly balanced, so synthetic minority oversampling has no
+minority to oversample and `scale_pos_weight` computes to ~1.0. Implementing it
+would be a no-op that looked like a safeguard.
+
+**CLEAR is used for EDA, not for training.** §6.1 describes the training corpus
+as EMBER "augmented with CLEAR behavioral logs". The EMBER classifier is trained
+on EMBER alone; CLEAR informs the exploratory analysis and the behavioural
+feature design (§3.2). Folding CLEAR into training means retraining and
+restating the headline accuracy, and it was deferred rather than half-done.
+
+---
+
+## 9. What is deliberately not built
 
 These are scope decisions, not oversights. Each is deferred by the project's own
 timeline (Tables 5.4–5.6, Weeks 17–32).
@@ -514,22 +573,44 @@ timeline (Tables 5.4–5.6, Weeks 17–32).
 
 ---
 
-## 9. Summary of measured results
+## 10. Summary of measured results
 
 | Metric (Table 5.9) | Target | Measured |
 |---|---|---|
-| Detection latency | <100 ms | **30.6 ms** p95 |
-| Response time | <2 s | **43.6 ms** native |
-| False positive rate | <5 % | **0 %** (0/40) |
-| ML inference | <100 ms | **2.37 ms** p95 |
-| API response (p95) | <200 ms | **2.87 ms** |
-| CPU during monitoring | <15 % | **1.7 %** of 14 cores |
-| RAM peak | <500 MB | **68.6 MB** |
+| Detection latency | <100 ms | **23.7 ms** p95 (40 files, 4 KB–2 MB) |
+| Response time | <2 s | **125.6 ms** native |
+| False positive rate | <5 % | **0 %** (0/40, 32 deliberately high-entropy) |
+| ML inference | <100 ms | **1.95 ms** p95 end-to-end, 0.44 ms model-only |
+| API response (p95) | <200 ms | **3.22 ms** over 1000 requests |
+| CPU during monitoring | <15 % | **0.96 %** of 14 cores (13.4 % of one) |
+| RAM peak | <500 MB | **70.3 MB** (+2.7 MB over 150 × 512 KB) |
 | File recovery | 100 % | **100 %** native |
-| Ledger verification | <50 ms | **2.3 ms** / 1000 blocks |
-| Dashboard latency | <1 s | **439 ms** |
+| Ledger verification | <50 ms | **3.1 ms** median / 1000 blocks (2.1–5.7 ms, 50 warm runs) |
+| Dashboard latency | <1 s | **439 ms** (`reports/attack_chain_evidence.txt`) |
 
-Suite: **305 passed, 2 skipped, 0 failed.** The two skips are correct —
+Model quality, after retraining on the 50,000 samples §6.1 specifies:
+
+| Model | Accuracy | Precision | Recall | F1 | ROC AUC |
+|---|---|---|---|---|---|
+| EMBER static-PE (7,500 held out) | 0.9577 | 0.9625 | 0.9525 | 0.9575 | 0.9923 |
+| Behavioural (726 held out) | 0.8843 | 0.9486 | 0.8127 | 0.8754 | 0.9585 |
+
+Suite: **361 passed, 2 skipped, 0 failed.** The two skips are correct —
 `psutil.terminate()` maps to `TerminateProcess` on Windows, which no process can
 ignore, so the SIGTERM-escalation tests assert a POSIX guarantee with no Windows
 equivalent. A Windows-specific test covers the same ground.
+
+**Hardware these were measured on.** Table 6.1 of the reference document
+specifies an i7-12700K / 32 GB / Python 3.9.13. That machine was never used and
+the numbers above do not come from it:
+
+| | Table 6.1 | Actually used |
+|---|---|---|
+| CPU | Intel i7-12700K | Intel Core Ultra 5 225H, 14 cores |
+| RAM | 32 GB | 15 GB |
+| OS | Windows 11 | Windows 11 Home Single Language, build 26200 |
+| Python | 3.9.13 | 3.13.9 (services), 3.13 (training) |
+
+Every target is met with room on this hardware, so the conclusions are unaffected
+— but Table 6.1 should be restated to the machine above rather than left
+describing one that was not involved.

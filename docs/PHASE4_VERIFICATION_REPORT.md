@@ -8,6 +8,16 @@
 > only appear on Windows. §7 records that pass. The VSS `<30 s` target in §3.1 is
 > now **measured, not deferred**, and the headline test count is **227**, not 213.
 > Where §1–§6 and §7 disagree, §7 is current.
+>
+> **Fourth pass, 12 August 2026 — remediation.** §9 records the fixes made after
+> the independent compliance audit, including a blocking detection gap on small
+> encrypted files, and a retrain on the full 50,000-sample dataset §6.1
+> specifies. **The retrain moved the headline model figures down**, from 0.9774
+> accuracy on 19,480 samples to 0.9577 on 50,000 — the larger corpus is harder,
+> and the earlier number was optimistic rather than wrong. Every numeric claim
+> in §1–§8 is a record of what was true at the pass that made it. **Where any
+> earlier section disagrees with §9, §9 is current**, and
+> `APPROACH.md` §10 carries the live figures.
 
 ---
 
@@ -65,10 +75,10 @@ disagreed; `monitor.py` was an orphaned prototype that `COPY *.py` would have sh
 |---|---|---|---|---|
 | 1–4 | Dataset + EDA artifact | `class_balance_chart.png` **is genuine** — 800×500 matches `figsize=(8,5)` at 100 dpi in `src/analyze_ember.py` | Confirmed, unchanged | verified, no change needed |
 | 5–8 | Feature pipeline, 50+ features | EMBER's **precomputed** 2381-dim vectors. No PE→feature extractor exists | Unchanged — see §3 | — |
-| 9–12 | Trained XGBoost model | **`models/` was empty.** Reported 0.9577 had no artifact behind it | **Accuracy 0.9774**, precision 0.9761, recall 0.9775, ROC AUC 0.9964 on 19,480 real EMBER-2018 samples (2,922 held out) | `reports/model_metrics.json` |
+| 9–12 | Trained XGBoost model | **`models/` was empty.** Reported 0.9577 had no artifact behind it | **Accuracy 0.9577**, precision 0.9625, recall 0.9525, F1 0.9575, ROC AUC 0.9923 on the 50,000 real EMBER-2018 samples §6.1 specifies, 25,000 per class, split 35,000/7,500/7,500 | `reports/model_metrics.json` |
 | 9–12 | `/predict`, `/model/metrics` | **Deployed service was a stub** with hardcoded `accuracy: 0.92`. NI's real `src/ml_api.py` returned **501** for the `features` dict — the shape Monitor and `/analyze` actually send | Both real; metrics read from disk | `test_ml_api.py` (19) |
 | 13–16 | Inference <100 ms/sample | Unverified | **p95 2.37 ms** end-to-end, 0.58 ms model-only | `reports/ni_inference_benchmark.json` |
-| — | Accuracy >85 % | Unverified | EMBER **97.7 %**; behavioural model **88.6 %** (ROC AUC 0.956) | `reports/behavioral_model_metrics.json` |
+| — | Accuracy >85 % | Unverified | EMBER **95.8 %**; behavioural model **88.4 %** (ROC AUC 0.958) | `reports/model_metrics.json`, `reports/behavioral_model_metrics.json` |
 
 The `features` path needed a second model: the EMBER classifier reads a 2381-feature static-PE
 vector and cannot score the handful of signals the Monitor measures. Its corpus is deliberately
@@ -182,7 +192,7 @@ adversarial-ML robustness.
 | TC-03 | Legitimate compression not flagged | **PASS** | 0/40 false positives; live control file `benign_compressed` |
 | TC-04 | File recovery + integrity | **PASS** (native) / **N-A** (Compose on Windows) | `si_demo.py`: restored hash == pre-attack hash. §7.5 |
 | TC-05 | Audit-log tamper detected | **PASS** *(was silently failing — §2)* | `valid: false, invalid_block_id: 16` |
-| TC-06 | ML classifies ransomware | **PASS** | 97.7 % EMBER / 88.6 % behavioural; live: `ransomware (critical)` |
+| TC-06 | ML classifies ransomware | **PASS** | 95.8 % EMBER / 88.4 % behavioural; live: `ransomware (critical)` |
 | TC-07 | Process terminated <2 s | **PASS** (unit) / **SKIP** (Compose) | 0.5 ms; container cannot see host PIDs |
 | TC-08 | Chain verifies <50 ms | **PASS** | 2.3 ms / 1000 blocks; live: 19 blocks in 0.17 ms |
 | TC-09 | Dashboard reflects event <1 s | **PASS** | 78 ms; 1 s auto-refresh |
@@ -488,3 +498,89 @@ Verified with five consecutive full-suite runs: 84 passed, 2 skipped, every time
   is RanSAP-derived.
 - **TC-12 / blockchain anchoring**, **CI/CD**, **SHAP served per-prediction**: all Weeks
   17–32 in Tables 5.4–5.6. Correctly deferred, not gaps against Phase 1–4.
+
+---
+
+## 9. Remediation pass — 12 August 2026
+
+Follows the independent compliance audit in `PHASE1-4_COMPLIANCE_AUDIT.md`, which
+re-ran all five suites and all ten benchmarks from a clean checkout and confirmed
+the baseline at **305 passed, 2 skipped, 0 failed**. Nine findings were actioned.
+
+### 9.1 The blocking one
+
+**Small encrypted files produced no response at all.** The Monitor flagged them
+correctly, the ledger recorded them, and nothing acted. The response gate read
+only the ML engine's `threat_level`, and the behavioural classifier needs Shannon
+entropy near 7.995 before it is confident — which ciphertext under roughly 40 KB
+does not reach through sampling noise. Reproduced here before fixing, five trials
+per size, in-place encryption keeping the original filename:
+
+| Size | Entropy | Monitor verdict | Model p(ransomware) | Response fired |
+|---|---|---|---|---|
+| 4 KB | 7.95 | `suspected_encryption` | 0.18 | **No** |
+| 8 KB | 7.98 | `suspected_encryption` | 0.04 | **No** |
+| 16 KB | 7.99 | `suspected_encryption` | 0.36 | **No** |
+| 32 KB | 7.99 | `suspected_encryption` | 0.49 | **No** |
+| 40 KB | 8.00 | `suspected_encryption` | 1.00 | Yes |
+| 64 KB+ | 8.00 | `suspected_encryption` | 1.00 | Yes |
+
+The ML score now refines the Monitor's verdict instead of overruling it: the
+effective threat level is the higher of the two. `pipeline.py` had no direct test
+coverage, which is how this survived; it now has 21 tests, and 7 of them fail
+against the old gate.
+
+### 9.2 What else changed
+
+| Finding | Fix |
+|---|---|
+| F-2 | The dashboard banner scored a partly fabricated feature vector — `file_size`, `magic_bytes`, `pe_imports_count` and `api_calls` were the reference document's illustrative constants. Fixing those four was not enough: three more of the model's seven inputs (the byte statistics) were absent from the event and being interpolated from entropy, which is what rendered a legitimate ZIP as a threat. The event now carries what was measured, and `handle_event` derives entropy and statistics from one read instead of two. |
+| F-3 | `file_patterns` was accepted, echoed and never applied. Now filtered in `handle_event`, covering deletes and renames. |
+| F-4 | A plain `pytest -q` rewrote three committed benchmark files. Writes are now gated behind `URDS_WRITE_REPORTS=1`. |
+| F-5 | Differential entropy analysis implemented — `EntropyHistory` per path, and a rise of ≥2.0 bits/byte landing at ≥7.0 flags replacement. Checked before the container exemption, so it catches an encryptor that writes a ZIP header over its ciphertext, which magic bytes alone clear. |
+| V-2 | `/monitor/stop` accepts and validates `monitor_id`; the gateway forwards it instead of sending `{}`. |
+| V-3 | `/ledger/log` returns 201, per Table 3.2. |
+| V-8 | Retrained on the full 50,000 samples (25,000 per class, 35,000/7,500/7,500). |
+| D-1 | The PE feature count is **70**, not 64 — corrected in 8 places across 4 files. |
+| D-2 | Ledger verification re-measured properly: **3.1 ms median** over 50 warm runs, range 2.1–5.7 ms. The audit's 2.3 ms was a single run near the floor; the README's original ~3.7 ms was closer to correct than the correction. |
+| D-3 | `attack_chain_evidence.txt` headlined "18/18 checks passed" over a list showing 16 PASS + 2 SKIP. The generator counted `None` as a pass; fixed at the source and in the committed file. |
+| D-4 | The hardware actually used is recorded in `APPROACH.md` §10 against Table 6.1's specification. |
+
+### 9.3 The retrain moved the numbers down
+
+| | Before (19,480 samples) | After (50,000 samples) |
+|---|---|---|
+| Accuracy | 0.9774 | **0.9577** |
+| Precision | 0.9761 | **0.9625** |
+| Recall | 0.9775 | **0.9525** |
+| F1 | 0.9768 | **0.9575** |
+| ROC AUC | 0.9964 | **0.9923** |
+
+The committed metrics previously named `ember_subset.parquet`, a file not on
+disk, so they came from a different extract than the 50,000-row parquet in
+`data/`. Every threshold still clears: TC-06 wants P/R/F1 above 85 %, §5.6.2
+wants ML above 85 %, and §5.6.3's Distinction tier wants above 90 % across all
+metrics — all met. The earlier figure was optimistic because a smaller subset is
+an easier problem, not because it was wrong when measured.
+
+### 9.4 Suites
+
+| Suite | Before | After |
+|---|---|---|
+| gateway | 70 | 73 |
+| ledger | 42 | 42 |
+| monitor | 90 | 143 |
+| ml-engine | 19 | 19 |
+| response | 84 + 2 skipped | 84 + 2 skipped |
+| **Total** | **305 + 2 skipped** | **361 + 2 skipped, 0 failed** |
+
+### 9.5 Still open after this pass
+
+- **CLEAR is still EDA-only**, not training input (§6.1 describes augmentation).
+  Deferred deliberately, and now stated in `APPROACH.md` §8 rather than left as
+  an unexplained mismatch.
+- **No TLS between services** (Table 3.1). Stated in `APPROACH.md` §8; mitigated
+  by binding the four backends to loopback.
+- **The RanSAP-derived threshold is still not wired in** — unchanged from §8.6.
+- **VSS deletion protection**, **TC-12**, **CI/CD**, **SHAP per-prediction**: all
+  Weeks 17–32. Correctly deferred.

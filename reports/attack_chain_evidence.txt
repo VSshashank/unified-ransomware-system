@@ -85,4 +85,5 @@ started 2026-08-08T05:50:14.397340Z
   tc09_dashboard_within_1s               PASS
   tc10_auth_rejects                      PASS
 
-18/18 checks passed
+16/18 checks passed, 2 skipped
+skipped: tc07_process_terminated, kill_time_under_2s

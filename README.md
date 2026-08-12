@@ -10,7 +10,7 @@ All six services are implemented. Nothing in `services/` is a stub any more.
 |---|---|---|---|
 | Monitor | 8001 | AS | Real. Watchdog file events, Shannon entropy, magic-byte false-positive mitigation, SHA-256 hashing, and fan-out to ML → Ledger → Response. Picks a polling watcher on mounts that carry no inotify — a Windows bind mount is `9p`, where native watches are accepted and never fire. |
 | ML Engine | 8002 | NI | Real. Serves two trained XGBoost models: the EMBER static-PE classifier (`ember_vector`) and a behavioural classifier over the Monitor's feature dict. Metrics are read from disk, not hardcoded. |
-| Ledger | 8003 | SI | Real. SQLite hash chain with tamper detection; full-chain verification measured at ~3.7ms against a <50ms target. |
+| Ledger | 8003 | SI | Real. SQLite hash chain with tamper detection; full-chain verification of 1,000 blocks measured at 3.1ms median (2.1–5.7ms over 50 warm runs) against a <50ms target. |
 | Response | 8004 | AS + SI | Real. AS owns terminate/isolate/trigger (psutil process termination, platform-aware network isolation); SI owns `recovery/` (VSS snapshots, restore, integrity verification). |
 | Gateway | 8000 | SH | Real. JWT auth, per-tier rate limiting, service proxies, and the `/analyze` orchestration. |
 | Dashboard | 8501 | SH | Real. Streamlit, 1s auto-refresh, live event feed and ledger evidence. |

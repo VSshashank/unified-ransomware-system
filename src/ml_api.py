@@ -1,4 +1,14 @@
 """
+SUPERSEDED - NOT THE RUNNING SERVICE. See services/ml-engine/app.py.
+
+This is the Phase 3 prototype. It is kept because the verification report cites
+its behaviour as a prior state, not because anything runs it: nothing imports
+it, docker-compose does not build it, and it returns 501 for the `features`
+dict - the shape the Monitor and /analyze actually send. The live ML Engine is
+services/ml-engine/app.py, which serves both the EMBER and behavioural models.
+
+Do not develop against this file.
+
 Phase 3 / Sprint 2: ML Engine API service
 Unified Ransomware Detection & Recovery System
 NI - Machine Learning Engineer

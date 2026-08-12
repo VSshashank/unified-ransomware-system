@@ -358,8 +358,18 @@ def finish(client, args, started_at) -> int:
         say(f"  {name:38s} {label}")
     say()
 
+    # Skips are None, not False, so subtracting only the failures counted every
+    # skip as a pass and headlined "18/18" over a list showing 16 PASS + 2 SKIP.
     failures = [k for k, v in results.items() if v is False]
-    say(f"{len(results) - len(failures)}/{len(results)} checks passed")
+    skipped = [k for k, v in results.items() if v is None]
+    passed = [k for k, v in results.items() if v is True]
+
+    summary = f"{len(passed)}/{len(results)} checks passed"
+    if skipped:
+        summary += f", {len(skipped)} skipped"
+    say(summary)
+    if skipped:
+        say(f"skipped: {', '.join(skipped)}")
     if failures:
         say(f"failed: {', '.join(failures)}")
 

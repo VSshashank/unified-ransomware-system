@@ -14,8 +14,8 @@
 | TC-03 | Legitimate file compression (ZIP) | No alert triggered (magic byte verification passes) | AS | **PASS** | `test_detection.py::test_tc03_*`, `test_benchmarks.py::test_false_positive_rate_under_5_percent` — 0/40 |
 | TC-04 | File recovery from backup | Encrypted files restored to pre-attack state, integrity verified | SI | **PASS** (native) / **N-A** (Compose) | `services/response/recovery/tests/test_integration.py`, `scripts/si_demo.py` |
 | TC-05 | Audit log tampering attempt | Hash chain validation fails, tampering detected and logged | SI | **PASS** | `services/ledger/tests/test_hash_chain.py`, `test_api.py`, `scripts/si_demo.py` |
-| TC-06 | ML model accuracy test | Test set: Precision >85%, Recall >85%, F1-score >85% | NI | **PASS** | `reports/model_metrics.json` — precision 0.9761, recall 0.9775, F1 0.9768 |
-| TC-07 | Response time (detection to action) | Process terminated within 2 seconds of detection | AS | **PASS** (unit/native) / **SKIP** (Compose) | `services/response/tests/test_actions.py::test_tc07_*` — 43.6 ms native |
+| TC-06 | ML model accuracy test | Test set: Precision >85%, Recall >85%, F1-score >85% | NI | **PASS** | `reports/model_metrics.json` — precision 0.9625, recall 0.9525, F1 0.9575 on 7,500 held-out samples |
+| TC-07 | Response time (detection to action) | Process terminated within 2 seconds of detection | AS | **PASS** (unit/native) / **SKIP** (Compose) | `services/response/tests/test_actions.py::test_tc07_*` — 125.6 ms native |
 | TC-08 | System resource usage | CPU <15%, RAM <500MB during normal operation | AS | **PASS** | `test_benchmarks.py::test_cpu_usage_*` and `::test_memory_usage_*` — CPU 1.0%, peak RSS 67.6 MB |
 | TC-09 | Dashboard real-time updates | Alert appears on dashboard within 1 second of detection | SH | **PASS** | `scripts/attack_chain_demo.py` step 8 — 439 ms |
 | TC-10 | API authentication failure | HTTP 401 returned, request blocked, audit log entry created | SH | **PASS** | `services/gateway/tests/test_authz.py::test_tc10_*` |
@@ -30,15 +30,15 @@ TC-12 gates and which is Semester 2 work.
 
 | Metric | Target | Measured | Where |
 |---|---|---|---|
-| Detection latency | <100 ms | **29.4 ms** p95 | `reports/as_benchmarks.json` |
-| Response time | <2 s | **43.6 ms** (native), 794 ms for 8 concurrent | `reports/as_benchmarks.json`, TC-11 |
+| Detection latency | <100 ms | **23.7 ms** p95 | `reports/as_benchmarks.json` |
+| Response time | <2 s | **125.6 ms** (native), 794 ms for 8 concurrent | `reports/as_benchmarks.json`, TC-11 |
 | False positive rate | <5 % | **0 %** (0/40, 32 high-entropy) | `reports/as_benchmarks.json` |
-| ML inference time | <100 ms | **2.37 ms** p95 | `reports/ni_inference_benchmark.json` |
-| API response time (p95) | <200 ms | **2.87 ms** over 1000 requests | `reports/gateway_benchmarks.json` |
-| System CPU usage | <15 % | **1.0 %** of 14 cores | `reports/as_benchmarks.json` |
-| System RAM usage | <500 MB | **67.6 MB** peak (+2.6 MB growth) | `reports/as_benchmarks.json` |
+| ML inference time | <100 ms | **1.95 ms** p95 | `reports/ni_inference_benchmark.json` |
+| API response time (p95) | <200 ms | **3.22 ms** over 1000 requests | `reports/gateway_benchmarks.json` |
+| System CPU usage | <15 % | **0.96 %** of 14 cores | `reports/as_benchmarks.json` |
+| System RAM usage | <500 MB | **70.3 MB** peak (+2.7 MB growth) | `reports/as_benchmarks.json` |
 | File recovery success | 100 % | **100 %** (native) | `reports/si_demo_evidence.txt` |
-| Ledger verification time | <50 ms | **2.3 ms** / 1000 blocks | `services/ledger/tests/test_hash_chain.py` |
+| Ledger verification time | <50 ms | **3.1 ms** median / 1000 blocks | `services/ledger/tests/test_hash_chain.py` |
 | Dashboard update latency | <1 s | **439 ms** | `reports/attack_chain_evidence.txt` |
 
 All ten Table 5.9 targets are measured and met.
