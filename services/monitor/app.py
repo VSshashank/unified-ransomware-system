@@ -50,6 +50,7 @@ from detection import (
 )
 from pe_features import suspicious_api_names
 from pe_features import extract_pe_features as _extract_pe_features
+from suppression import TrainingMode, Whitelist
 
 
 def pe_imports_count(path: str) -> int:
@@ -94,6 +95,13 @@ _LOCK = threading.Lock()
 # file that *became* random can be told from one that always was. Takes its own
 # lock; the watchdog threads share it.
 ENTROPY_HISTORY = EntropyHistory()
+
+# Table 5.7's two remaining false-positive mitigations. Both suppress alerts, so
+# both are bounded by the same rule: neither overrides evidence that a file's
+# content was replaced. See services/monitor/suppression.py.
+WHITELIST_PATH = os.getenv("WHITELIST_PATH", "")
+WHITELIST = Whitelist.from_file(WHITELIST_PATH) if WHITELIST_PATH else Whitelist()
+TRAINING_MODE = TrainingMode()
 
 _observer: Observer | None = None
 _monitor_id: str | None = None
@@ -189,6 +197,18 @@ class MonitorStopRequest(BaseModel):
 
 class FeatureRequest(BaseModel):
     path: str
+
+
+class WhitelistRequest(BaseModel):
+    paths: list[str] = Field(default_factory=list)
+    hashes: list[str] = Field(default_factory=list)
+
+
+class TrainingModeRequest(BaseModel):
+    # "learn normal activity for a while, then use it" - the window is the whole
+    # configuration. Expires on its own so a forgotten training mode does not
+    # become a permanently degraded detector.
+    duration_seconds: float = Field(default=300.0, gt=0, le=86_400)
 
 
 def utc_now() -> str:
@@ -337,6 +357,18 @@ def handle_event(path: str, event_type: str) -> dict | None:
     # the same None, and it is on the sub-100ms detection path.
     file_hash = sha256_file(path) if readable else None
 
+    # Table 5.7's suppression mitigations. Applied after classification, never
+    # before it: the verdict and its reason are what get recorded either way, so
+    # a suppressed event is still fully auditable and still counted. What
+    # suppression changes is whether the pipeline fans out and whether the event
+    # reads as suspicious - not whether it was seen.
+    TRAINING_MODE.observe(path, verdict["entropy"], verdict)
+    suppression = None
+    if verdict["suspicious"]:
+        suppression = WHITELIST.match(path, file_hash, verdict) or TRAINING_MODE.match(
+            path, verdict["entropy"], verdict
+        )
+
     event = {
         "event_id": f"evt_{uuid4().hex[:10]}",
         "file_path": path,
@@ -349,9 +381,14 @@ def handle_event(path: str, event_type: str) -> dict | None:
         "file_size": size,
         "magic_bytes": magic[:4].hex().upper() if magic else "UNKNOWN",
         "file_hash": file_hash,
-        "suspicious": verdict["suspicious"],
+        # The verdict's own answer is preserved in `verdict`/`reason` even when a
+        # rule suppresses it, so the record shows what the detector concluded and
+        # what an operator had previously decided about it - not one overwriting
+        # the other.
+        "suspicious": verdict["suspicious"] and suppression is None,
         "verdict": verdict["verdict"],
         "reason": verdict["reason"],
+        "suppressed_by": suppression,
         "container_format": verdict["container_format"],
         # Both of the model's top two features are decided here. Carrying them
         # on the event means a consumer scoring it later - the dashboard does -
@@ -373,7 +410,7 @@ def handle_event(path: str, event_type: str) -> dict | None:
 
     _record(event)
 
-    if verdict["suspicious"] and PIPELINE_ENABLED:
+    if verdict["suspicious"] and suppression is None and PIPELINE_ENABLED:
         features = {
             "shannon_entropy": entropy,
             "file_size": size,
@@ -550,6 +587,11 @@ def monitor_status() -> dict:
         # the outside, so the choice is reported rather than left to be guessed.
         "observer_backend": _observer_backend,
         "observer_reason": _observer_reason,
+        # Both false-positive suppressions are reported here, because an alert
+        # that never fires because of one of them looks exactly like an alert
+        # that never fired at all.
+        "whitelist_entries": len(WHITELIST),
+        "training_mode": TRAINING_MODE.status()["state"],
     }
 
 
@@ -558,6 +600,49 @@ def monitor_events(limit: int = 20) -> dict:
     with _LOCK:
         events = list(EVENTS)[-limit:]
     return {"events": list(reversed(events)), "total": len(events)}
+
+
+@app.get("/monitor/whitelist")
+def get_whitelist() -> dict:
+    return {"whitelist": WHITELIST.to_dict(), "entries": len(WHITELIST)}
+
+
+@app.put("/monitor/whitelist")
+def put_whitelist(payload: WhitelistRequest) -> JSONResponse:
+    """Replace the whitelist wholesale.
+
+    Replace rather than append: a mitigation an operator cannot fully see the
+    current state of is one they cannot reason about, and PUT makes the request
+    body the whole truth.
+    """
+    WHITELIST.replace(payload.paths, payload.hashes)
+    logger.info("whitelist replaced: %d entries", len(WHITELIST))
+    return JSONResponse(content={"whitelist": WHITELIST.to_dict(), "entries": len(WHITELIST)})
+
+
+@app.get("/monitor/training-mode")
+def get_training_mode() -> dict:
+    return TRAINING_MODE.status()
+
+
+@app.post("/monitor/training-mode/start")
+def start_training_mode(payload: TrainingModeRequest | None = None) -> JSONResponse:
+    duration = payload.duration_seconds if payload else 300.0
+    status = TRAINING_MODE.start(duration)
+    logger.info("training mode learning for %.0fs", duration)
+    return JSONResponse(content=status)
+
+
+@app.post("/monitor/training-mode/finish")
+def finish_training_mode() -> JSONResponse:
+    status = TRAINING_MODE.finish()
+    logger.info("training mode -> %s (%d events observed)", status["state"], status["observed_events"])
+    return JSONResponse(content=status)
+
+
+@app.post("/monitor/training-mode/reset")
+def reset_training_mode() -> JSONResponse:
+    return JSONResponse(content=TRAINING_MODE.reset())
 
 
 @app.post("/features")
