@@ -5,3 +5,8 @@ pydantic==2.10.4
 # AS monitor
 watchdog==6.0.0        # filesystem event source
 httpx==0.28.1          # ML / ledger / response fan-out
+
+# NI feature pipeline (Table 5.4, "50+ features from PE files"). Parsing happens
+# only in /features, never on the watchdog event thread, so it costs the
+# detection-latency budget nothing.
+pefile==2024.8.26

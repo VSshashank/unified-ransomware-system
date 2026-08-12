@@ -243,6 +243,85 @@ def test_dev_tokens_are_allowed_by_default(client, monkeypatch):
     assert client.post("/auth/token").status_code == 200
 
 
+# ------------------------------------------- TC-10 auth failures are audited
+
+
+def _auth_failure_writes(client) -> list[dict]:
+    return [
+        call
+        for call in client.calls
+        if call["path"] == "/ledger/log" and (call["json"] or {}).get("event_type") == "auth_failure"
+    ]
+
+
+def test_tc10_missing_token_creates_an_audit_entry(client):
+    """Table 5.8 TC-10: 401 returned, request blocked, audit log entry created.
+
+    The first two were already true; the entry was not being written, so
+    credential probing left no trace in the tamper-evident chain.
+    """
+    response = client.get("/monitor/status")
+    assert response.status_code == 401
+
+    writes = _auth_failure_writes(client)
+    assert len(writes) == 1, "no auth_failure block was appended to the ledger"
+
+    event = writes[0]["json"]["event_data"]
+    assert event["http_status"] == 401
+    assert event["code"] == "UNAUTHORIZED"
+    assert event["path"] == "/monitor/status"
+    assert event["method"] == "GET"
+    assert event["request_id"] == response.json()["error"]["request_id"]
+
+
+def test_tc10_forbidden_role_is_audited_too(client):
+    """A valid token used beyond its role is the more interesting signal: it
+    means a real credential is being used to probe."""
+    response = client.post("/response/terminate", json=TERMINATE_BODY, headers=headers_for("free"))
+    assert response.status_code == 403
+
+    writes = _auth_failure_writes(client)
+    assert len(writes) == 1
+    assert writes[0]["json"]["event_data"]["code"] == "FORBIDDEN"
+    assert writes[0]["json"]["event_data"]["http_status"] == 403
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"Authorization": "Bearer not-a-jwt"},
+        {"Authorization": "Bearer "},
+        {},
+    ],
+)
+def test_tc10_every_rejection_shape_is_audited(client, headers):
+    response = client.get("/monitor/status", headers=headers)
+    assert response.status_code == 401
+    assert len(_auth_failure_writes(client)) == 1
+
+
+def test_tc10_a_successful_request_writes_no_auth_failure(client):
+    """The audit trail is only useful if it does not cry wolf."""
+    assert client.get("/monitor/status", headers=headers_for("free")).status_code == 200
+    assert _auth_failure_writes(client) == []
+
+
+def test_tc10_a_dead_ledger_does_not_turn_a_401_into_a_500(client, monkeypatch):
+    """Auditing is best-effort. If it could fail the request, an attacker could
+    take the ledger down and then probe without leaving any 401 behind either."""
+    import routers.proxy as proxy
+
+    async def exploding_downstream(*args, **kwargs):
+        raise RuntimeError("ledger is down")
+
+    monkeypatch.setattr(main, "call_downstream", exploding_downstream)
+    monkeypatch.setattr(proxy, "call_downstream", exploding_downstream)
+
+    response = client.get("/monitor/status")
+    assert response.status_code == 401, "a failing audit write changed the status code"
+    assert response.json()["error"]["code"] == "UNAUTHORIZED"
+
+
 # --------------------------------------------------- 1.4 JWT secret hygiene
 
 

@@ -26,13 +26,33 @@ MEASUREMENTS: dict = {}
 DETECTION_LATENCY_TARGET_MS = 100.0
 FALSE_POSITIVE_TARGET = 0.05
 CPU_TARGET_PERCENT = 15.0
+# Table 5.8 TC-08 pairs this with the CPU target; Table 5.9 defines it as peak
+# memory during a stress test, which is what the test below measures.
+MEMORY_TARGET_MB = 500.0
 
 
 @pytest.fixture(scope="module", autouse=True)
 def write_measurements():
+    """Merge, do not overwrite.
+
+    as_benchmarks.json is AS's evidence file and two suites write to it: this
+    one and services/response/tests/test_actions.py, which contributes
+    process_kill_time_s. This used to replace the whole file, so running the
+    Monitor benchmarks on their own silently deleted the Response measurement.
+    It only looked harmless because the documented run order puts monitor before
+    response, which rewrote its key afterwards.
+    """
     yield
     REPORTS.mkdir(exist_ok=True)
-    (REPORTS / "as_benchmarks.json").write_text(json.dumps(MEASUREMENTS, indent=2))
+    path = REPORTS / "as_benchmarks.json"
+    existing = {}
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text())
+        except (OSError, ValueError):
+            existing = {}
+    existing.update(MEASUREMENTS)
+    path.write_text(json.dumps(existing, indent=2))
 
 
 # ------------------------------------------------------- detection latency
@@ -207,3 +227,48 @@ def test_cpu_usage_under_15_percent_while_monitoring(tmp_path):
     )
 
     assert normalised < CPU_TARGET_PERCENT, f"CPU {normalised:.1f}% exceeds 15%"
+
+
+# ------------------------------------------------------------------ memory
+
+
+@pytest.mark.benchmark
+def test_memory_usage_under_500mb_during_stress(tmp_path):
+    """TC-08's other half. Target: peak RSS <500MB during a stress test.
+
+    Stressed deliberately harder than the CPU test: larger files and no sleep,
+    so the entropy reader and the bounded event buffer are both under pressure.
+    A leak in either - the buffer used to grow without limit - shows up here as
+    RSS that climbs with the file count instead of levelling off.
+    """
+    process = psutil.Process()
+    baseline_mb = process.memory_info().rss / (1024 * 1024)
+    peak_mb = baseline_mb
+
+    with TestClient(monitor_app.app) as client:
+        client.post("/monitor/start", json={"watch_path": str(tmp_path), "recursive": True})
+
+        written = 0
+        started = time.time()
+        while time.time() - started < 5.0:
+            target = tmp_path / f"stress_{written}.bin"
+            target.write_bytes(os.urandom(512 * 1024))
+            monitor_app.handle_event(str(target), "created")
+            written += 1
+            peak_mb = max(peak_mb, process.memory_info().rss / (1024 * 1024))
+
+        client.post("/monitor/stop")
+
+    MEASUREMENTS["memory_mb"] = {
+        "files_processed": written,
+        "baseline_mb": round(baseline_mb, 2),
+        "peak_mb": round(peak_mb, 2),
+        "growth_mb": round(peak_mb - baseline_mb, 2),
+        "target": MEMORY_TARGET_MB,
+    }
+    print(
+        f"\nmemory over {written} x 512KB events: baseline {baseline_mb:.1f}MB, "
+        f"peak {peak_mb:.1f}MB (+{peak_mb - baseline_mb:.1f}MB) (target <500MB)"
+    )
+
+    assert peak_mb < MEMORY_TARGET_MB, f"peak RSS {peak_mb:.1f}MB exceeds 500MB"

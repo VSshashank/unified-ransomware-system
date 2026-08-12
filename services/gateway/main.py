@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -21,6 +22,9 @@ from models import AnalyzeRequest, TokenRequest, TokenResponse
 from rate_limit import enforce_rate_limit
 from routers import ledger, ml, monitor, response
 from routers.proxy import LEDGER_URL, ML_URL, MONITOR_URL, SERVICE_URLS, call_downstream
+
+
+logger = logging.getLogger("urds.gateway")
 
 
 @asynccontextmanager
@@ -74,6 +78,44 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+async def audit_access_denial(request: Request, status_code: int, code: str) -> None:
+    """TC-10: an authentication failure has to leave a trace in the audit trail.
+
+    A rejected request that vanishes without record is exactly what an attacker
+    probing for a working token wants. The entry goes into the same tamper-evident
+    chain as everything else, so credential probing is visible after the fact.
+
+    Best-effort by design: the ledger being down must not turn a clean 401 into a
+    500, and the caller is already being refused either way. The write is bounded
+    by call_downstream's timeout and any failure is swallowed.
+
+    Note for operations: this endpoint is unauthenticated by nature, so a caller
+    spamming bad tokens appends to an append-only chain. Bounding that - a
+    per-client suppression window - is worth doing before this faces a hostile
+    network, and is deliberately not attempted here.
+    """
+    try:
+        await call_downstream(
+            "POST",
+            LEDGER_URL,
+            "/ledger/log",
+            json_body={
+                "event_type": "auth_failure",
+                "event_data": {
+                    "code": code,
+                    "http_status": status_code,
+                    "path": request.url.path,
+                    "method": request.method,
+                    "request_id": getattr(request.state, "request_id", None),
+                    "client": request.client.host if request.client else None,
+                    "timestamp": utc_now(),
+                },
+            },
+        )
+    except Exception:  # noqa: BLE001 - auditing must never mask the original refusal
+        logger.warning("could not write auth_failure to the ledger for %s", request.url.path, exc_info=True)
+
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     detail = exc.detail if isinstance(exc.detail, dict) else {}
@@ -87,6 +129,10 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     }.get(exc.status_code, "REQUEST_FAILED")
     message = detail.get("message") if isinstance(detail, dict) else str(exc.detail)
     details = detail.get("details", {}) if isinstance(detail, dict) else {}
+
+    if exc.status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN):
+        await audit_access_denial(request, exc.status_code, code)
+
     return JSONResponse(status_code=exc.status_code, content=build_error(request, code, message, details))
 
 

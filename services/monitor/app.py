@@ -44,6 +44,13 @@ from detection import (
     read_magic,
     sha256_file,
 )
+from pe_features import suspicious_api_names
+from pe_features import extract_pe_features as _extract_pe_features
+
+
+def pe_imports_count(path: str) -> int:
+    """Imported-function count for a PE, 0 for anything else."""
+    return _extract_pe_features(path).get("pe_imports_count", 0)
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("monitor")
@@ -219,6 +226,12 @@ def extract_features(path: str) -> dict:
         # Measured, not estimated - the ML engine's behavioural model takes
         # these three directly rather than deriving them from entropy.
         **byte_statistics(path, retry=readable),
+        # spec 3.4.2 lists both of these in the FeatureSet, and gateway.yaml
+        # marks them required, but nothing produced them until the PE parser
+        # existed. Real values for a PE; 0 and [] for everything else, which is
+        # the honest answer for a .docx rather than a fabricated count.
+        "pe_imports_count": pe_imports_count(path),
+        "api_calls": suspicious_api_names(path),
     }
 
 

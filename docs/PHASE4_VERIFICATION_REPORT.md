@@ -157,9 +157,10 @@ after fix:   {"valid": false, "blocks_checked": 2, "invalid_block_id": 2}
    firewall rules to the wrong host locks out the operator. The response says `enforced: false`
    rather than claiming a block that never landed.
 
-6. **Table 5.8 is reconstructed.** The source PDF is not in the repo. `docs/test_cases.md`
-   documents which definitions are certain (TC-04, TC-05, TC-12, quoted from existing code) and
-   which are inferred. **Reconcile against the PDF before submission.**
+6. ~~**Table 5.8 is reconstructed.**~~ **CLOSED 12 Aug 2026 — see §8.**
+   The source document was supplied and `docs/test_cases.md` is now quoted from it. The
+   reconstruction had three entries wrong; TC-08, TC-10 and TC-11 were re-implemented against
+   the real definitions.
 
 7. **Process attribution is absent.** Watchdog reports *what* changed, never *who* changed it.
    The Monitor now sends `process_id: null` rather than its own PID — the previous behaviour
@@ -392,11 +393,98 @@ Against the pinned `fastapi==0.115.6` it passes. Pin-drift, not a code fault.
 
 ### 7.8 Still open
 
-- **Table 5.8 reconciliation** against the source PDF (§3.6). Unchanged, and gates submission.
-- **PE feature extractor** (§3.2). Unchanged, correctly scoped out.
+- ~~**Table 5.8 reconciliation** against the source PDF (§3.6).~~ **CLOSED — §8.**
+- ~~**PE feature extractor** (§3.2).~~ **CLOSED — §8.** Built as
+  `services/monitor/pe_features.py`, 64 features.
 - **The `unreadable` verdict does not escalate.** A file that cannot be read is no longer
   reported `benign` — that fabrication is fixed — but `suspicious` stays `False` and no
   response triggers. Defensible, since most locks are Defender or the search indexer, and
   escalating would be a false-positive firehose. It does mean in-place encryption that
   holds an exclusive handle and keeps the original filename is recorded rather than acted
   on. This is a detection-policy decision and should be made deliberately.
+
+---
+
+## 8. Phase 1–4 completion pass — 12 August 2026
+
+The source document (*Complete Project Documentation* v1.6) was supplied for the first
+time. §3.6 had flagged Table 5.8 reconciliation as gating submission; this pass closes
+it, and closes the PE feature extractor with it.
+
+### 8.1 The reconstruction was wrong in three places
+
+Reconciling `docs/test_cases.md` against the real Table 5.8 (pp. 55–56):
+
+| ID | Recorded as | Actually specified |
+|---|---|---|
+| TC-08 | Chain verifies <50 ms | **CPU <15%, RAM <500MB.** Chain verification is a Table 5.9 benchmark, not TC-08. **RAM had never been measured.** |
+| TC-11 | Full attack chain end to end | **Multiple simultaneous attacks.** No concurrency test existed anywhere. |
+| TC-10 | Bad/missing JWT → 401 | 401 **plus an audit log entry**. The gateway rejected correctly and recorded nothing. |
+
+All three were re-implemented against the real definitions rather than the documentation
+being edited to match the code.
+
+### 8.2 What was built
+
+| Gap | Resolution | Measured |
+|---|---|---|
+| TC-08 RAM unmeasured | `test_memory_usage_under_500mb_during_stress` | **peak 67.6 MB**, +2.6 MB growth over 166 × 512 KB events |
+| TC-11 absent | Concurrency tests in monitor **and** response | 12 concurrent detections p95 **25.1 ms**; 8 concurrent terminations, all successful, bystander untouched |
+| TC-10 no audit trail | `audit_access_denial()` writes an `auth_failure` block on every 401/403 | Best-effort; a dead ledger cannot turn a 401 into a 500 (tested) |
+| API p95 unmeasured (Table 5.9) | `services/gateway/tests/test_benchmarks.py` | **2.87 ms** p95 over 1000 requests, target <200 ms |
+| TC-01 had no sample | `scripts/ransomware_simulator.py` | Detected and terminated after **1 file**, bound <5 |
+| PE feature extractor (§3.2) | `services/monitor/pe_features.py` — **64 features** | Tested against real system binaries |
+
+### 8.3 A contract that was quietly broken
+
+`gateway.yaml` marks `pe_imports_count` and `api_calls` **required** on `FeatureSet`, and
+spec §3.4.2 shows both going into `/predict`. The Monitor's `extract_features()` returned
+neither, so `/analyze` had been sending an incomplete FeatureSet to the ML engine for as
+long as the route has existed. The PE parser supplies both: real values for an executable,
+`0` and `[]` for anything else — which is the honest answer for a `.docx`, not a
+fabricated count. The earlier random `pe_imports_count` defect was a symptom of the same
+missing capability.
+
+Parsing runs only in `/features`, never on the watchdog event thread. Detection latency
+re-measured after the change: **p95 30.6 ms**, unchanged.
+
+### 8.4 A flaky test, found and fixed
+
+`test_tc11_all_simultaneous_attacks_are_terminated` passed alone and failed intermittently
+in the full suite. Two real defects, not bad luck:
+
+- it asserted **batch wall-clock** under 2 s, but the 2 s bound is *per termination*
+  (TC-07); TC-11 states no timing requirement. Under full-suite load the batch figure
+  measures host business, not this code. Now asserts each `termination_time_ms`.
+- liveness was checked with `pid_exists()` then `psutil.Process(pid).status()`, which
+  races the exit and can observe a **recycled PID** on Windows. Now uses `process.wait()`,
+  which reaps the child and is authoritative.
+
+Verified with five consecutive full-suite runs: 84 passed, 2 skipped, every time.
+
+### 8.5 Suites
+
+| Suite | Before | After |
+|---|---|---|
+| gateway | 17 | **70** |
+| ledger | 42 | 42 |
+| monitor | 68 | **90** |
+| ml-engine | 19 | 19 |
+| response | 81 + 2 skip | **84** + 2 skip |
+| **Total** | **227** | **305 passed, 2 skipped, 0 failed** |
+
+### 8.6 Still open after this pass
+
+- **CLEAR-augmented training.** §6.1 states the model was trained on EMBER "augmented with
+  behavioral logs from the CLEAR dataset". It is not. EMBER trains on EMBER; the
+  behavioural model trains on a synthetic corpus. CLEAR and RanSAP *are* used — for EDA and
+  threshold characterisation in `src/analyze_behavioral_signals.py`, which is NI's Week 1–4
+  deliverable and is met — but not as training input. Deferred deliberately: closing it
+  means retraining and restating the headline accuracy figures.
+- **The RanSAP-derived threshold is not wired in.** `analyze_behavioral_signals.py`
+  computes a suggested threshold of **0.3186**, but the Monitor runs at **7.5**. These are
+  different scales — RanSAP's `entropy_1` is normalised 0–1, Shannon is 0–8 bits/byte — so
+  the calibration currently informs nothing. Worth reconciling before claiming the threshold
+  is RanSAP-derived.
+- **TC-12 / blockchain anchoring**, **CI/CD**, **SHAP served per-prediction**: all Weeks
+  17–32 in Tables 5.4–5.6. Correctly deferred, not gaps against Phase 1–4.
