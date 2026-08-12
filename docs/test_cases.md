@@ -39,7 +39,7 @@ TC-12 gates and which is Semester 2 work.
 | System RAM usage | <500 MB | **70.3 MB** peak (+2.7 MB growth) | `reports/as_benchmarks.json` |
 | File recovery success | 100 % | **100 %** (native) | `reports/si_demo_evidence.txt` |
 | Ledger verification time | <50 ms | **3.1 ms** median / 1000 blocks | `services/ledger/tests/test_hash_chain.py` |
-| Dashboard update latency | <1 s | **439 ms** | `reports/attack_chain_evidence.txt` |
+| Dashboard update latency | <1 s | **10.5 ms** mean to queryable (`test_tc09_*`); 439 ms end-to-end in Compose | `reports/as_benchmarks.json`, `reports/attack_chain_evidence.txt` |
 
 All ten Table 5.9 targets are measured and met.
 
@@ -52,6 +52,17 @@ reproduces the *behaviour* Table 5.8 tests for — rapid in-place rewriting of
 document files with high-entropy content — without any malicious payload, and
 asserts the "<5 files encrypted" bound. Running the real sample in a proper lab
 would strengthen this; the detection path exercised is identical either way.
+
+**§5.6.2's "3+ different ransomware simulators".** The simulator imitates four
+families, differing in the shape of what the watcher sees rather than in the
+payload. Three are detected on every file: `locker` (rewrite in place, append
+`.locked`), `silent` (rewrite in place, keep the name, so entropy decides with no
+extension to help) and `copycat` (write a new encrypted file, delete the
+original — `created` + `deleted` rather than `modified`). The fourth, `partial`,
+imitates LockBit-3-style intermittent encryption and is **not** detected: it
+scrambles a quarter of each file, leaving whole-file entropy near 5.2 against a
+7.5 threshold. That is asserted as a known blind spot rather than omitted — see
+`test_partial_encryption_is_a_known_blind_spot` and `APPROACH.md` §8.
 
 **TC-02 — "zero-day".** Verified in the sense the spec means: detection with no
 signature and no prior knowledge of the sample. The behavioural classifier scores

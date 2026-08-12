@@ -524,6 +524,37 @@ crosses a network boundary (§6.3). That is the right trade for a Weeks 1–16
 prototype on a single host, and the wrong one for anything else — §3.7.3 scopes
 TLS termination to production deployment, which this is not.
 
+**Intermittent (partial) encryption is not detected.** `scripts/ransomware_simulator.py`
+imitates four families. Three are caught on every file: `locker` (rewrite in
+place, append `.locked`), `silent` (rewrite in place, keep the name — entropy
+carries the decision with no extension to help) and `copycat` (write a new
+encrypted file, delete the original). The fourth, `partial`, scrambles only the
+leading quarter of each file, which is what LockBit 3 and BlackCat do to move
+less data. Whole-file entropy then lands around **5.2 bits/byte** — between
+plaintext and ciphertext, and below the 7.5 threshold — so it reads as an
+ordinary edit. Measured: 0 of 8 detected.
+
+Catching it needs per-block entropy rather than a whole-file average, and that
+carries its own false-positive cost: a `.docx` or a PDF already contains
+compressed blocks that look the same way under that test. The 0 % false-positive
+rate is a graded criterion and this is not, so the trade was not taken for
+Weeks 1–16. The gap is asserted in the suite
+(`test_partial_encryption_is_a_known_blind_spot`) rather than left absent, so it
+is visible to anyone reading the tests and fails loudly if detection improves.
+
+**`POST /response/terminate` can answer 409, which Table 3.2 does not list.**
+Table 3.2 enumerates nine status codes and 409 Conflict is not among them. The
+termination guard refuses several distinct situations — a PID that does not
+exist, PID 0 or 1, the response service's own process or an ancestor of it, a
+protected system process, a process this user cannot inspect — and none of
+Table 3.2's codes fits. 400 would claim the caller sent something malformed,
+which they did not; 403 already means "your role is not permitted" at this
+gateway, and reusing it for "that process is off-limits" would collapse an
+authorisation failure and a target-selection failure into one code the caller
+cannot tell apart. 409 says the request was valid and the server declined, which
+is what happened. It is declared on the route in `gateway.yaml`; the deviation
+from Table 3.2 is deliberate and recorded here rather than left to be found.
+
 **`FileEvent.hash_md5` is `file_hash`, and holds SHA-256.** §3.5.1 names the
 field `hash_md5`. MD5 has practical collision attacks and is unsuitable for the
 one job this field has — deciding whether a restored file matches what was last
@@ -586,7 +617,7 @@ timeline (Tables 5.4–5.6, Weeks 17–32).
 | RAM peak | <500 MB | **70.3 MB** (+2.7 MB over 150 × 512 KB) |
 | File recovery | 100 % | **100 %** native |
 | Ledger verification | <50 ms | **3.1 ms** median / 1000 blocks (2.1–5.7 ms, 50 warm runs) |
-| Dashboard latency | <1 s | **439 ms** (`reports/attack_chain_evidence.txt`) |
+| Dashboard latency | <1 s | **10.5 ms** mean to queryable, 11.3 ms worst (`test_tc09_*`); 439 ms end-to-end through Compose (`reports/attack_chain_evidence.txt`) |
 
 Model quality, after retraining on the 50,000 samples §6.1 specifies:
 
@@ -595,7 +626,7 @@ Model quality, after retraining on the 50,000 samples §6.1 specifies:
 | EMBER static-PE (7,500 held out) | 0.9577 | 0.9625 | 0.9525 | 0.9575 | 0.9923 |
 | Behavioural (726 held out) | 0.8843 | 0.9486 | 0.8127 | 0.8754 | 0.9585 |
 
-Suite: **361 passed, 2 skipped, 0 failed.** The two skips are correct —
+Suite: **371 passed, 2 skipped, 0 failed.** The two skips are correct —
 `psutil.terminate()` maps to `TerminateProcess` on Windows, which no process can
 ignore, so the SIGTERM-escalation tests assert a POSIX guarantee with no Windows
 equivalent. A Windows-specific test covers the same ground.

@@ -24,7 +24,17 @@ What makes this safe, and why each guard is here:
     meant to be - the point is high-entropy output, and a reversible
     transformation is a feature here, not a weakness.
 
+Four families are imitated, because section 5.6.2 asks the system to detect
+"3+ different ransomware simulators" and one behaviour is not three. They differ
+in the *shape* of what the watcher sees, not just the payload:
+
+    locker   rewrite in place, append .locked   entropy + extension signal
+    silent   rewrite in place, keep the name    entropy only, no rename to help
+    copycat  write a new file, delete the old   created + deleted, not modified
+    partial  scramble the leading quarter       intermittent encryption
+
     python scripts/ransomware_simulator.py --target-dir watched_files/tc01
+    python scripts/ransomware_simulator.py --target-dir watched_files/tc01 --family silent
     python scripts/ransomware_simulator.py --target-dir watched_files/tc01 --restore
 """
 
@@ -63,13 +73,79 @@ def keystream(seed: bytes, length: int) -> bytes:
     return bytes(out[:length])
 
 
-def encrypt_in_place(path: Path, seed: bytes) -> None:
-    """Rewrite the file with high-entropy bytes and take the extension, the way
-    most families do - the rename is itself a detection signal."""
+def _xor(data: bytes, seed: bytes) -> bytes:
+    return bytes(a ^ b for a, b in zip(data, keystream(seed, len(data))))
+
+
+# How much of the file the `partial` family scrambles. Real intermittent
+# encryptors (LockBit 3, BlackCat) touch a fraction of each file to go faster;
+# the side effect is that whole-file entropy rises less, which is precisely what
+# makes them harder to catch on an entropy threshold alone.
+PARTIAL_FRACTION = 0.25
+
+
+def encrypt_locker(path: Path, seed: bytes) -> Path:
+    """Rewrite in place, then append a ransom extension.
+
+    The classic pattern (WannaCry, Locky). Two signals fire at once: the
+    contents stop matching the declared type, and the extension is a known one.
+    """
+    path.write_bytes(_xor(path.read_bytes(), seed))
+    renamed = path.with_suffix(path.suffix + ".locked")
+    path.rename(renamed)
+    return renamed
+
+
+def encrypt_silent(path: Path, seed: bytes) -> Path:
+    """Rewrite in place and keep the original filename.
+
+    Modern in-place encryptors do this deliberately: no rename means no
+    extension signal, so the only evidence is that the bytes changed character.
+    This is the case the entropy threshold and the differential-entropy check
+    have to carry on their own.
+    """
+    path.write_bytes(_xor(path.read_bytes(), seed))
+    return path
+
+
+def encrypt_copycat(path: Path, seed: bytes) -> Path:
+    """Write the ciphertext to a new file, then delete the original.
+
+    A different event sequence from the other two - `created` followed by
+    `deleted`, rather than `modified` - which is worth exercising because the
+    watcher handles those on separate callbacks.
+    """
+    encrypted = path.with_suffix(path.suffix + ".enc")
+    encrypted.write_bytes(_xor(path.read_bytes(), seed))
+    path.unlink()
+    return encrypted
+
+
+def encrypt_partial(path: Path, seed: bytes) -> Path:
+    """Scramble only the leading fraction of the file, leaving the tail intact.
+
+    Intermittent encryption, the technique that makes a file unusable while
+    moving far less data. It is included because it is the hardest of the four
+    for an entropy-based detector: the unscrambled tail pulls the whole-file
+    measurement back down toward the original.
+    """
     original = path.read_bytes()
-    scrambled = bytes(a ^ b for a, b in zip(original, keystream(seed, len(original))))
-    path.write_bytes(scrambled)
-    path.rename(path.with_suffix(path.suffix + ".locked"))
+    cut = max(1, int(len(original) * PARTIAL_FRACTION))
+    path.write_bytes(_xor(original[:cut], seed) + original[cut:])
+    return path
+
+
+FAMILIES = {
+    "locker": encrypt_locker,
+    "silent": encrypt_silent,
+    "copycat": encrypt_copycat,
+    "partial": encrypt_partial,
+}
+
+
+def _encrypted_path(target: Path, name: str, family: str) -> Path:
+    suffix = {"locker": ".locked", "copycat": ".enc"}.get(family, "")
+    return target / (name + suffix)
 
 
 def restore(target: Path, seed: bytes) -> int:
@@ -79,16 +155,27 @@ def restore(target: Path, seed: bytes) -> int:
         return 0
 
     manifest = json.loads(manifest_path.read_text())
+    # Older manifests predate --family and are all locker runs.
+    family = manifest.get("family", "locker")
     restored = 0
+
     for name in manifest["files"]:
-        locked = target / (name + ".locked")
-        if not locked.exists():
+        encrypted = _encrypted_path(target, name, family)
+        if not encrypted.exists():
             continue
-        scrambled = locked.read_bytes()
-        original = bytes(a ^ b for a, b in zip(scrambled, keystream(seed, len(scrambled))))
-        locked.with_name(name).write_bytes(original)
-        locked.unlink()
+        scrambled = encrypted.read_bytes()
+
+        if family == "partial":
+            cut = max(1, int(len(scrambled) * PARTIAL_FRACTION))
+            original = _xor(scrambled[:cut], seed) + scrambled[cut:]
+        else:
+            original = _xor(scrambled, seed)
+
+        (target / name).write_bytes(original)
+        if encrypted.name != name:
+            encrypted.unlink()
         restored += 1
+
     print(f"restored {restored} file(s) in {target}")
     return restored
 
@@ -100,6 +187,17 @@ def main() -> int:
     parser.add_argument("--delay-ms", type=int, default=120, help="Pause between encryptions.")
     parser.add_argument("--seed", default="tc01-simulator", help="Keystream seed; same value restores.")
     parser.add_argument("--restore", action="store_true", help="Undo a previous run and exit.")
+    parser.add_argument(
+        "--family",
+        choices=sorted(FAMILIES),
+        default="locker",
+        help=(
+            "Which behaviour to imitate. locker: rewrite in place and append "
+            ".locked. silent: rewrite in place, keep the name. copycat: write a "
+            "new encrypted file and delete the original. partial: scramble only "
+            "the leading quarter."
+        ),
+    )
     args = parser.parse_args()
 
     target = Path(args.target_dir).resolve()
@@ -123,15 +221,21 @@ def main() -> int:
         return 2
 
     decoys = build_decoys(target, args.files)
-    (target / MANIFEST_NAME).write_text(json.dumps({"files": [p.name for p in decoys], "seed": args.seed}, indent=2))
+    (target / MANIFEST_NAME).write_text(
+        json.dumps(
+            {"files": [p.name for p in decoys], "seed": args.seed, "family": args.family},
+            indent=2,
+        )
+    )
     print(f"created {len(decoys)} decoy document(s) in {target}", flush=True)
 
     time.sleep(0.5)  # let the watcher enumerate them before anything changes
 
-    print("beginning simulated encryption", flush=True)
+    encrypt = FAMILIES[args.family]
+    print(f"beginning simulated encryption (family: {args.family})", flush=True)
     encrypted = 0
     for path in decoys:
-        encrypt_in_place(path, seed)
+        encrypt(path, seed)
         encrypted += 1
         # Printed per file and flushed: the harness reads this to count how many
         # were lost before the response engine terminated the process.

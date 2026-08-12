@@ -386,7 +386,7 @@ chain verification, ML metrics.
 | `services/ml-engine/tests/` | 19 | `test_ml_api.py` — both model paths |
 | `services/response/tests/` + `recovery/tests/` | 84 + 2 skipped | `test_actions.py` (TC-07), `test_tc11_concurrent.py`, `test_recovery.py` (54), `test_vss_manager.py` |
 
-**361 passed, 2 skipped.** The skips assert a POSIX SIGTERM guarantee with no
+**371 passed, 2 skipped.** The skips assert a POSIX SIGTERM guarantee with no
 Windows equivalent; a Windows-specific test covers the same ground.
 
 Run everything:

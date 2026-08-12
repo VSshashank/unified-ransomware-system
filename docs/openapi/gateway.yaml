@@ -295,6 +295,19 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "409":
+          description: >-
+            The termination guard refused. Raised when the PID does not exist,
+            is reserved (0 or 1), belongs to the response service or one of its
+            ancestors, is a protected system process, or is not inspectable by
+            this user. The request was well-formed and authorised, so this is
+            neither 400 nor 403; the process is simply not one this service will
+            kill. Note that 409 is outside Table 3.2's enumeration - see
+            APPROACH.md section 8.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /response/isolate:

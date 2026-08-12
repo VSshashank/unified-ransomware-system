@@ -12,9 +12,9 @@
 > **Fourth pass, 12 August 2026 — remediation.** §9 records the fixes made after
 > the independent compliance audit, including a blocking detection gap on small
 > encrypted files, and a retrain on the full 50,000-sample dataset §6.1
-> specifies. **The retrain moved the headline model figures down**, from 0.9774
-> accuracy on 19,480 samples to 0.9577 on 50,000 — the larger corpus is harder,
-> and the earlier number was optimistic rather than wrong. Every numeric claim
+> specifies. **The committed model metrics were stale**: they claimed 0.9774
+> accuracy on 19,480 samples, but the model actually on disk and being served
+> scored 0.9577 on 50,000. Proven, not assumed — see §9.3. Every numeric claim
 > in §1–§8 is a record of what was true at the pass that made it. **Where any
 > earlier section disagrees with §9, §9 is current**, and
 > `APPROACH.md` §10 carries the live figures.
@@ -438,7 +438,7 @@ being edited to match the code.
 
 | Gap | Resolution | Measured |
 |---|---|---|
-| TC-08 RAM unmeasured | `test_memory_usage_under_500mb_during_stress` | **peak 67.6 MB**, +2.6 MB growth over 166 × 512 KB events |
+| TC-08 RAM unmeasured | `test_tc08_memory_usage_under_500mb_during_stress` | **peak 67.6 MB**, +2.6 MB growth over 166 × 512 KB events |
 | TC-11 absent | Concurrency tests in monitor **and** response | 12 concurrent detections p95 **25.1 ms**; 8 concurrent terminations, all successful, bystander untouched |
 | TC-10 no audit trail | `audit_access_denial()` writes an `auth_failure` block on every 401/403 | Best-effort; a dead ledger cannot turn a 401 into a 500 (tested) |
 | API p95 unmeasured (Table 5.9) | `services/gateway/tests/test_benchmarks.py` | **2.87 ms** p95 over 1000 requests, target <200 ms |
@@ -546,22 +546,53 @@ against the old gate.
 | D-3 | `attack_chain_evidence.txt` headlined "18/18 checks passed" over a list showing 16 PASS + 2 SKIP. The generator counted `None` as a pass; fixed at the source and in the committed file. |
 | D-4 | The hardware actually used is recorded in `APPROACH.md` §10 against Table 6.1's specification. |
 
-### 9.3 The retrain moved the numbers down
+### 9.3 The metrics file was stale, and the model never changed
 
-| | Before (19,480 samples) | After (50,000 samples) |
+The first reading of this was wrong and is corrected here. The retrain looked
+like it had lowered the headline figures:
+
+| | Metrics file claimed | Measured on retrain |
 |---|---|---|
 | Accuracy | 0.9774 | **0.9577** |
 | Precision | 0.9761 | **0.9625** |
 | Recall | 0.9775 | **0.9525** |
 | F1 | 0.9768 | **0.9575** |
 | ROC AUC | 0.9964 | **0.9923** |
+| Samples | 19,480 | 50,000 |
 
-The committed metrics previously named `ember_subset.parquet`, a file not on
-disk, so they came from a different extract than the 50,000-row parquet in
-`data/`. Every threshold still clears: TC-06 wants P/R/F1 above 85 %, §5.6.2
-wants ML above 85 %, and §5.6.3's Distinction tier wants above 90 % across all
-metrics — all met. The earlier figure was optimistic because a smaller subset is
-an easier problem, not because it was wrong when measured.
+It had not. The model on disk before the retrain was **already** the
+50,000-sample model, and `reports/model_metrics.json` was a leftover record of
+an earlier, smaller run that had since been overwritten. Three pieces of
+evidence, in order:
+
+1. **Training is bit-for-bit deterministic.** Running `train_ember_model.py`
+   twice over the same parquet with `random_state=42` produced two
+   `xgboost_model.pkl` files with the same SHA-256
+   (`78ab2978…d09b3d1`) and the same 1,064,299-byte size. Every metric matched
+   to 16 significant digits; only `trained_at` differed.
+2. **SHAP output is unchanged.** `reports/shap_feature_importance.json` was
+   committed *before* the retrain, generated from the old model.
+   Re-running `src/shap_analysis.py` against the new model reproduced that file
+   byte-for-byte. SHAP values are a deterministic function of tree structure and
+   input data, and the 500-row sample is seeded, so identical output means
+   identical trees.
+3. **The file size never moved.** The pre-retrain `xgboost_model.pkl` was
+   1,064,299 bytes, recorded at the start of this session. A model fitted on
+   13,636 training rows rather than 35,000 would not land on the same byte count.
+
+So the deployed classifier has been the 0.9577 model throughout, while
+`model_metrics.json`, `/model/metrics`, `APPROACH.md`, `FLOW.md`,
+`test_cases.md` and this report all cited 0.9774. The correction is not that
+the model got worse — it is that **every document was overstating the model
+that was actually running, by about two points, and now does not.**
+
+`reports/ransomware_specific_metrics.json` corroborates this independently: it
+is byte-identical before and after the retrain (0.9993 accuracy, 1.0000
+precision, 0.9987 recall over 752 real ransomware-family samples).
+
+Every threshold still clears: TC-06 wants P/R/F1 above 85 %, §5.6.2 wants ML
+above 85 %, and §5.6.3's Distinction tier wants above 90 % across all metrics —
+all met, on figures that now describe the model in the container.
 
 ### 9.4 Suites
 
