@@ -35,7 +35,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from features import features_to_vector
+from features import features_to_vector, partition
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("ml_engine")
@@ -187,6 +187,8 @@ def health() -> dict:
 @app.post("/predict")
 def predict(payload: PredictRequest) -> JSONResponse:
     started = perf_counter()
+    features_used: list[str] = []
+    features_ignored: dict[str, str] = {}
 
     if payload.ember_vector is not None:
         if _ember_model is None:
@@ -227,6 +229,14 @@ def predict(payload: PredictRequest) -> JSONResponse:
                 status_code=400,
                 content=build_error("BAD_REQUEST", f"Could not read features: {exc}"),
             )
+        # Listing 3.5 sends pe_imports_count and api_calls. This model does not
+        # score them; saying so is the point. See features.UNSCORED_FEATURES.
+        features_used, features_ignored = partition(payload.features)
+        if features_ignored:
+            logger.warning(
+                "ignored %s: not scored by the behavioural model",
+                ", ".join(sorted(features_ignored)),
+            )
         model, model_name, names = _behavioral_model, "behavioral_xgboost", _feature_order
 
     else:
@@ -249,6 +259,12 @@ def predict(payload: PredictRequest) -> JSONResponse:
             "timestamp": utc_now(),
             "threat_level": threat_level_from(confidence, prediction),
             "features_importance": _importance(model, names),
+            # Which of the supplied features this model actually read, and which
+            # it did not, with the reason. A caller that sends a documented
+            # feature and gets no signal from it should be able to see that from
+            # the response rather than from the source.
+            "features_used": features_used,
+            "features_ignored": features_ignored,
             "inference_time_ms": round((perf_counter() - started) * 1000, 3),
         }
     )

@@ -18,6 +18,81 @@ FEATURE_ORDER = [
     "chi_square_uniformity",
 ]
 
+# Keys the caller may legitimately send that this model does not score, and the
+# reason for each. Listing 3.5 sends both; section 1.4 claims "behavioral
+# profiles ... based on API call sequences" and section 2.3 says CryptEncrypt,
+# WriteFile and MoveFile are "integrated into the feature vector for the ML
+# engine". Listing 3.22's own error example names these two as the features whose
+# absence causes a prediction to fail - so a caller has every reason to expect
+# them to matter, and until now /predict accepted them and threw them away
+# without a word.
+#
+# They are not scored *by this model*, and cannot honestly be:
+#
+#   * The behavioural model's corpus (src/train_behavioral_model.py) is file
+#     content - documents, archives, images and the same content encrypted. None
+#     of it is a Portable Executable, so every sample in both classes has an
+#     import count of 0 and an empty API list. Adding the columns would train two
+#     features that are constant across the corpus: zero information, zero
+#     importance, and a feature list that looks like it means something. That is
+#     the same lie as dropping them, with more moving parts.
+#   * Fabricating plausible import counts per synthetic sample would be inventing
+#     dataset rows to support a claim, which is worse.
+#
+# PE import structure *is* scored, by the EMBER classifier on the `ember_vector`
+# path - EMBER's 2381 dimensions include hashed import tables - so section 2.3's
+# claim holds for the primary model. The honest thing at this endpoint is to say
+# which model ran and which of the supplied features it read.
+UNSCORED_FEATURES = {
+    "pe_imports_count": (
+        "PE-structural; the behavioural model is trained on file content, not "
+        "executables. Send an ember_vector to score PE structure."
+    ),
+    "api_calls": (
+        "PE-structural; the behavioural model is trained on file content, not "
+        "executables. Send an ember_vector to score PE structure."
+    ),
+}
+
+
+# Request keys `features_to_vector` below actually reads. Deliberately not
+# FEATURE_ORDER: the model's columns are derived, not copied. `file_size` becomes
+# `log_file_size`, and `has_container_header` is decided from `container_format`
+# or `magic_bytes`. Reporting the column names as though they were request keys
+# would tell a caller it had sent fields it never sent.
+SCORED_INPUT_KEYS = (
+    "shannon_entropy",
+    "entropy",
+    "file_size",
+    "container_format",
+    "magic_bytes",
+    "ransom_extension",
+    "printable_ratio",
+    "byte_value_std",
+    "chi_square_uniformity",
+)
+
+
+def partition(payload: dict) -> tuple[list[str], dict[str, str]]:
+    """Split what the caller sent into what is scored and what is not.
+
+    Returned on every prediction so a caller can see that a feature it supplied
+    had no effect on the answer, rather than having to read this source file.
+
+    An unscored feature is only reported when it carries something. The Monitor
+    sends `pe_imports_count: 0` and `api_calls: []` for every non-PE file it
+    sees - an honest "there were none", not an expectation that was disappointed.
+    Flagging those on every ordinary document would put a warning on almost every
+    prediction, which is how operators learn to ignore warnings.
+    """
+    used = [name for name in SCORED_INPUT_KEYS if payload.get(name) is not None]
+    ignored = {
+        name: reason
+        for name, reason in UNSCORED_FEATURES.items()
+        if payload.get(name)
+    }
+    return used, ignored
+
 CONTAINER_SIGNATURES = [
     b"PK\x03\x04", b"\x1f\x8b", b"Rar!\x1a\x07", b"7z\xbc\xaf\x27\x1c", b"\xfd7zXZ",
     b"BZh", b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a", b"%PDF",
