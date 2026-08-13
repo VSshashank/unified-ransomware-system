@@ -1,0 +1,163 @@
+{
+  "generated_at": "2026-08-13T15:15:04.886808Z",
+  "spec_reference": "section 6.4.1, Scenario A",
+  "files_per_family": 8,
+  "families_run": 10,
+  "families_detected": 8,
+  "families_detected_within_2s": 8,
+  "slowest_detection_seconds": 0.009,
+  "fastest_detection_seconds": 0.0,
+  "all_restore_round_trips": true,
+  "results": [
+    {
+      "family": "copycat",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.0,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "reason_sample": "entropy 7.99 >= 7.5 with no recognised container header and a known ransomware extension",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "headerspoof",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.005,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "reason_sample": "entropy rose 4.65 to 7.99 on a file already being watched, which is replacement rather than editing; the zip header does not explain a rise this large",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "locker",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.009,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "reason_sample": "entropy 7.99 >= 7.5 with no recognised container header and a known ransomware extension",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "notedrop",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.006,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "reason_sample": "entropy rose 4.65 to 7.99 on a file already being watched, which is replacement rather than editing",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "partial",
+      "files_encrypted": 8,
+      "files_flagged": 0,
+      "detected": false,
+      "detection_seconds": null,
+      "within_2s": false,
+      "verdicts": [
+        "benign"
+      ],
+      "reason_sample": "entropy 5.22 below threshold 7.5",
+      "mean_entropy": 5.223,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "renamer",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.007,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "reason_sample": "entropy 7.99 >= 7.5 with no recognised container header",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 1,
+      "restore_round_trips": true
+    },
+    {
+      "family": "silent",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.006,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "reason_sample": "entropy rose 4.65 to 7.99 on a file already being watched, which is replacement rather than editing",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "slowburn",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.004,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "reason_sample": "entropy rose 4.65 to 7.99 on a file already being watched, which is replacement rather than editing",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "spoofer",
+      "files_encrypted": 8,
+      "files_flagged": 0,
+      "detected": false,
+      "detection_seconds": null,
+      "within_2s": false,
+      "verdicts": [
+        "benign_compressed"
+      ],
+      "reason_sample": "entropy 7.99 explained by zip container",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "staged",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.005,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "reason_sample": "entropy rose 4.65 to 7.99 on a file already being watched, which is replacement rather than editing",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    }
+  ]
+}

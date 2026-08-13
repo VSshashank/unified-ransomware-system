@@ -63,11 +63,13 @@ def test_tc01_simulator_is_detected_and_stopped_under_five_files(tmp_path):
             name = line.split(maxsplit=2)[2].strip()
 
             # The Monitor's real classification path over the file just written.
-            locked = tmp_path / (name + ".locked")
-            if not locked.exists():
+            # The simulator reports the name now on disk, so this works for every
+            # family rather than only the ones that append a known extension.
+            written = tmp_path / name
+            if not written.exists():
                 continue
-            entropy = calculate_entropy(str(locked))
-            verdict = classify(str(locked), entropy, read_magic(str(locked)))
+            entropy = calculate_entropy(str(written))
+            verdict = classify(str(written), entropy, read_magic(str(written)))
 
             if verdict["suspicious"]:
                 detected = True
@@ -161,8 +163,13 @@ def test_tc01_restore_returns_every_document_byte_for_byte(tmp_path):
 # ------------------------------------------------- multiple simulator families
 #
 # Section 5.6.2 asks the system to detect "3+ different ransomware simulators".
-# These are four behaviours, not four payloads: what differs is the shape of
-# what the watcher sees, which is what a detector either handles or does not.
+# These are distinct behaviours, not distinct payloads: what differs is the shape
+# of what the watcher sees, which is what a detector either handles or does not.
+#
+# The simulator imitates ten families in total; section 6.4.1's full sweep of all
+# ten, against a live observer, is TC-13 in test_tc13_simulator_families.py. The
+# subset here is the 5.6.2 criterion and is classified without an observer, so it
+# deliberately exercises only the families that need no entropy history.
 
 
 def run_family(tmp_path, family: str, files: int = 6) -> list[dict]:
