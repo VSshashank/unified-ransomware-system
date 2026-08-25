@@ -78,6 +78,10 @@ WITNESS_VECTORS = (
     {"payload_mode": "position_shuffle", "file_size": 12288, "changed_fraction": 1.0, "block_pattern": "scattered", "structural_validity": "broken", "history_mode": "fresh"},
     {"payload_mode": "keystream", "file_size": 65536, "changed_fraction": 0.25, "block_pattern": "leading", "structural_validity": "magic_only", "history_mode": "fresh"},
     {"payload_mode": "format_preserving", "file_size": 65536, "changed_fraction": 0.05, "block_pattern": "leading", "structural_validity": "valid", "history_mode": "fresh"},
+    # Decisive witness for the ungoverned container exemption: a genuinely valid,
+    # high-entropy container on a fresh path can be accepted as benign because no
+    # entropy-rise history exists and the exemption never reaches adjudicate().
+    {"payload_mode": "format_preserving", "file_size": 65536, "changed_fraction": 1.0, "block_pattern": "leading", "structural_validity": "valid", "history_mode": "fresh"},
 )
 
 # The production pipeline is deliberately disabled: this probe attributes the

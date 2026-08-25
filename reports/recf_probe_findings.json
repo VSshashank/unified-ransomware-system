@@ -1,21 +1,21 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-25T14:03:19.510526Z",
+  "generated_at": "2026-08-25T14:22:03.868540Z",
   "probe": "recf_probe",
   "pipeline_enabled": false,
-  "cases_run": 20,
+  "cases_run": 21,
   "case_set": "witness_set",
-  "cases_expected": 20,
+  "cases_expected": 21,
   "cases_detected": 3,
-  "cases_missed": 17,
-  "case_miss_rate": 0.85,
+  "cases_missed": 18,
+  "case_miss_rate": 0.857143,
   "all_restore_verified": true,
-  "attacker_objective_met": 20,
+  "attacker_objective_met": 21,
   "attacker_objective_not_met": 0,
   "all_executed_cases_met_attacker_objective": true,
   "within_2s": 3,
-  "fastest_detection_seconds": 0.0028,
-  "slowest_detection_seconds": 0.0115,
+  "fastest_detection_seconds": 0.0027,
+  "slowest_detection_seconds": 0.013,
   "signals": {
     "entropy_rise": 1,
     "static_entropy": 1,
@@ -28,7 +28,7 @@
     "interaction_dependent": 2,
     "partial_profile_unavailable": 3,
     "static_entropy_expected": 1,
-    "valid_structure_entropy_rise_requires_history": 5
+    "valid_structure_entropy_rise_requires_history": 6
   },
   "by_payload_mode": {
     "base64": {
@@ -37,9 +37,9 @@
       "missed": 3
     },
     "format_preserving": {
-      "cases": 5,
+      "cases": 6,
       "detected": 1,
-      "missed": 4
+      "missed": 5
     },
     "keystream": {
       "cases": 7,
@@ -64,9 +64,9 @@
       "missed": 5
     },
     "65536": {
-      "cases": 6,
+      "cases": 7,
       "detected": 2,
-      "missed": 4
+      "missed": 5
     },
     "1048576": {
       "cases": 3,
@@ -5359,7 +5359,7 @@
   "results": [
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:01:31.385071Z",
+      "generated_at": "2026-08-25T14:20:12.995601Z",
       "case_id": "40b6ab58ca88ea1d1b67",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5380,7 +5380,7 @@
       "entropy_delta": 0.0,
       "container_format": null,
       "container_valid": null,
-      "detection_seconds": 0.0028,
+      "detection_seconds": 0.0027,
       "within_2s": true,
       "restore_verified": true,
       "restored_sha256": "f25c3ee75fd545b94a48db9d966d92d5d126eb7bb5285baa2ed56d5c286c50e2",
@@ -5391,7 +5391,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:01:33.490303Z",
+      "generated_at": "2026-08-25T14:20:15.100535Z",
       "case_id": "e0fb499da66801e6c52b",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5423,7 +5423,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:01:35.716845Z",
+      "generated_at": "2026-08-25T14:20:17.326325Z",
       "case_id": "3d1df9ecfb5a6d770677",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5455,7 +5455,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:01:38.200430Z",
+      "generated_at": "2026-08-25T14:20:19.817248Z",
       "case_id": "3a410b7ff5576970490d",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5487,7 +5487,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:01:40.686920Z",
+      "generated_at": "2026-08-25T14:20:22.298136Z",
       "case_id": "be0c698db52208323543",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5519,7 +5519,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:01:42.796035Z",
+      "generated_at": "2026-08-25T14:20:24.406906Z",
       "case_id": "a330ee0f3524c04525e1",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5551,7 +5551,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:01:46.592482Z",
+      "generated_at": "2026-08-25T14:20:28.335610Z",
       "case_id": "2f1f439dd8a540494ab3",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5583,7 +5583,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:01:48.699722Z",
+      "generated_at": "2026-08-25T14:20:30.444039Z",
       "case_id": "ee57d78465b7fce6d121",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5615,7 +5615,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:01:50.930512Z",
+      "generated_at": "2026-08-25T14:20:32.674207Z",
       "case_id": "391f1fce7fbf9e96c6a5",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5647,7 +5647,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:01:53.212954Z",
+      "generated_at": "2026-08-25T14:20:34.979157Z",
       "case_id": "18147243bccd95ba2ded",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5679,7 +5679,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:03:03.697105Z",
+      "generated_at": "2026-08-25T14:21:45.895668Z",
       "case_id": "b346fe71dc70e38da60c",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5711,7 +5711,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:03:05.924920Z",
+      "generated_at": "2026-08-25T14:21:48.123938Z",
       "case_id": "5df6e43ebddf324a7aa4",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5743,7 +5743,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:03:08.167463Z",
+      "generated_at": "2026-08-25T14:21:50.366152Z",
       "case_id": "2b60be3d55e39a000423",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5775,7 +5775,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:03:08.415675Z",
+      "generated_at": "2026-08-25T14:21:50.634988Z",
       "case_id": "e4afb76f2adf352b132d",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5796,7 +5796,7 @@
       "entropy_delta": 3.7,
       "container_format": "zip",
       "container_valid": true,
-      "detection_seconds": 0.0106,
+      "detection_seconds": 0.0103,
       "within_2s": true,
       "restore_verified": true,
       "restored_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
@@ -5807,7 +5807,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:03:10.699285Z",
+      "generated_at": "2026-08-25T14:21:52.941122Z",
       "case_id": "d3ac166c6df618b339db",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5839,7 +5839,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:03:12.932423Z",
+      "generated_at": "2026-08-25T14:21:55.175579Z",
       "case_id": "5b7f0916288378d03b1b",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5871,7 +5871,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:03:15.159111Z",
+      "generated_at": "2026-08-25T14:21:57.402128Z",
       "case_id": "091ae7d4e3b9b94967a3",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5903,7 +5903,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:03:17.274969Z",
+      "generated_at": "2026-08-25T14:21:59.512250Z",
       "case_id": "5e4a002ec126a17965a6",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5935,7 +5935,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:03:17.397762Z",
+      "generated_at": "2026-08-25T14:21:59.637004Z",
       "case_id": "593d6fb64dd938b4a53c",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5956,7 +5956,7 @@
       "entropy_delta": 0.0,
       "container_format": "zip",
       "container_valid": false,
-      "detection_seconds": 0.0115,
+      "detection_seconds": 0.013,
       "within_2s": true,
       "restore_verified": true,
       "restored_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
@@ -5967,7 +5967,7 @@
     },
     {
       "schema_version": 1,
-      "generated_at": "2026-08-25T14:03:19.510096Z",
+      "generated_at": "2026-08-25T14:22:01.748734Z",
       "case_id": "1a3f6516a979aa7be951",
       "seed": "recf-probe-2026",
       "behavior": {
@@ -5985,6 +5985,38 @@
       "verdict": "benign",
       "reason": "entropy 4.73 below threshold 7.5",
       "entropy": 4.73,
+      "entropy_delta": 0.0,
+      "container_format": "zip",
+      "container_valid": true,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
+      "original_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:22:03.868103Z",
+      "case_id": "0e9975cb9b561566acea",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "analytical_prediction": "valid_structure_entropy_rise_requires_history",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign_compressed",
+      "reason": "entropy 8.0 explained by a structurally valid zip container",
+      "entropy": 8.0,
       "entropy_delta": 0.0,
       "container_format": "zip",
       "container_valid": true,
