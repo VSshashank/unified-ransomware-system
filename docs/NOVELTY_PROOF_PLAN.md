@@ -1,349 +1,382 @@
-# Final Novelty-Proof Plan: Reproducible Attacker-Capability Calibration for URDS
+# Final Novelty-Proof Plan for the Unified Ransomware Detection and Recovery System
 
-## Executive position
+## Document status
 
-The project should not claim that cost-ordered admissibility is newly invented. The principle is already present in `services/monitor/admissibility.py` and in the existing hardening documentation. The project should also not claim that adaptive RECF-DR search is the primary novelty. The current detector’s important boundary cases are substantially characterizable from source-level thresholds and decision branches.
+This is the canonical novelty-proof plan for the URDS project. It supersedes earlier RECF-DR-first, Monitor-only, and documentation-only plans.
 
-The strongest remaining novelty candidate is the **locked capability-search protocol** used to calibrate attacker cost:
+**Repository:** `VSshashank/unified-ransomware-system`
 
-> **A reproducible protocol for empirically calibrating the minimum attacker capability required to forge a security mitigation or avoid a detection signal, using an ordered search over available tooling, versioned commands, public sources, licenses, required inputs, fixture validity, and independent reproduction.**
+**Working branch:** `feat/admissibility-governance-novelty-v2`
 
-URDS is the case study. The protocol is then applied to the URDS Monitor’s false-positive mitigations, where it produces a measurable result:
+**Baseline:** `origin/feat/detection-hardening`
 
-1. the current container exemption treats `container_valid=None` as sufficient evidence;
-2. 11 of 16 unique recognized formats have no structural validator;
-3. unvalidated-format high-entropy payloads can therefore reach `benign_compressed` with a directly controllable magic prefix;
-4. a standard-library valid-container construction shows that positive structural validation is itself low capability, not automatically a high-cost trust signal;
-5. the cost policy’s equal-capability tie must therefore fail closed or require additional evidence; and
-6. a repair designed **after** calibration closes the tested bypass without being allowed to preserve the attack merely to satisfy a self-written acceptance criterion.
+**Primary result:** an empirical, capability-calibrated evaluation and repair of false-positive mitigation governance across the unified URDS path.
 
-This is an engineering-evaluation contribution with a clear technical effect. It is not a universal theorem, a guarantee of patentability, or proof that all ransomware detectors share the behavior.
+**Important limitation:** this plan can produce strong evidence of a project-specific technical contribution. It cannot guarantee patentability or legal novelty. Those require formal prior-art and legal review.
 
-## 1. Final contribution structure
+## Executive decision
 
-| Layer | What the project contributes | What it does not claim |
+The project should not claim that the cost-ordered admissibility principle itself is new. That principle is already implemented in `services/monitor/admissibility.py`. The project should also not make adaptive RECF-DR search the headline. The current detector’s major boundary cases can be obtained from source inspection and threshold arithmetic, so guided-search superiority is not a credible primary claim.
+
+The final contribution should be framed as an **empirical cost-of-defense protocol and integrated repair result**:
+
+> **We designed and implemented a unified ransomware detection-and-recovery system, then developed a locked protocol that empirically calibrates the minimum attacker capability required to forge each false-positive mitigation or avoid each detection signal. Applying the protocol to URDS revealed that an unvalidated container claim could cancel high-entropy evidence across 11 of 16 recognized formats, and that the existing equality-based admissibility rule lacks resolution at the one-public-primitive boundary. We compared the current system with a no-exemption null control and a calibration-selected repair across the Monitor, ML, ledger, response, and recovery path, preserving validated benign behavior and trusted recovery within predeclared bounds.**
+
+This statement claims an implemented system, a reproducible method, a measured architectural finding, a repair, and an integrated evaluation. It does not claim that the abstract policy or every individual subsystem is new in the literature.
+
+## 1. What the project team built
+
+The final report must explicitly distinguish **authored implementation** from **literature novelty**. The following components are project-built engineering work and should be claimed as such:
+
+| Project-built component | Repository location | Authored contribution to describe |
 |---|---|---|
-| Method | Locked, auditable search protocol for minimum attacker capability. | That the five-level ladder is a universal attacker-economics theory. |
-| Case study | Application to URDS Monitor false-positive mitigations. | That the existing admissibility principle itself is new. |
-| Finding | Container exemption is ungoverned and treats unvalidated claims as validated explanations. | That every external detector has the same defect. |
-| Repair | Calibration-gated policy that refuses unvalidated or cost-tied cancellation. | That adding `is True` alone is always sufficient. |
-| Evaluation | Current policy versus no-exemption null control versus calibrated repair, with benign, recovery, and audit outcomes. | That a report and JSON file alone prove novelty. |
-| Optional extension | Full-pipeline governance or external detector comparison. | That deferred layers are already validated. |
+| Entropy and block-profile detection | `services/monitor/detection.py` | Detector signals, thresholds, history handling, structural branch ordering, and verdict schema. |
+| Container recognition and validation | `services/monitor/containers.py` | Tri-state validation model, bounded parsers, supported-format registry, and incomplete/unreadable handling. |
+| Suppression mechanisms | `services/monitor/suppression.py` | Path/hash whitelist, training mode, dwell constraints, structural profiles, and poisoning boundaries. |
+| Cost admissibility | `services/monitor/admissibility.py` | Forgery-versus-avoidance decision record, attenuation behavior, cost tables, and fail-closed defaults. |
+| Monitor/pipeline orchestration | `services/monitor/app.py`, `services/monitor/pipeline.py` | Observation, event construction, ML handoff, ledger handoff, and policy-decision propagation. |
+| ML feature and scoring service | `services/ml-engine/app.py`, `services/ml-engine/features.py` | Feature contract, model/backstop integration, and unscored-feature handling. |
+| Response service | `services/response/app.py`, `services/response/actions.py` | Response action boundary and enforcement behavior. |
+| Trusted recovery | `services/response/recovery/` | Snapshot selection, trusted hashes, restore verification, and explicit unverified outcomes. |
+| Tamper-evident ledger | `services/ledger/hash_chain.py` | Chain construction and verification used by recovery/audit evidence. |
+| Reversible ransomware-like simulator | `scripts/ransomware_simulator.py` | Owned-directory, manifest, mutation, restore, and family fixtures. |
+| Fixed family sweep | `scripts/simulator_sweep.py` | Reproducible 13-family baseline and restoration verification. |
+| Characterization evidence | `scripts/recf_probe.py`, `scripts/recf_exemption_evidence.py` | Detector-dependent witness generation, multi-format evidence, and gated reports. |
 
-The core result must contain a **code change, regression tests, and measured before/after outcomes**. Source inspection and deterministic evidence establish the vulnerability, but they do not complete the contribution by themselves.
+The team should state: **“These components were designed and implemented by the project team. We do not claim that every underlying technique is individually novel; our contribution is the project-specific integration, capability-calibration protocol, measured governance failure, and repair across the unified system.”**
 
-## 2. Claim boundary
+A detailed implementation record should be maintained in [`PROJECT_IMPLEMENTATION_RECORD.md`](PROJECT_IMPLEMENTATION_RECORD.md).
 
-The primary claim is scoped to the URDS Monitor:
+## 2. Final novelty hypothesis
 
-> **In the reviewed URDS Monitor implementation, a false-positive mitigation can bypass the common admissibility policy when a recognized container has no validator. A locked capability-search protocol identifies this bypass as directly controllable, exposes the insufficient resolution of an equal-cost policy tie, and guides a repair that refuses unvalidated or cost-tied cancellation while preserving positively validated benign controls within a predeclared bound.**
+The primary hypothesis is:
 
-Use “URDS Monitor” in the primary report. Use “unified detection-and-recovery system” only for tests that actually traverse:
+> **A security exception should not cancel detection evidence merely because it matches. It should be admitted only when the attacker capability required to forge the exception is strictly greater than the capability required to avoid the evidence, or when an independently justified safety rule overrides the tie. This policy must be calibrated through a locked, reproducible capability search and must preserve recovery and audit integrity across the unified pipeline.**
 
-```text
-Monitor → ML Engine → Ledger → Response → Recovery
-```
+This hypothesis contains two contributions:
 
-The ML confidence layer, response-isolation configuration, trusted recovery hash selection, and ledger verification are not silently covered by a Monitor-only experiment. They require a later pipeline gate with numerical acceptance criteria.
+1. a reusable measurement protocol for attacker-capability calibration; and
+2. its implemented application to a unified ransomware detector, where the protocol exposes and repairs an ungoverned multi-format exemption.
 
-## 3. Research questions and hypotheses
+The protocol is not presented as a universal attacker-economics model. It is a conservative, auditable method for the declared threat model and repository environment.
 
-| ID | Question | Hypothesis |
+## 3. Research questions
+
+| ID | Research question | Required evidence |
 |---|---|---|
-| RQ1 | Can a locked capability-search protocol produce reproducible attacker-capability levels? | Independent reviewers can reproduce the assigned lowest level from the recorded search trail. |
-| RQ2 | Does the current URDS Monitor contain mitigation paths outside common admissibility governance? | The container exemption bypasses `admissibility.adjudicate()`. |
-| RQ3 | Is the container exemption exploitable across the recognized-format registry? | The 11 unvalidated unique formats accept fresh high-entropy witnesses through `container_valid=None`. |
-| RQ4 | Is an equality rule sufficient at the decision boundary? | No. A one-primitive forgery and one-primitive avoidance tie cannot establish safe dominance. |
-| RQ5 | Does the calibrated repair improve security without unacceptable benign cost? | The repair closes the unvalidated witness; its benign cost is measured against the current and null controls. |
-| RQ6 | Does the repair preserve URDS reliability? | Fixed detection, restoration, and audit regression suites remain within predeclared bounds. |
+| RQ1 | Can the capability-search protocol assign reproducible levels to avoidance and forgery strategies? | Locked search log, versions, source URLs, licenses, fixture hashes, and second-reviewer reproduction. |
+| RQ2 | Which URDS paths cancel or weaken suspicious evidence? | Complete source/call-site inventory across Monitor, ML, ledger, response, and recovery. |
+| RQ3 | Does the current container exemption accept unvalidated recognized-format claims? | 20 signature-entry/16-format deterministic evidence report. |
+| RQ4 | Does the existing equality rule authorize equal-capability mitigation and avoidance strategies? | Admission-recompute matrix under the frozen calibrated table. |
+| RQ5 | Does the calibrated repair close the bypass without simply preserving a different public-primitive attack? | Current/null/repair experiment including validated-format forgery and incomplete validation. |
+| RQ6 | Does the repair preserve the unified system’s behavior? | ML, ledger, response, recovery, and fixed-family regression gates. |
+| RQ7 | What false-positive cost does the repair impose in the deployment-relevant corpus? | Stratified benign corpus and paired statistics. |
 
-## 4. Define the valid attack domain
+An external detector comparison is future work. It is not required for the core capstone claim, provided the report clearly scopes the result to URDS.
 
-A behavior vector is:
+## 4. Threat model and valid case domain
 
-```text
-v = (format, payload construction, file size, changed fraction,
-     block placement, path history, structural state, timing)
-```
+The attacker can write or modify files in the monitored environment, choose paths and filenames, and use public software available under the declared environment. The attacker cannot forge a cryptographic preimage, access unavailable secrets, or alter the experiment’s manifests and reports without that alteration being recorded as a safety failure.
 
-A case is an **attacker-valid witness** only when:
+A test case is valid only if:
 
-1. the attacker-controlled operations are fully recorded and reproducible;
-2. the transformation makes the protected content fail a declared application-level integrity or usability objective;
+1. the operations and tool versions are recorded;
+2. the case achieves a declared attacker objective;
 3. the structural label matches the actual construction;
-4. the case does not depend on a missing observer event, test failure, or infrastructure error;
-5. original bytes restore exactly from a recorded manifest; and
-6. the outcome is not classified as an attack if it is only a byte mutation control.
+4. the case does not depend on an observer or infrastructure failure;
+5. the original bytes restore exactly from the manifest; and
+6. the result is classified separately as `attacker_valid`, `mutation_control`, `invalid`, or `safety_failure`.
 
-For the current decoy, the objective is explicit: a checksum or manifest digest for the protected member must fail after transformation. A syntactically valid ZIP is therefore not automatically a successful attack; it must also fail the protected-content integrity check. This avoids calling harmless re-encoding an evasion.
+For the project fixture, the attacker objective is defined by an application-level integrity check. A container may remain syntactically valid while its protected member fails the recorded digest or usability check. A harmless re-encoding that leaves the protected objective intact is not an attack witness.
 
-## 5. Complete mitigation audit
+## 5. Capability calibration before repair
 
-The first audit maps every mechanism that can cancel, suppress, downgrade, or prevent action on suspicious evidence.
+Calibration must precede repair design. The team must not choose `container_valid is True`, a provenance rule, an inner-content rule, or a tie rule and only afterward assign costs that justify it.
 
-| Mechanism | Repository location | Common adjudication? | Required proof |
-|---|---|---:|---|
-| Hash whitelist | `services/monitor/suppression.py`, `app.py` | Yes | High-capability preimage claim and exact-hash tests. |
-| Path whitelist | `services/monitor/suppression.py`, `app.py` | Yes | Low-capability path-forgery tests and attenuation tests. |
-| Training mode | `services/monitor/suppression.py`, `app.py` | Yes | Dwell, structure, history, and poisoning tests. |
-| Container exemption | `services/monitor/detection.py` | **No** | Multi-format evidence, capability calibration, and repair. |
-| Low-entropy fall-through | `services/monitor/detection.py` | No | Mutation-control and attacker-objective classification. |
-| ML confidence/backstop | ML service and pipeline | Separate | Explicitly deferred or separately audited. |
-| Response isolation | Response/pipeline configuration | Separate | Numerical pipeline test if claimed. |
-| Trusted recovery hash | Recovery ledger client | Separate | Integrity and recovery gate if claimed. |
-| Ledger-chain verification | Ledger/recovery path | Separate | Tamper-injection gate if claimed. |
+### 5.1 Locked tooling search
 
-The audit is documentation, not the result. The result begins when the protocol measures the cost of the mitigation, the current/null/repair experiment shows the trade-off, and the repair is committed with regression tests.
+For each mitigation-forgery and signal-avoidance strategy:
 
-## 6. The locked capability-search protocol
+1. search the Python standard library and installed system utilities;
+2. search approved packages and installed packages;
+3. search public repositories and official documentation;
+4. search the literature;
+5. record the exact command/API, tool version, URL, license/status, required inputs, output hash, and fixture result;
+6. assign the lowest reproducible capability level; and
+7. have a second reviewer repeat the search from the record.
 
-The protocol is the primary method contribution. It must be written before the repair is selected and frozen before the final outcomes are examined.
+The search protocol is frozen before the final repair comparison. If a lower-level method is discovered later, it is recorded as a protocol finding and the affected policy decision is recomputed rather than silently ignored.
 
-### 6.1 Ordered search
+### 5.2 Capability ladder
 
-For each avoidance or forgery strategy, execute the following ordered search:
-
-| Search order | Source | Record |
+| Level | Meaning | Example |
 |---:|---|---|
-| 1 | Python standard library and installed system utilities | Package/runtime version, exact API or command, result. |
-| 2 | Approved package index and installed packages | Package version, license, API/command, result. |
-| 3 | Public repositories and official documentation | URL, commit/release, license, inputs, result. |
-| 4 | Academic and technical literature | Citation, described method, required assumptions, result. |
-| 5 | New project implementation | New code, engineering effort category, validation result. |
+| 0 | Direct attacker control | Write bytes, choose a path, rename a file, or prefix a recognized magic value. |
+| 1 | Public primitive | Standard-library call, installed command, or mature public package performs the operation without format-specific engineering. |
+| 2 | Format-aware capability | Additional format-specific structural or semantic constraints must be satisfied. |
+| 3 | New engineering or unavailable privilege | Material new implementation or out-of-model privileged access is required. |
+| 4 | Secret/preimage | Protected secret, signing material, or cryptographic preimage is required. |
 
-The first reproducible source that achieves the objective determines the lowest capability level. The protocol must not skip a standard-library search because the operation “looks sophisticated.”
+This scale is categorical, not monetary. Runtime, CPU, memory, and changed bytes are secondary measurements and cannot promote a Level 1 public primitive to Level 2 merely because the output appears sophisticated.
 
-### 6.2 Capability ladder
+### 5.3 Strict tie policy
 
-| Level | Definition | Example |
-|---:|---|---|
-| 0 — Direct control | A write, rename, path choice, or magic-prefix operation is enough. | Prefix ciphertext with an unvalidated recognized signature. |
-| 1 — Public primitive | A standard-library call, installed command, or mature public package performs the operation without format-specific implementation. | `gzip.compress()` or a basic `ZIP_STORED` container construction. |
-| 2 — Format-aware capability | The attacker must satisfy format-specific structural or semantic invariants beyond a public primitive. | Produce an application-acceptable protected file whose content semantics remain plausible. |
-| 3 — New engineering/privilege | Material new implementation, unavailable privilege, or out-of-model system capability is needed. | Implement an unsupported validator or obtain privileged telemetry. |
-| 4 — Secret/preimage | An unavailable secret, cryptographic preimage, or protected signing/key material is required. | Forge an approved SHA-256 whitelist preimage. |
-
-The ladder is not a currency. Adjacent levels are categories, not equal monetary distances.
-
-### 6.3 Equality rule
-
-The policy must not authorize an equality tie by default:
+Let:
 
 ```text
-admit mitigation m only if C_forge(m) > C_avoid(s)
+C_avoid(signal) = lowest level of a valid strategy that avoids the signal
+C_forge(mitigation) = lowest level of a valid strategy that makes the mitigation match
+```
+
+The calibrated policy is:
+
+```text
+admit only if C_forge(mitigation) > C_avoid(signal)
 otherwise attenuate, defer, or require independent evidence
 ```
 
-The strict inequality is a deliberate improvement over the existing `forging >= avoiding` rule. If both forging the mitigation and avoiding the signal are demonstrably achievable at Level 1, the policy has no evidence that the mitigation is safer. It must not admit solely on equality.
+Strict inequality is necessary because equal capability does not demonstrate that the mitigation is harder to forge. A documented independent-evidence exception may override a tie only if it was declared before outcome inspection.
 
-If the team chooses to retain `>=` for a specific mitigation, that must be a separately justified exception with an independent evidence requirement and a predeclared reason. It cannot be introduced after observing the desired outcome.
+For the current finding, an unvalidated magic prefix is Level 0, base64 and basic standard-library container generation are Level 1, and a content-provenance-preserving format-aware construction is Level 2 unless the public primitive already satisfies the requirement. These are calibration hypotheses until the locked search record is complete.
 
-### 6.4 Reproduction and audit trail
+## 6. Admission recomputation is a required result
 
-Every cost assignment must include:
+After the capability table is frozen and before repair coding, recompute every existing admission decision. Do not only identify that a tie exists; show which current decisions change.
 
-```text
-record_id
-avoidance_or_forgery
-signal_or_mitigation
-strategy_description
-attacker_objective
-capability_level
-exact_command_or_API
-tool/runtime/package version
-source URL or repository commit
-license/status
-required information
-resource measurements
-fixture input hash
-output hash
-validity classification
-reviewer reproduction
-policy version
-```
-
-A second reviewer must repeat the search from the record without relying on the original author’s interpretation. Disagreement produces an unresolved or conservative level; it does not get averaged away.
-
-## 7. Current evidence and decisive witnesses
-
-### 7.1 Multi-format unvalidated witness
-
-The current detector recognizes 20 signature entries corresponding to 16 unique formats. Five unique offset-zero formats have validators in the registry—ZIP, GZIP, PNG, JPEG, and PDF—while 11 do not. The unvalidated formats are 7z, RAR, XZ, BZip2, LZ4, Zstandard, GIF, MP3, OGG, FLAC, and RIFF.
-
-The evidence harness runs a fresh 64 KiB high-entropy payload with every recognized signature entry. Its current output records 13 unvalidated entries returning `benign_compressed` and zero unvalidated entries returning suspicious. The duplicate entry count is expected because ZIP, GIF, and MP3 have multiple signatures.
-
-This is a deterministic code-path result, not a random-sample estimate. The claim is scoped to the reviewed registry and current implementation.
-
-### 7.2 Validated-format public-primitive witness
-
-The study must also include a genuinely valid container constructed through a public primitive, with an application-level integrity failure in the protected member. This witness prevents the plan from treating “positive validation” as synonymous with “safe benign provenance.”
-
-The acceptance table must include this witness explicitly. Arm C fails if it continues to accept a malicious but positively validated container solely because `container_valid=True`. That failure is not a defect in the experiment; it tells the team that structural validation alone is insufficient and that the repair must add content provenance, trusted history, or an independent signal.
-
-### 7.3 Incomplete-validation witness
-
-A supported format whose validator returns `INCOMPLETE` or an equivalent non-decision must not be silently converted into positive validation. The policy output must distinguish:
+The matrix must cover every relevant pair:
 
 ```text
-VALID      → eligible for exemption review
-FORGED     → evidence against the claim
-INCOMPLETE → deferred/unverified
-UNVALIDATED→ no structural evidence; fail closed
-UNREADABLE → observation failure or unverified state
+{hash, path, training_mode, container_exemption}
+×
+{ransom_extension, static_entropy, entropy_rise,
+ partial_entropy, structural_mismatch, container-exemption evidence}
 ```
 
-## 8. The three-arm experiment
+For each pair, record:
 
-Every final security claim must compare the same locked cases under three arms.
+```text
+current_forgery_cost
+current_avoidance_cost
+calibrated_forgery_level
+calibrated_avoidance_level
+current rule (>=)
+calibrated rule (>)
+flipped or unchanged
+reason
+```
 
-| Arm | Definition | Purpose |
+The expected result must not be pre-written as a conclusion. In particular, if path and training-mode forgery are both Level 1 and static-entropy avoidance is also Level 1, the strict rule changes those entries from admitted to attenuated. The final report must show whether that happens under the locked evidence, because it may demonstrate that two deployed mitigations were previously cost-unjustified or that the scale needs a documented refinement.
+
+This recomputation is a central evidence table, not an appendix.
+
+## 7. The required three-arm experiment
+
+All final repair claims use the same locked attack and benign cases under three arms.
+
+| Arm | Definition | Why required |
 |---|---|---|
-| A — Current | Existing behavior, including `container_valid is not False`. | Measures the deployed baseline. |
-| B — Null | Container exemption disabled completely. | Measures the maximum false-positive cost of removing the mitigation. |
-| C — Calibrated repair | Repair selected after capability calibration; at minimum, no silent cancellation for `None`, `INCOMPLETE`, or capability ties. | Tests whether the measured policy improves security at lower cost than deleting the exemption. |
+| A — Current | Existing URDS behavior, including the current container exemption. | Establishes the actual baseline. |
+| B — Null | Container exemption removed or disabled. | Measures the cost of deleting the mitigation entirely. |
+| C — Calibrated repair | Repair selected after calibration and admission recomputation. | Tests the proposed governance result. |
 
-Arm B is not optional. It bounds whether the governance mechanism is necessary. If Arm B’s false-positive cost is acceptable, a complex governance layer may not be justified. If Arm B is expensive while Arm C closes the witness and preserves validated benign behavior within the predeclared bound, governance has a measurable technical purpose.
+The null control is essential. If Arm B’s false-positive cost is acceptable, a governance layer may not be necessary. If Arm B is costly while Arm C closes the attack at lower benign cost, the policy has a measured technical purpose.
 
-## 9. Repair-selection rule
+### 7.1 Candidate repair variants
 
-The repair must be selected **after** calibration and before the final outcome comparison. Candidate repairs include:
+The team may test multiple candidates, but the final winner is selected only after calibration:
 
-| Candidate | When justified |
+| Variant | Purpose |
 |---|---|
-| Positive-validation gate | When unvalidated `None` is the only cause of the bypass and benign cost is acceptable. |
-| Strict tie handling | When `C_forge == C_avoid` occurs and equality provides no safety margin. |
-| Content-provenance or trusted-history requirement | When a public primitive can create a valid container around attacker-controlled content. |
-| Inner-content or recursive validation | When outer-container validity is insufficient for the protected member. |
-| Explicit `unverified/deferred` result | When validation cannot decide without false certainty. |
-| Additional independent signal | When the exemption is safe only in the presence of corroborating evidence. |
+| Positive validation gate | Refuse `None` and `INCOMPLETE` as positive structural proof. |
+| Strict capability tie | Do not admit when `C_forge == C_avoid`. |
+| Content provenance | Require trusted baseline, inner-content integrity, or independent evidence in addition to outer structure. |
+| Inner-content/recursive validation | Prevent an attacker from placing changed content inside a valid outer container. |
+| Explicit deferred state | Represent unavailable validation without silently treating it as benign. |
 
-Do not promise that `container_valid is True` alone is the final answer. It is one candidate repair whose acceptance depends on the public-primitive witness, benign controls, and policy margin.
+The repair is not automatically `container_valid is True`. That candidate must face the validated-format public-primitive witness.
 
-## 10. Correct acceptance criteria
+## 8. Corrected witness set and corpus
 
-The plan must not allow Arm C to pass while preserving its own attack. The following criteria are mandatory:
+### 8.1 Required attack witnesses
 
-| Criterion | Required outcome |
+The evidence harness must include:
+
+1. the 20 recognized signature entries representing 16 unique formats;
+2. the 11 unvalidated-format fresh high-entropy witnesses;
+3. a genuinely valid container constructed with a public primitive around protected content that fails application-level integrity;
+4. an `INCOMPLETE` or equivalent undecidable validator case;
+5. the same format on fresh and observed paths; and
+6. forged supported-format cases that should produce structural mismatch.
+
+The validated-format forgery witness must appear in the acceptance table. Arm C fails if it continues to accept that witness without a separately justified provenance, history, or independent-evidence control.
+
+### 8.2 Stratified benign corpus
+
+The benign corpus must be stratified by:
+
+```text
+(validation state: validated | unvalidated)
+×
+(payload compressibility: compressible | incompressible)
+```
+
+The deciding cell is **unvalidated × incompressible**, because that is where positive validation gating can turn a benign-compressed outcome into a suspicion. Text archives belong to the compressible cell and must not be treated as evidence that the repair has no cost.
+
+Select **five or six formats before collecting outcomes**, based on the project’s deployment story. A reasonable default is ZIP, GZIP, PDF, PNG, JPEG, and one operationally relevant unvalidated format such as XZ or Zstandard. Do not claim 16-format statistical coverage when the deployment corpus contains only five or six formats.
+
+For each selected format, collect up to 100 locked benign fixtures where available, with the exact count reported. Include:
+
+- ordinary archive creation and extraction;
+- package downloads and installation;
+- version-control clones;
+- browser or service downloads;
+- backup creation;
+- document export;
+- media processing; and
+- ordinary benign encryption or compression workloads where operationally relevant.
+
+The corpus must include both compressible text/document payloads and incompressible media or already-compressed payloads. The latter is the cell that measures the repair’s real false-positive cost.
+
+## 9. Acceptance criteria that cannot self-certify
+
+The repair is accepted only if all required rows pass.
+
+| Criterion | Required result |
 |---|---|
-| Unvalidated-format witness | Arm C does not return silent `benign_compressed` for the 11 unvalidated unique formats under the attacker-valid high-entropy objective. |
-| Validated-format forgery witness | Arm C’s result is explicitly evaluated; if it remains benign, the plan must add provenance/history/independent-evidence governance or mark the repair insufficient. |
+| Unvalidated-format closure | Arm C produces no silent `benign_compressed` result for the 11 unvalidated-format attacker-valid witnesses. |
+| Validated public-primitive witness | Arm C explicitly evaluates it. If it remains benign, the plan adds provenance/history/independent evidence or rejects the repair as insufficient. |
 | Incomplete validation | No silent benign cancellation; result is `deferred` or `unverified`. |
-| Null-control comparison | Arm B quantifies the false-positive cost of removing the exemption. |
-| Validated benign corpus | Arm C remains non-inferior to Arm A within a predeclared bound for the selected deployment formats. |
-| Fixed ransomware suite | Existing 13-family baseline remains 13/13 detected and restored. |
-| Recovery | No case counts as a successful repair if trusted restoration fails. |
-| Audit | Every decision contains mitigation ID, validation state, cost levels, margin rule, policy version, and reason. |
-| Safety | Original hashes restore exactly; no unrelated directory content is touched. |
+| Current/null comparison | Arm A, B, and C outcomes are all reported; Arm B quantifies the maximum cost of deleting the exemption. |
+| Validated benign controls | Arm C is non-inferior to Arm A within the predeclared bound on the selected validated deployment corpus. |
+| Unvalidated benign controls | False-positive cost is reported separately for compressible and incompressible payloads; no zero-cost assumption is allowed. |
+| Admission recomputation | Every existing mitigation/signal pair is recomputed and any flipped admission is reported. |
+| Fixed detector baseline | Existing 13-family sweep remains 13/13 detected within the project’s detection deadline and restores correctly. |
+| ML preservation | Existing ML feature/API contract tests pass and no policy metadata is silently discarded. |
+| Ledger preservation | Every repaired decision reaches the ledger with mitigation ID, validation state, capability levels, policy version, and reason. |
+| Response preservation | Suspicious cases still produce the expected response action; no response loss is hidden by isolation settings. |
+| Recovery preservation | Cases with trusted snapshots achieve 100% verified restoration; missing or mismatched trust is never reported as verified. |
+| Tamper handling | Every injected ledger-tamper case fails verification and remains traceable. |
+| Safety | All cases restore exactly, and no unrelated target content is modified. |
 
-The validated-format forgery row is the most important correction. It prevents the plan from certifying a repair that still accepts the public-primitive attack it was supposed to govern.
+The first six rows establish the Monitor contribution. The ML, ledger, response, and recovery rows are required because the project presents itself as a unified system; if any are deferred, the final claim must explicitly say “Monitor-scoped.”
 
-## 11. Benign corpus and statistical design
+## 10. Statistical design
 
-The 100-files-per-format requirement is too broad for the project window. Scope the corpus to formats in the deployment story. The project should choose **five or six formats** before collecting outcomes, for example ZIP, GZIP, PDF, PNG, JPEG, and one format that the intended deployment actually handles. If a sixth format is not operationally relevant, do not add it merely for symmetry.
+The multi-format bypass itself is a deterministic code-path result and does not require a prevalence estimate. Statistics are required for benign trade-offs, timing, and any noisy pipeline measurement.
 
-For each selected format, use up to 100 locked benign fixtures where available. Include ordinary archive creation/extraction, downloads, version-control clones, package installation, backups, media operations, and document exports as applicable. If a format cannot reach the target count, report the exact count and treat its result descriptively.
+For each selected corpus format, use the same fixtures under Arms A, B, and C. For paired binary outcomes, report discordant pairs, absolute risk difference, and exact or mid-p confidence intervals. Use McNemar’s test only as a paired comparison; do not treat events from one file as independent samples.
 
-Use the same files or replay traces under Arms A, B, and C. For paired binary outcomes, use McNemar’s test and report discordant pairs, exact confidence intervals, and absolute risk difference. Use a predeclared non-inferiority bound, such as:
+Predeclare a validated-benign non-inferiority bound, for example:
 
 ```text
 FPR(C) − FPR(A) ≤ 2 percentage points
 ```
 
-The bound must be selected before reviewing outcomes and justified by the project’s operational tolerance. For timing, use 10 repetitions per case and report median/IQR; timing is secondary to policy correctness.
+The one-sided 95% confidence bound must be evaluated against that bound. For unvalidated formats, do not impose the same non-inferiority claim; report the measured trade-off and use it to decide whether a real validator or explicit operator policy is justified.
 
-## 12. Minimal implementation plan
+Use at least 10 repetitions per case for timing claims and report median and IQR. Timing is secondary to policy correctness.
 
-The primary contribution must be achievable without building a premature `recf_dr/` framework.
+## 11. Full-system integration is required
 
-### Work package 1 — Audit and baseline
+The core project result must traverse the existing unified path at least once for every repaired decision class:
 
-Produce the mitigation-path table, freeze the branch and environment, run the existing 13-family suite, and document the Monitor-only claim boundary.
+```text
+Monitor → ML Engine → Ledger → Response → Recovery
+```
 
-**Exit gate:** every cancellation path has a source location, test identifier, current governance status, and scope decision.
+The integration test must prove that:
 
-### Work package 2 — Evidence harness
+1. the Monitor’s mitigation decision and capability metadata survive the ML handoff;
+2. the ML result does not silently overwrite the policy outcome;
+3. the event and policy record enter the tamper-evident ledger;
+4. the response layer takes the expected action for suspicious outcomes;
+5. the recovery layer uses the trusted-hash policy correctly; and
+6. the final operator/audit view can distinguish `cancelled`, `attenuated`, `deferred`, `restored_verified`, and `restored_but_unverified`.
 
-Run the 20-signature/16-format evidence script, add the valid-container public-primitive witness and the incomplete-validation witness, and record attacker-objective validity.
+The full-system extension is not a request to build new ML or mobile technology. It is an integration and evidence requirement for the technologies already present in this repository.
 
-**Exit gate:** the current vulnerability is reproduced with hashes, exact commands, and no safety failures.
+## 12. Implementation sequence
 
-### Work package 3 — Capability calibration
+### P0 — Freeze baseline and authorship record
 
-Execute the locked tooling search for each relevant avoidance and forgery strategy. Have a second reviewer reproduce the records. Freeze the cost table and tie rule before repair coding.
+Record the branch, commit, environment, existing test result, component inventory, and project-built modules. Run the fixed 13-family simulator and the existing ML, ledger, response, and recovery tests.
 
-**Exit gate:** every cost level is backed by a reproducible source trail, and equal-cost cases are identified.
+**Exit gate:** baseline is reproducible and the report states exactly which layers are in scope.
 
-### Work package 4 — Null control
+### P1 — Audit all mitigation paths
 
-Implement the no-exemption arm behind a test or configuration switch. Run it on the locked benign corpus and attack witnesses.
+Trace every branch that suppresses, cancels, attenuates, downgrades, or prevents response. Mark whether it reaches common admissibility, whether it has a capability entry, and whether its decision reaches the ledger.
 
-**Exit gate:** the false-positive cost of deleting the exemption is quantified.
+**Exit gate:** no evidence-cancellation path remains unclassified.
 
-### Work package 5 — Calibrated repair
+### P2 — Run current evidence and build the locked corpus
 
-Implement the repair chosen from Work Package 3, initially in shadow or behind a switch. It must govern `None`, `INCOMPLETE`, structural validity, provenance/history, and cost ties as specified by the frozen policy.
+Run the multi-format evidence script, valid-container public-primitive witness, incomplete-validation witness, and the stratified benign corpus. Freeze inputs and hashes.
 
-**Exit gate:** Arm C closes the unvalidated witness and does not pass the validated-format forgery witness without an explicitly accepted additional safeguard.
+**Exit gate:** the 11/16 unvalidated result, the validated-forgery result, and the four benign strata are reproducible.
 
-### Work package 6 — Regression and selected benign evaluation
+### P3 — Calibrate capability and recompute admissions
 
-Run the fixed simulator suite, recovery/audit tests, and the selected five-or-six-format benign corpus under all three arms.
+Complete the locked tooling search, obtain independent reproduction, freeze the capability table and strict tie rule, then recompute every existing mitigation/signal admission.
 
-**Exit gate:** no fixed-family regression, restoration failure, audit loss, or unreported false-positive trade-off.
+**Exit gate:** the admission-flip table is complete and no repair has yet been selected on the basis of post-hoc pricing.
 
-### Work package 7 — Final claim package
+### P4 — Implement and evaluate the repair in shadow
 
-Write the method, case study, evidence, repair, negative results, limitations, and reproducibility commands. Include a claim-to-artifact matrix.
+Implement the repair candidate selected from P3 behind a configuration or shadow switch. Run Arms A, B, and C on the locked attack and benign sets.
 
-**Exit gate:** every sentence in the headline contribution maps to code, a test, a report, or a clearly labeled assumption.
+**Exit gate:** the repair closes the unvalidated witness, faces the validated public-primitive witness, and passes or fails according to the predeclared table.
 
-## 13. Timeline
+### P5 — Integrate through ML, ledger, response, and recovery
 
-The first five packages should fit approximately **6–8 working days** for a focused capstone implementation. Work Package 6 may extend the schedule depending on benign-corpus collection.
+Propagate the policy record through the existing unified pipeline. Add failure injections for missing trusted baseline, mismatched restored hash, corrupted snapshot, ledger tampering, and response-isolation behavior.
 
-| Day | Output |
+**Exit gate:** numerical full-system gates pass, or the final claim is reduced to Monitor scope.
+
+### P6 — Regression and final evaluation
+
+Add regression tests for the multi-format witness, all admission flips, benign strata, fixed families, and recovery/audit failures. Run the paired statistics and generate the final claim-to-artifact matrix.
+
+**Exit gate:** every headline sentence maps to implementation, test, report, or explicit assumption.
+
+## 13. Time-boxed schedule
+
+The core plan is approximately **8–10 focused working days**, not 15–24 days. The first result is not complete until the repair and measurement exist.
+
+| Day | Deliverable |
 |---:|---|
-| 1 | Mitigation audit, branch/environment freeze, baseline. |
-| 2 | Multi-format and valid-container evidence package. |
-| 3 | Capability-search records and independent reproduction. |
-| 4 | Null-control measurements and cost table freeze. |
-| 5 | Shadow calibrated repair and decisive-witness comparison. |
-| 6 | Regression, recovery/audit, and selected benign controls. |
-| 7 | Paired statistics, figures, and claim-to-artifact matrix. |
-| 8 | Final thesis/report revision and reproducibility review. |
+| 1 | Baseline freeze, authorship record, mitigation inventory. |
+| 2 | Multi-format evidence, valid-forgery and incomplete-validation witnesses. |
+| 3 | Deployment-format selection and stratified benign corpus assembly. |
+| 4 | Capability-search records and second-reviewer reproduction. |
+| 5 | Admission-recompute table and frozen strict tie policy. |
+| 6 | Shadow repair and current/null/repair attack comparison. |
+| 7 | Benign paired evaluation and false-positive trade-off analysis. |
+| 8 | ML → ledger → response → recovery integration and failure injection. |
+| 9 | Regression suite, audit verification, and final statistics. |
+| 10 | Thesis/report writing, limitations, reproducibility package, and review. |
 
-Full-pipeline extension and external-detector comparison are future work unless the core result finishes early. Adaptive RECF-DR search is not part of the primary plan.
+Adaptive RECF-DR search, Pareto optimization, eleven new validators, external-detector comparison, Polygon anchoring, and mobile support are future work. They must not displace the evidence required for the core result.
 
 ## 14. Final claim-to-evidence matrix
 
-| Claim | Minimum evidence | Allowed wording |
+| Claim | Evidence required | Allowed wording |
 |---|---|---|
-| Protocol is reproducible | Search log, versions, sources, second-reviewer reproduction | “We define a reproducible capability-search protocol…” |
-| Container exemption is ungoverned | Source inspection and call-site trace | “In the reviewed URDS Monitor…” |
-| 11/16 recognized formats are unvalidated | Registry and deterministic evidence report | “The current registry contains…” |
-| Bypass is low capability | Recorded direct-prefix strategy and objective-valid witness | “Under the declared capability model…” |
-| Equal-cost governance is insufficient | Capability calibration identifies a tie and policy outcome | “The calibrated policy treats the tie as insufficient for cancellation…” |
-| Repair closes the tested bypass | Arm A/B/C paired experiment and regression tests | “The repair closed the evaluated bypass…” |
-| Benign cost is acceptable | Selected corpus and non-inferiority result | “On the evaluated deployment corpus…” |
-| Full pipeline is improved | Monitor, ML, ledger, response, recovery gates | Do not claim unless all pass. |
-| External generalization | Independent detector comparison | Do not claim without it. |
-| Patentability/legal novelty | Formal review | Never infer from this plan alone. |
+| The capability-search protocol is reproducible | Locked protocol, source trail, hashes, second reviewer | “We introduce a reproducible capability-calibration protocol…” |
+| The team built the URDS integration | Component record, commits, tests, architecture | “The project team designed and implemented…” |
+| The container exemption is ungoverned | Source/call-site audit and deterministic evidence | “In the reviewed URDS Monitor…” |
+| 11/16 recognized formats are unvalidated | Registry and 20-entry evidence report | “The current registry contains…” |
+| The policy had a resolution problem | Frozen capability table and admission-flip matrix | “Under the declared capability model…” |
+| The repair closes the tested bypass | Arms A/B/C and regression results | “The repair closed the evaluated bypass…” |
+| Benign cost is acceptable | Stratified deployment corpus and non-inferiority analysis | “On the evaluated corpus…” |
+| The unified pipeline preserves trust | ML, ledger, response, recovery gates | “In the evaluated URDS pipeline…” |
+| General ransomware-detector improvement | External detector comparison | Do not claim without it. |
+| Patentability or legal novelty | Formal legal/prior-art review | Never infer from this plan alone. |
 
 ## 15. Final contribution statement
 
-Use the following wording in the thesis or final report:
+Use this statement in the thesis or final report:
 
-> **We introduce a locked, reproducible protocol for calibrating the minimum attacker capability required to forge a detector mitigation or avoid a detection signal. The protocol searches available tooling in a fixed order, records executable evidence, versions, sources, licenses, fixture validity, and independent reproduction, and assigns the lowest capability level supported by the record. Applied to the URDS Monitor, the protocol exposes an ungoverned container exemption that accepts unvalidated format claims as explanations for high entropy across 11 of 16 recognized formats, identifies an equal-capability policy tie at the decision boundary, and guides a repair evaluated against the current policy and a no-exemption null control. The repaired system closes the tested bypass while preserving selected validated benign workloads, fixed-family detection, trusted recovery, and auditable policy outcomes within predeclared bounds.**
+> **The project team designed and implemented a unified ransomware detection-and-recovery system and a locked protocol for calibrating attacker capability in detector policy. The protocol searches available tooling in a fixed order, records executable evidence, versions, sources, licenses, fixture validity, and independent reproduction, and assigns the lowest capability level supported by the record. Applied to the URDS Monitor and then traced through the ML, ledger, response, and recovery path, it exposed an ungoverned container exemption that treated unvalidated format claims as explanations for high entropy across 11 of 16 recognized formats. A current/null/repair experiment and a complete admission-recompute table measured the policy trade-off, while a calibration-selected repair was accepted only if it closed the tested witnesses, preserved deployment-relevant benign behavior within a predeclared bound, maintained fixed-family detection, and preserved trusted recovery and auditable policy outcomes.**
 
-The words “in the evaluated URDS Monitor,” “under the declared capability model,” and “on the selected corpus” are essential. They keep the result rigorous without overclaiming universal detector security or legal novelty.
-
-## References
-
-[1]: https://github.com/VSshashank/unified-ransomware-system/blob/feat/detection-hardening/services/monitor/detection.py "URDS Monitor detection and container-exemption branch"
-[2]: https://github.com/VSshashank/unified-ransomware-system/blob/feat/detection-hardening/services/monitor/containers.py "URDS validator registry and tri-state validation"
-[3]: https://github.com/VSshashank/unified-ransomware-system/blob/feat/detection-hardening/services/monitor/admissibility.py "URDS existing cost-ordered admissibility principle"
-[4]: https://github.com/VSshashank/unified-ransomware-system/blob/feat/detection-hardening/services/monitor/suppression.py "URDS whitelist and training-mode paths"
-[5]: https://github.com/VSshashank/unified-ransomware-system/blob/feat/detection-hardening/scripts/recf_exemption_evidence.py "URDS deterministic multi-format evidence harness"
-[6]: https://arxiv.org/abs/2601.18216 "Rhea: Detecting Privilege-Escalated Evasive Ransomware Attacks Using Format-Aware Validation in the Cloud"
-[7]: https://arxiv.org/abs/2603.19204 "Robustness, Cost, and Attack-Surface Concentration in Phishing Detection"
-[8]: https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0273804 "MalFuzz: Coverage-guided fuzzing on deep learning-based malware classification model"
+The words “in the reviewed URDS implementation,” “under the declared capability model,” and “on the evaluated corpus” are mandatory. They preserve scientific honesty while clearly claiming the team’s own integrated engineering work and the measured method/result.
