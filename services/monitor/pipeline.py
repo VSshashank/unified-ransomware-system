@@ -88,6 +88,40 @@ def log_to_ledger(client: httpx.Client, event_type: str, event_data: dict) -> di
     return _post(client, LEDGER_URL, "/ledger/log", {"event_type": event_type, "event_data": event_data})
 
 
+def log_baseline(client: httpx.Client, event: dict) -> dict | None:
+    """Record what a file hashed to while it was still known-good.
+
+    `file_baseline` is one of the three event types
+    services/response/recovery/ledger_client.py will accept as a reference for
+    an integrity check, and until this existed nothing in the running system
+    wrote any of them. The Monitor reached the ledger only for suspicious
+    events, so the newest hash on an attacked path was the attacker's - which
+    made "does the restored file match the ledger" a test that passed only if
+    recovery handed back the ciphertext. The recovery client refuses to trust
+    that hash, correctly, and the result was a verification step that could
+    never verify anything.
+
+    Written once per path per monitor run, for a file the detector found benign
+    the first time it saw it. That is the strongest claim available without a
+    trusted installer manifest, and the claim is exactly what it says: this is
+    what the file hashed to when this monitor first saw it and had no reason to
+    think it had been touched.
+    """
+    return log_to_ledger(
+        client,
+        "file_baseline",
+        {
+            "file_path": event.get("file_path"),
+            "file_hash": event.get("file_hash"),
+            "file_size": event.get("file_size"),
+            "entropy": event.get("entropy"),
+            "verdict": event.get("verdict"),
+            "event_type": event.get("event_type"),
+            "observed_at": event.get("timestamp") or utc_now(),
+        },
+    )
+
+
 def predict(client: httpx.Client, features: dict) -> dict | None:
     return _post(client, ML_URL, "/predict", {"features": features})
 
@@ -150,7 +184,14 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
             "entropy_delta": verdict.get("entropy_delta"),
             "verdict": verdict.get("verdict"),
             "reason": verdict.get("reason"),
+            # Which detection fired, and whether any operator rule tried to
+            # cancel it. An outranked suppression is recorded here with both
+            # costs, so the chain shows a rule that was consulted and lost
+            # rather than leaving the operator to wonder why theirs did nothing.
+            "signal": verdict.get("signal"),
+            "admissibility": event.get("admissibility"),
             "container_format": verdict.get("container_format"),
+            "container_valid": verdict.get("container_valid"),
             "detection_latency_ms": event.get("detection_latency_ms"),
             "process_id": event.get("process_id"),
             "prediction": label,

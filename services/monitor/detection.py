@@ -12,6 +12,16 @@ the two, and the design doc names them as separate deliverables:
   that was 4.5 bits/byte and is now 7.9 was encrypted in place, which is the
   ransomware pattern. Magic bytes alone miss that when the encryptor writes a
   container header over the ciphertext; the rise still shows.
+
+Two more, added after a sweep of the simulator families measured what the first
+two miss (reports/simulator_families.json: `spoofer` 0/8, `partial` 0/8):
+
+* Structural container validation (services/monitor/containers.py): the magic
+  byte says what a file claims to be; the structure says whether it is. This is
+  what closes the exemption `spoofer` was walking through with four bytes.
+* Block-entropy profiling, below: whole-file entropy is an average, and an
+  average hides a file that is 25% ciphertext and 75% untouched. Intermittent
+  encryptors - LockBit 3.0, BlackCat - are built around exactly that arithmetic.
 """
 
 import hashlib
@@ -20,6 +30,10 @@ import os
 import threading
 import time
 from collections import Counter, OrderedDict, deque
+
+# Only the read size is needed here; the structural verdict itself is taken by
+# the caller and handed to `classify`, so this module stays free of the parsing.
+from containers import CONTAINER_TAIL_BYTES
 
 # Entropy at or above this is "encrypted-looking". 7.5 bits/byte is the usual
 # operating point: plain text sits ~4.5, office documents ~6, and both ciphertext
@@ -31,6 +45,40 @@ DEFAULT_ENTROPY_THRESHOLD = 7.5
 ENTROPY_SAMPLE_BYTES = 1024 * 1024
 HASH_CHUNK_BYTES = 1024 * 1024
 MAGIC_BYTES_READ = 16
+
+# ------------------------------------------------------- block-entropy profile
+#
+# Whole-file entropy is a mean, and a mean is exactly the wrong statistic for
+# intermittent encryption. `partial` in the simulator scrambles the leading
+# quarter of each file and leaves the rest: the ciphertext is at 7.99 and the
+# untouched tail at 4.65, so the file averages 5.22 and walks past a 7.5
+# threshold untouched. Measured, 0 of 8 flagged.
+#
+# Scoring 4KB blocks separately puts the two regions back on either side of the
+# line. 4096 is the smallest block that still measures entropy meaningfully -
+# below roughly 2KB the estimate is dominated by the fact that a short sample
+# cannot fill 256 bins, and every block starts to look non-uniform.
+ENTROPY_BLOCK_BYTES = int(os.getenv("ENTROPY_BLOCK_BYTES", str(4096)))
+MIN_ENTROPY_BLOCK_BYTES = 2048
+
+# A block at or above this is ciphertext-or-compressed. Higher than the
+# whole-file threshold on purpose: a 4KB window of genuinely random bytes lands
+# at ~7.95, and demanding 7.9 keeps ordinary high-entropy *content* - a JPEG's
+# scan data inside a larger file - from counting toward a partial-encryption
+# verdict on its own.
+HIGH_ENTROPY_BLOCK = float(os.getenv("HIGH_ENTROPY_BLOCK", "7.9"))
+
+# What it takes to call a file partially encrypted. All three must hold:
+#
+#   * enough blocks to have a profile at all - two blocks is a coincidence
+#   * a substantial *run* of them at ciphertext entropy, not one stray block
+#   * a wide spread, meaning the file contains both encrypted-looking and
+#     ordinary regions. A uniformly high-entropy file has no spread and is
+#     already caught by the plain threshold; requiring spread here is what keeps
+#     this rule from double-counting the case above it.
+MIN_PROFILE_BLOCKS = int(os.getenv("MIN_PROFILE_BLOCKS", "4"))
+PARTIAL_BLOCK_FRACTION = float(os.getenv("PARTIAL_BLOCK_FRACTION", "0.15"))
+PARTIAL_BLOCK_SPREAD = float(os.getenv("PARTIAL_BLOCK_SPREAD", "2.0"))
 
 # ---------------------------------------------- differential entropy analysis
 #
@@ -175,6 +223,42 @@ def read_sample(file_path: str, retry: bool = True) -> bytes:
         return b""
 
 
+def read_tail(file_path: str, size: int, retry: bool = True) -> bytes:
+    """The trailing CONTAINER_TAIL_BYTES, for the structural checks.
+
+    ZIP's central directory, PNG's IEND, JPEG's EOI and PDF's `%%EOF` all live
+    at the *end* of a file, and `read_sample` only ever sees the front. This is
+    a second seek on the detection path, so it is only paid when it can tell us
+    something new: a file that fits inside the leading sample is already
+    entirely in hand, and `sample_file` returns that sample as its own tail
+    rather than opening it twice.
+    """
+    if size <= 0:
+        return b""
+    try:
+        with open_for_read(file_path, retry=retry) as handle:
+            if size > CONTAINER_TAIL_BYTES:
+                handle.seek(size - CONTAINER_TAIL_BYTES)
+            return handle.read(CONTAINER_TAIL_BYTES)
+    except (OSError, ValueError):
+        return b""
+
+
+def sample_file(file_path: str, size: int, retry: bool = True) -> tuple[bytes, bytes]:
+    """The leading sample and a trailing sample, in as few reads as possible.
+
+    Returns `(head, tail)` where `tail` is a genuine suffix of the file - which
+    is what `containers.container_status` requires to do offset arithmetic. For
+    a file at or under ENTROPY_SAMPLE_BYTES the head *is* the whole file, so it
+    is returned as both and no second read happens. That covers the great
+    majority of events; only files over a megabyte pay for the tail.
+    """
+    head = read_sample(file_path, retry=retry)
+    if size <= len(head):
+        return head, head
+    return head, read_tail(file_path, size, retry=retry)
+
+
 def calculate_entropy(file_path: str, retry: bool = True) -> float:
     """Shannon entropy in bits/byte over the first ENTROPY_SAMPLE_BYTES.
 
@@ -201,18 +285,97 @@ def _entropy_from(counts: Counter, total: int) -> float:
     return round(entropy, 2)
 
 
-def measure(data: bytes) -> tuple[float, dict]:
-    """Entropy and byte statistics from one pass over the buffer.
+def block_entropy_profile(data: bytes, block: int = ENTROPY_BLOCK_BYTES) -> list[float]:
+    """Entropy of each `block`-sized window, in order.
 
-    Both measurements are a function of the same byte histogram, so counting
-    once and deriving both halves the per-event cost. Building the histogram
-    twice put detection latency at 62ms p95 where sharing it holds ~30ms
-    (measured over 40 files, 4KB-2MB, on Windows 11 build 26200) - still inside
-    the 100ms target either way, but the target is not the reason to pay double.
+    Split out from `measure` so tests and analysis scripts can look at the shape
+    of a file directly. The detector itself goes through `measure`, which
+    derives this and the whole-file figures from the same single pass.
     """
-    counts = Counter(data)
-    total = len(data)
-    return _entropy_from(counts, total), _statistics_from(counts, total)
+    return _profile(data, block)[2]
+
+
+def _profile(data: bytes, block: int) -> tuple[Counter, int, list[float]]:
+    """One pass: per-block entropies and the histogram of the whole buffer.
+
+    The whole-file histogram is the sum of the per-block ones, so the block
+    profile costs a dictionary merge per block rather than a second walk over
+    the bytes. A trailing block shorter than MIN_ENTROPY_BLOCK_BYTES is counted
+    into the total but left out of the profile - too few bytes to fill 256 bins
+    is measured as low entropy no matter what is in it, and a short tail block
+    would drag `entropy_block_spread` down on every file.
+    """
+    totals: Counter = Counter()
+    blocks: list[float] = []
+
+    for start in range(0, len(data), block):
+        chunk = data[start : start + block]
+        counts = Counter(chunk)
+        totals.update(counts)
+        if len(chunk) >= MIN_ENTROPY_BLOCK_BYTES:
+            blocks.append(_entropy_from(counts, len(chunk)))
+
+    return totals, len(data), blocks
+
+
+def _block_scalars(blocks: list[float]) -> dict:
+    """The three numbers the verdict and the ML feature vector read.
+
+    Reported as 0.0 rather than None for a file with no measurable blocks. The
+    model needs a number in every column, and "no high-entropy blocks were
+    found" and "there were no blocks to look at" both mean the same thing to
+    every rule that consumes these.
+    """
+    if not blocks:
+        return {
+            "entropy_max_block": 0.0,
+            "entropy_block_spread": 0.0,
+            "high_entropy_block_fraction": 0.0,
+            "entropy_blocks": 0,
+        }
+
+    high = sum(1 for value in blocks if value >= HIGH_ENTROPY_BLOCK)
+    return {
+        "entropy_max_block": round(max(blocks), 2),
+        "entropy_block_spread": round(max(blocks) - min(blocks), 2),
+        "high_entropy_block_fraction": round(high / len(blocks), 4),
+        "entropy_blocks": len(blocks),
+    }
+
+
+def looks_partially_encrypted(statistics: dict) -> bool:
+    """Ciphertext in part of a file whose average hides it.
+
+    Deliberately not applied to a structurally valid container - `classify` gates
+    on that, and it is the difference between this rule and a false-positive
+    generator. A PDF with an embedded JPEG, a .docx, an MP4 and a ZIP of photos
+    all have exactly this profile by design: high-entropy regions inside a
+    low-entropy frame. What separates them from a partially encrypted document is
+    that they are still the format they claim to be.
+    """
+    return (
+        statistics.get("entropy_blocks", 0) >= MIN_PROFILE_BLOCKS
+        and statistics.get("high_entropy_block_fraction", 0.0) >= PARTIAL_BLOCK_FRACTION
+        and statistics.get("entropy_block_spread", 0.0) >= PARTIAL_BLOCK_SPREAD
+    )
+
+
+def measure(data: bytes) -> tuple[float, dict]:
+    """Entropy, byte statistics and the block profile from one pass over the buffer.
+
+    All three are a function of the same byte histograms, so counting once and
+    deriving them together is what keeps the per-event cost flat. Building the
+    histogram twice put detection latency at 62ms p95 where sharing it holds
+    ~30ms (measured over 40 files, 4KB-2MB, on Windows 11 build 26200) - still
+    inside the 100ms target either way, but the target is not the reason to pay
+    double. The block profile was added under the same discipline: it is derived
+    from the per-block histograms that the whole-file histogram is summed from,
+    not from a second walk.
+    """
+    counts, total, blocks = _profile(data, ENTROPY_BLOCK_BYTES)
+    statistics = _statistics_from(counts, total)
+    statistics.update(_block_scalars(blocks))
+    return _entropy_from(counts, total), statistics
 
 
 def byte_statistics(file_path: str, retry: bool = True) -> dict:
@@ -227,12 +390,17 @@ def byte_statistics(file_path: str, retry: bool = True) -> dict:
 
 
 def statistics_of(data: bytes) -> dict:
-    """Byte statistics of an in-memory buffer.
+    """Byte statistics and block-entropy scalars of an in-memory buffer.
 
     Note that uniform random bytes are ~37% printable ASCII (95 of the 256 byte
     values), so a *low* printable ratio means text, not ciphertext.
+
+    Returns exactly the same keys `measure` puts in its second slot. It has to:
+    `/features` reaches the feature dict through here and `handle_event` reaches
+    it through `measure`, and a consumer that got different columns depending on
+    which door it came in by would be scoring two different models.
     """
-    return _statistics_from(Counter(data), len(data))
+    return measure(data)[1]
 
 
 def _statistics_from(counts: Counter, total: int) -> dict:
@@ -298,6 +466,26 @@ def has_ransom_extension(file_path: str) -> bool:
     return os.path.splitext(file_path)[1].lower() in RANSOM_EXTENSIONS
 
 
+class _PathHistory:
+    """One path's readings, plus the floor they can never rise above again.
+
+    `readings` is the bounded window; `minimum` is the lowest substantive
+    reading ever taken on this path in this session, and it is not in the window
+    and cannot be evicted from it. See `EntropyHistory.observe`.
+    """
+
+    __slots__ = ("readings", "minimum")
+
+    def __init__(self, window: int, first: float):
+        self.readings: deque = deque([first], maxlen=window)
+        self.minimum: float = first
+
+    def record(self, entropy: float) -> None:
+        self.readings.append(entropy)
+        if entropy < self.minimum:
+            self.minimum = entropy
+
+
 class EntropyHistory:
     """Entropy readings per path - the "over time" half of the detection.
 
@@ -306,9 +494,32 @@ class EntropyHistory:
     document someone encrypted. Ransomware overwrites existing files, so the
     signature is a large rise on a path that already existed.
 
-    The baseline is the lowest substantive reading in the window rather than the
-    previous one: an encryptor that writes in several passes would otherwise
-    walk the entropy up in steps small enough that no single delta is a rise.
+    The baseline is a floor, not a recent value
+    -------------------------------------------
+    Taking the previous reading lets a multi-pass encryptor walk the entropy up
+    in steps too small for any single delta to be a rise, which is what the
+    `staged` family does. Taking the minimum of a bounded window fixes that, and
+    was what this class did - but a window is still a thing an attacker can
+    empty. With ENTROPY_HISTORY_WINDOW at 5, five writes at any entropy below the
+    rise floor push the original 4.65 reading out of the deque, and the sixth
+    write can be ciphertext: the rise is measured against the warm-up writes
+    instead of against the document, comes out under ENTROPY_RISE_THRESHOLD, and
+    a ZIP magic over the top then collects the container exemption as well. Both
+    of Table 5.7's built mitigations, defeated by six writes. That is the
+    `grinder` family in scripts/ransomware_simulator.py, and it is why the
+    minimum is now kept separately from the window and never evicted from it.
+
+    Every substantive reading updates the minimum, including - especially -
+    readings below the rise floor. Those are exactly the writes an attacker uses
+    to flush the window, and a floor that ignored them would be flushable in the
+    same way.
+
+    The cost of this is a detector that grows more sensitive on a long-lived
+    path: a file that legitimately spends time at low entropy and later holds
+    compressed content will read as a rise. That is a real false-positive
+    source, and it is bounded the same way everything else here is - the minimum
+    lives inside the per-path record, so the 4096-path eviction and `forget()`
+    on delete both drop it, and a monitor restart clears it entirely.
 
     Bounded in both directions - readings per path, and paths overall, evicted
     oldest-first. Watchdog threads share one instance, so it takes a lock.
@@ -323,11 +534,11 @@ class EntropyHistory:
         self._window = window
         self._max_paths = max_paths
         self._min_baseline_bytes = min_baseline_bytes
-        self._readings: OrderedDict[str, deque] = OrderedDict()
+        self._readings: OrderedDict[str, _PathHistory] = OrderedDict()
         self._lock = threading.Lock()
 
     def observe(self, file_path: str, entropy: float, size: int) -> float | None:
-        """Record a reading and return the rise over the baseline before it.
+        """Record a reading and return the rise over the floor established before it.
 
         Returns None when there is no baseline to compare against - a file seen
         for the first time, or one that has only ever been too small to measure
@@ -336,14 +547,14 @@ class EntropyHistory:
         substantive = size >= self._min_baseline_bytes and entropy > 0.0
 
         with self._lock:
-            previous = self._readings.get(file_path)
-            baseline = min(previous) if previous else None
+            history = self._readings.get(file_path)
+            baseline = history.minimum if history is not None else None
 
             if substantive:
-                if previous is None:
-                    previous = deque(maxlen=self._window)
-                    self._readings[file_path] = previous
-                previous.append(entropy)
+                if history is None:
+                    self._readings[file_path] = _PathHistory(self._window, entropy)
+                else:
+                    history.record(entropy)
                 self._readings.move_to_end(file_path)
                 while len(self._readings) > self._max_paths:
                     self._readings.popitem(last=False)
@@ -351,6 +562,12 @@ class EntropyHistory:
         if baseline is None:
             return None
         return round(entropy - baseline, 2)
+
+    def baseline(self, file_path: str) -> float | None:
+        """The floor a rise on this path is currently measured against."""
+        with self._lock:
+            history = self._readings.get(file_path)
+            return history.minimum if history is not None else None
 
     def forget(self, file_path: str) -> None:
         """Drop a path's history. A deleted file's readings describe nothing."""
@@ -373,46 +590,74 @@ def classify(
     threshold: float = DEFAULT_ENTROPY_THRESHOLD,
     readable: bool = True,
     entropy_delta: float | None = None,
+    container_valid: bool | None = None,
+    statistics: dict | None = None,
 ) -> dict:
     """Decide whether a file event looks like encryption.
 
     Returns the verdict plus the reason for it, so the ledger entry records why
-    something was flagged rather than just that it was.
+    something was flagged rather than just that it was, and a `signal` naming
+    which of the four detections fired. The signal is what
+    services/monitor/admissibility.py adjudicates against: the rules differ in
+    how much it costs an attacker to avoid them, so a suppression that may
+    cancel one may not be allowed to cancel another, and "suspected_encryption"
+    on its own does not say which one this was.
 
     `readable=False` means the bytes could not be obtained at all. That is a
     third outcome, not a benign one: no measurement was taken, so none is
     reported. Saying "benign" here would be a claim the evidence does not
     support, and on Windows locked files are common enough that folding them
     into "benign" hides real encryption.
+
+    `container_valid` is `containers.validate_container`'s tri-state: True the
+    structure holds, False the header is forged, None no opinion (no validator,
+    or a file still being written). None keeps the behaviour this function had
+    before structural validation existed, which is why it is the default - a
+    caller that cannot supply it is not silently opted in to a stricter rule.
+
+    `statistics` is `measure`'s second return value; the block-entropy scalars in
+    it are what catch intermittent encryption. Omitting it disables that rule
+    rather than guessing at it.
     """
     container = identify_container(magic)
     ransom_ext = has_ransom_extension(file_path)
     high_entropy = entropy >= threshold
+    statistics = statistics or {}
+    partial = looks_partially_encrypted(statistics)
 
-    if not readable:
-        # A ransomware extension is still a signal even with no bytes to score.
+    def verdict_of(suspicious: bool, verdict: str, reason: str, signal: str | None) -> dict:
         return {
-            "suspicious": ransom_ext,
-            "verdict": "suspicious_extension" if ransom_ext else "unreadable",
-            "reason": (
-                "file could not be read (locked by another process); "
-                + (
-                    "flagged on its known ransomware extension alone"
-                    if ransom_ext
-                    else "no entropy verdict was possible"
-                )
-            ),
-            "entropy": None,
-            "container_format": None,
+            "suspicious": suspicious,
+            "verdict": verdict,
+            "reason": reason,
+            "signal": signal,
+            "entropy": entropy if readable else None,
+            "container_format": container if readable else None,
+            "container_valid": container_valid,
             "ransom_extension": ransom_ext,
             "entropy_delta": entropy_delta,
         }
 
-    # Differential entropy, checked before the container exemption because it is
-    # the one signal that survives a spoofed header: an encryptor that writes
-    # "PK\x03\x04" over its ciphertext still cannot make the file look like it
-    # was always that random. A rise this size on a path we have already
-    # measured means the content was replaced, not edited.
+    if not readable:
+        # A ransomware extension is still a signal even with no bytes to score.
+        return verdict_of(
+            ransom_ext,
+            "suspicious_extension" if ransom_ext else "unreadable",
+            "file could not be read (locked by another process); "
+            + (
+                "flagged on its known ransomware extension alone"
+                if ransom_ext
+                else "no entropy verdict was possible"
+            ),
+            "ransom_extension" if ransom_ext else None,
+        )
+
+    # Differential entropy, checked before everything else because it is the
+    # signal that survives a spoofed header *and* a forged structure: an
+    # encryptor can write "PK\x03\x04" over its ciphertext and can even emit a
+    # real archive around it, but it cannot make the file look like it was
+    # always that random. A rise this size on a path already measured means the
+    # content was replaced, not edited.
     if entropy_delta is not None and entropy_delta >= ENTROPY_RISE_THRESHOLD and entropy >= ENTROPY_RISE_FLOOR:
         reason = (
             f"entropy rose {entropy_delta} to {entropy} on a file already being watched, "
@@ -420,59 +665,62 @@ def classify(
         )
         if container:
             reason += f"; the {container} header does not explain a rise this large"
-        return {
-            "suspicious": True,
-            "verdict": "suspected_encryption",
-            "reason": reason,
-            "entropy": entropy,
-            "container_format": container,
-            "ransom_extension": ransom_ext,
-            "entropy_delta": entropy_delta,
-        }
+        return verdict_of(True, "suspected_encryption", reason, "entropy_rise")
 
-    if high_entropy and container and not ransom_ext:
+    # Structural validation. The container exemption below is what makes a
+    # legitimate archive benign, and until this check existed it could be
+    # borrowed for the price of four bytes - `spoofer` in the simulator does
+    # exactly that and went undetected 8 times out of 8. A header whose format
+    # is not there behind it is evidence, not an explanation.
+    if container and container_valid is False and (high_entropy or partial):
+        return verdict_of(
+            True,
+            "suspected_encryption",
+            f"the file declares a {container} container but the {container} structure is not "
+            f"there behind it, and the content is high entropy ({entropy})",
+            "structural_mismatch",
+        )
+
+    # Intermittent encryption. Whole-file entropy is under the threshold, but a
+    # substantial run of blocks is at ciphertext entropy and the rest is not -
+    # which is an average hiding a file that is part ciphertext, not a file that
+    # is uniformly ordinary. Gated on the container *not* being structurally
+    # valid: a real PDF with an embedded JPEG, and every .docx, has this profile
+    # by design.
+    if not high_entropy and partial and container_valid is not True:
+        return verdict_of(
+            True,
+            "suspected_encryption",
+            f"whole-file entropy {entropy} is below {threshold}, but "
+            f"{statistics['high_entropy_block_fraction']:.0%} of its "
+            f"{statistics['entropy_blocks']} blocks are at or above {HIGH_ENTROPY_BLOCK} "
+            f"with a spread of {statistics['entropy_block_spread']} - part of this file was "
+            "replaced with ciphertext and the rest was left alone",
+            "partial_entropy",
+        )
+
+    if high_entropy and container and container_valid is not False and not ransom_ext:
         # The false-positive mitigation: high entropy explained by the format.
-        return {
-            "suspicious": False,
-            "verdict": "benign_compressed",
-            "reason": f"entropy {entropy} explained by {container} container",
-            "entropy": entropy,
-            "container_format": container,
-            "ransom_extension": False,
-            "entropy_delta": entropy_delta,
-        }
+        explanation = {
+            True: f"a structurally valid {container} container",
+            None: f"a {container} header (this format has no structural validator)",
+        }[container_valid]
+        return verdict_of(
+            False, "benign_compressed", f"entropy {entropy} explained by {explanation}", None
+        )
 
     if high_entropy:
         reason = f"entropy {entropy} >= {threshold} with no recognised container header"
         if ransom_ext:
             reason += " and a known ransomware extension"
-        return {
-            "suspicious": True,
-            "verdict": "suspected_encryption",
-            "reason": reason,
-            "entropy": entropy,
-            "container_format": container,
-            "ransom_extension": ransom_ext,
-            "entropy_delta": entropy_delta,
-        }
+        return verdict_of(True, "suspected_encryption", reason, "static_entropy")
 
     if ransom_ext:
-        return {
-            "suspicious": True,
-            "verdict": "suspicious_extension",
-            "reason": f"known ransomware extension on a low-entropy file (entropy {entropy})",
-            "entropy": entropy,
-            "container_format": container,
-            "ransom_extension": True,
-            "entropy_delta": entropy_delta,
-        }
+        return verdict_of(
+            True,
+            "suspicious_extension",
+            f"known ransomware extension on a low-entropy file (entropy {entropy})",
+            "ransom_extension",
+        )
 
-    return {
-        "suspicious": False,
-        "verdict": "benign",
-        "reason": f"entropy {entropy} below threshold {threshold}",
-        "entropy": entropy,
-        "container_format": container,
-        "ransom_extension": False,
-        "entropy_delta": entropy_delta,
-    }
+    return verdict_of(False, "benign", f"entropy {entropy} below threshold {threshold}", None)

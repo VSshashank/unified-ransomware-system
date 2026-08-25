@@ -3,6 +3,14 @@
 **Repo:** `VSshashank/unified-ransomware-system` · **Verified:** 6 August 2026 (macOS), 8 August 2026 (Windows)
 **Scope:** Phases 1–4 (Weeks 1–16). Phase 5+ items are flagged as correctly deferred, not as gaps.
 
+> **Superseded figures, 25 August 2026.** A later pass over the detection path
+> corrected five defects this report's numbers predate. The behavioural model's
+> accuracy, the simulator-family result (`8/10`), and the two families recorded
+> here as blind spots have all moved. The measurements below are kept as the
+> record of what was true on the date above; for the current figures and for why
+> they changed, see [`DETECTION_HARDENING.md`](DETECTION_HARDENING.md).
+
+
 > **Second pass, 8 August 2026.** The first pass ran on macOS, which left every
 > Windows-only path unexecuted and — as it turned out — hid three defects that
 > only appear on Windows. §7 records that pass. The VSS `<30 s` target in §3.1 is

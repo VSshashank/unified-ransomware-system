@@ -168,15 +168,30 @@ if latest_event:
             # /8.0 to match the Monitor's own normalisation in extract_features.
             "modification_rate": round(min(1.0, entropy / 8.0), 2),
             "container_format": latest_event.get("container_format"),
+            # Tri-state and passed through as one. `.get` with no default so an
+            # event that predates the field arrives as null - "not checked" -
+            # rather than as False, which is the model's highest-importance
+            # column saying the container was examined and found forged.
+            "container_valid": latest_event.get("container_valid"),
             "ransom_extension": latest_event.get("ransom_extension", False),
-            # The other three of the model's seven inputs. Omitting them makes
-            # features_to_vector interpolate all three from entropy, which is
-            # what rendered a legitimate ZIP as a threat: measured and estimated
-            # byte statistics diverge most on exactly the compressed-versus-
-            # encrypted case the banner exists to tell apart.
+            # The measured statistics, forwarded rather than left to be
+            # interpolated. Omitting them makes features_to_vector estimate them
+            # from entropy, which is what rendered a legitimate ZIP as a threat:
+            # measured and estimated byte statistics diverge most on exactly the
+            # compressed-versus-encrypted case the banner exists to tell apart.
+            # The block scalars are here for the same reason - interpolation
+            # assumes a uniform file, which is precisely what a partially
+            # encrypted one is not.
             **{
                 key: latest_event[key]
-                for key in ("printable_ratio", "byte_value_std", "chi_square_uniformity")
+                for key in (
+                    "printable_ratio",
+                    "byte_value_std",
+                    "chi_square_uniformity",
+                    "entropy_max_block",
+                    "entropy_block_spread",
+                    "high_entropy_block_fraction",
+                )
                 if key in latest_event
             },
             # Required by the FeatureSet contract, and PE-only. A file event

@@ -35,17 +35,18 @@ from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
 
 import pipeline
+from admissibility import adjudicate
+from containers import validate_container
 from detection import (
     DEFAULT_ENTROPY_THRESHOLD,
-    byte_statistics,
-    calculate_entropy,
     EntropyHistory,
     classify,
     get_magic_bytes,
+    identify_container,
     looks_unreadable,
     measure,
     read_magic,
-    read_sample,
+    sample_file,
     sha256_file,
 )
 from pe_features import suspicious_api_names
@@ -102,6 +103,23 @@ ENTROPY_HISTORY = EntropyHistory()
 WHITELIST_PATH = os.getenv("WHITELIST_PATH", "")
 WHITELIST = Whitelist.from_file(WHITELIST_PATH) if WHITELIST_PATH else Whitelist()
 TRAINING_MODE = TrainingMode()
+
+# Recovery's integrity check compares a restored file against the last hash the
+# ledger holds for it in a *good* state. Nothing wrote one: the pipeline fans out
+# to the ledger only for suspicious events, so the only hash on an attacked path
+# was the ciphertext's, and services/response/recovery/ledger_client.py had to
+# refuse to trust it. Correct, and it left the feature inert - every real
+# recovery reported "integrity could not be verified".
+#
+# So the first time a file is seen and found benign, its hash is recorded as
+# `file_baseline`. One write per path per monitor run, off the detection path,
+# and it is what a later recovery verifies against. Deviation V-5 in the
+# write-up is the extra ledger traffic this costs, so it stays switchable.
+BASELINE_LOGGING_ENABLED = os.getenv("BASELINE_LOGGING_ENABLED", "true").lower() not in {
+    "false",
+    "0",
+    "no",
+}
 
 _observer: Observer | None = None
 _monitor_id: str | None = None
@@ -266,23 +284,42 @@ def extract_features(path: str) -> dict:
     # file with bytes in it, the remaining reads would each wait the same budget
     # to reach the same empty result, so they are told not to.
     readable = not looks_unreadable(magic, size)
-    entropy = calculate_entropy(path, retry=readable)
+    head, tail = sample_file(path, size, retry=readable)
+    entropy, statistics = measure(head)
+    container_valid = validate_container(head, tail, identify_container(magic), size)
 
-    verdict = classify(path, entropy, magic, ENTROPY_THRESHOLD, readable=readable)
+    verdict = classify(
+        path,
+        entropy,
+        magic,
+        ENTROPY_THRESHOLD,
+        readable=readable,
+        container_valid=container_valid,
+        statistics=statistics,
+    )
     return {
         "shannon_entropy": entropy,
         "file_size": size,
         "magic_bytes": magic[:4].hex().upper() if magic else "UNKNOWN",
         "container_format": verdict["container_format"],
+        # Tri-state, and it is reported as one. True the structure holds, false
+        # the header is forged, null no validator for this format or the file is
+        # still being written. Collapsing null into false would tell a consumer
+        # that every .rar is a forgery.
+        "container_valid": container_valid,
         "ransom_extension": verdict["ransom_extension"],
         "suspicious": verdict["suspicious"],
         "verdict": verdict["verdict"],
+        "signal": verdict["signal"],
         # Normalised 0-1 view of entropy; the dashboard reads this as "how
         # encrypted-looking is it".
         "modification_rate": round(min(1.0, entropy / 8.0), 2),
         # Measured, not estimated - the ML engine's behavioural model takes
-        # these three directly rather than deriving them from entropy.
-        **byte_statistics(path, retry=readable),
+        # these directly rather than deriving them from entropy. The same keys
+        # `handle_event` puts on an event, from the same function, because a
+        # consumer that got different columns depending on which endpoint it
+        # came in by would be scoring two different models.
+        **statistics,
         # spec 3.4.2 lists both of these in the FeatureSet, and gateway.yaml
         # marks them required, but nothing produced them until the PE parser
         # existed. Real values for a PE; 0 and [] for everything else, which is
@@ -340,18 +377,32 @@ def handle_event(path: str, event_type: str) -> dict | None:
 
     # read_magic already waited out the lock budget; see extract_features.
     readable = not looks_unreadable(magic, size)
-    # One read, both measurements. Entropy and the byte statistics score exactly
-    # the same prefix, and the statistics are three of the behavioural model's
-    # seven inputs - a consumer that has to estimate them from entropy instead
-    # gets the ZIP-versus-ciphertext distinction wrong, which is what the
-    # dashboard banner was doing.
-    entropy, statistics = measure(read_sample(path, retry=readable))
-    # Differential entropy: how far this reading sits above the lowest one we
-    # have taken on this path. None the first time a file is seen.
+    # One read, every measurement. Entropy, the byte statistics and the block
+    # profile all score exactly the same prefix, and the statistics are inputs
+    # to the behavioural model - a consumer that has to estimate them from
+    # entropy instead gets the ZIP-versus-ciphertext distinction wrong, which is
+    # what the dashboard banner was doing. `sample_file` adds a bounded tail
+    # read for the structural check, and only for files larger than the leading
+    # sample; smaller ones are already entirely in hand.
+    head, tail = sample_file(path, size, retry=readable)
+    entropy, statistics = measure(head)
+    # Structural validation: does the file have the format its header declares?
+    # Tri-state - None means no validator, or a file still being written, and
+    # keeps the behaviour that existed before this check.
+    container_valid = validate_container(head, tail, identify_container(magic), size)
+    # Differential entropy: how far this reading sits above the lowest one ever
+    # taken on this path. None the first time a file is seen.
     entropy_delta = ENTROPY_HISTORY.observe(path, entropy, size) if readable else None
 
     verdict = classify(
-        path, entropy, magic, ENTROPY_THRESHOLD, readable=readable, entropy_delta=entropy_delta
+        path,
+        entropy,
+        magic,
+        ENTROPY_THRESHOLD,
+        readable=readable,
+        entropy_delta=entropy_delta,
+        container_valid=container_valid,
+        statistics=statistics,
     )
     # Hashing a file we could not read only pays the retry cost again to reach
     # the same None, and it is on the sub-100ms detection path.
@@ -362,12 +413,28 @@ def handle_event(path: str, event_type: str) -> dict | None:
     # a suppressed event is still fully auditable and still counted. What
     # suppression changes is whether the pipeline fans out and whether the event
     # reads as suspicious - not whether it was seen.
+    #
+    # `match` finds the rule that describes the file; `adjudicate` decides
+    # whether that rule is expensive enough to fake to be allowed to cancel this
+    # particular detection. A rule that is outranked is *attenuated*, not
+    # discarded - it stays on the event with both costs, so an operator can see
+    # their rule was consulted and lost.
     TRAINING_MODE.observe(path, verdict["entropy"], verdict)
-    suppression = None
+    decision = None
     if verdict["suspicious"]:
-        suppression = WHITELIST.match(path, file_hash, verdict) or TRAINING_MODE.match(
-            path, verdict["entropy"], verdict
+        decision = adjudicate(
+            verdict,
+            WHITELIST.match(path, file_hash, verdict)
+            or TRAINING_MODE.match(path, verdict["entropy"], verdict),
         )
+    # `suppressed_by` keeps its original shape - the rule that removed the alert,
+    # or null. The full adjudication, including the rules that were outranked,
+    # goes in its own field so the older one does not change meaning.
+    suppression = (
+        {"rule": decision["rule"], "value": decision["value"]}
+        if decision and decision["admitted"]
+        else None
+    )
 
     event = {
         "event_id": f"evt_{uuid4().hex[:10]}",
@@ -388,8 +455,19 @@ def handle_event(path: str, event_type: str) -> dict | None:
         "suspicious": verdict["suspicious"] and suppression is None,
         "verdict": verdict["verdict"],
         "reason": verdict["reason"],
+        # Which of the four detections fired. `verdict` says what was concluded;
+        # this says what concluded it, and it is what admissibility ranks
+        # against - the three rules that collapse to "suspected_encryption"
+        # differ by an order of magnitude in what it costs to evade them.
+        "signal": verdict["signal"],
         "suppressed_by": suppression,
+        # The whole adjudication, present whenever any rule matched - including
+        # one that was outranked and left the alert standing. A suppression that
+        # disappears without a record is indistinguishable from a detector that
+        # never fired.
+        "admissibility": decision,
         "container_format": verdict["container_format"],
+        "container_valid": container_valid,
         # Both of the model's top two features are decided here. Carrying them
         # on the event means a consumer scoring it later - the dashboard does -
         # reads the values that were actually measured instead of guessing them
@@ -408,7 +486,7 @@ def handle_event(path: str, event_type: str) -> dict | None:
     }
     event["detection_latency_ms"] = round((perf_counter() - started) * 1000, 3)
 
-    _record(event)
+    first_sighting = _record(event)
 
     if verdict["suspicious"] and suppression is None and PIPELINE_ENABLED:
         features = {
@@ -417,18 +495,40 @@ def handle_event(path: str, event_type: str) -> dict | None:
             "magic_bytes": event["magic_bytes"],
             "modification_rate": round(min(1.0, entropy / 8.0), 2),
             "container_format": verdict["container_format"],
+            "container_valid": container_valid,
             "ransom_extension": verdict["ransom_extension"],
             **statistics,
         }
-        _work.put((event, features, verdict))
+        _work.put(("detection", event, features, verdict))
+    elif BASELINE_LOGGING_ENABLED and PIPELINE_ENABLED and first_sighting and file_hash and not verdict["suspicious"]:
+        # The first time this path is seen and found benign, record what it
+        # hashed to. This is the reference value recovery verifies a restored
+        # file against; without it the integrity check has nothing trustworthy
+        # to compare to and honestly reports that it could not verify.
+        #
+        # Queued, never inline: the fan-out is an HTTP call to another container
+        # and this function is what the sub-100ms detection budget is measured
+        # over. The `first_sighting` test bounds it to one write per path per
+        # monitor run, and the raw verdict is used rather than the suppressed
+        # one so a file an operator has whitelisted into silence still cannot
+        # contribute a baseline if the detector thought it was encrypted.
+        _work.put(("baseline", event))
 
     return event
 
 
-def _record(event: dict) -> None:
+def _record(event: dict) -> bool:
+    """Buffer the event. True when this path had not been seen before.
+
+    The answer is taken under the same lock that records it, because the
+    "first sighting" test drives a ledger write and two watchdog threads
+    reaching that test for the same new path would otherwise both pass it.
+    """
     with _LOCK:
         EVENTS.append(event)
+        first = event["file_path"] not in _SEEN_FILES
         _SEEN_FILES.add(event["file_path"])
+    return first
 
 
 def _drain() -> None:
@@ -438,22 +538,36 @@ def _drain() -> None:
             item = _work.get()
             if item is None:
                 return
-            event, features, verdict = item
+            kind, payload = item[0], item[1:]
             try:
-                outcome = pipeline.run(event, features, verdict, client=client)
-                with _LOCK:
-                    event["pipeline"] = {"stages": outcome["stages"]}
-                    if outcome["ledger_block"]:
-                        event["block_id"] = outcome["ledger_block"].get("block_id")
-                    if outcome["prediction"]:
-                        event["prediction"] = outcome["prediction"].get("prediction")
-                        event["threat_level"] = outcome["prediction"].get("threat_level")
+                if kind == "baseline":
+                    _run_baseline(client, *payload)
+                else:
+                    _run_detection(client, *payload)
             except Exception:  # a bad event must not kill the worker
-                logger.exception("pipeline failed for %s", event.get("file_path"))
+                logger.exception("%s work failed for %s", kind, payload[0].get("file_path"))
             finally:
                 _work.task_done()
     finally:
         client.close()
+
+
+def _run_detection(client: httpx.Client, event: dict, features: dict, verdict: dict) -> None:
+    outcome = pipeline.run(event, features, verdict, client=client)
+    with _LOCK:
+        event["pipeline"] = {"stages": outcome["stages"]}
+        if outcome["ledger_block"]:
+            event["block_id"] = outcome["ledger_block"].get("block_id")
+        if outcome["prediction"]:
+            event["prediction"] = outcome["prediction"].get("prediction")
+            event["threat_level"] = outcome["prediction"].get("threat_level")
+
+
+def _run_baseline(client: httpx.Client, event: dict) -> None:
+    block = pipeline.log_baseline(client, event)
+    if block:
+        with _LOCK:
+            event["baseline_block_id"] = block.get("block_id")
 
 
 def _ensure_worker() -> None:

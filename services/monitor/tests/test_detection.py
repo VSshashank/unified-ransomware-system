@@ -82,12 +82,51 @@ def test_history_is_bounded_by_path_count():
     assert len(history) == 3
 
 
-def test_history_keeps_only_the_most_recent_readings_per_path():
+def test_the_baseline_floor_survives_writes_that_would_flush_the_window():
+    """The window is bounded; the floor it establishes must not be.
+
+    This test used to assert the opposite - that a 2-deep window forgets a 2.0
+    reading after two more writes, leaving a 6.0 floor and a rise of only 1.9.
+    That behaviour is the `grinder` evasion: with the real window of five, five
+    writes at any entropy below the rise floor push the document's true reading
+    out of the deque, and the sixth write can be ciphertext measured against the
+    warm-up writes instead of against the document. Six writes, both of Table
+    5.7's built mitigations defeated.
+
+    The lowest substantive reading ever taken on a path is now kept outside the
+    window, so the rise below is measured from 2.0 and comes out at 5.9.
+    """
     history = detection.EntropyHistory(window=2)
     for entropy in (2.0, 6.0, 6.5):
         history.observe("/watch/f.bin", entropy, 8192)
-    # 2.0 has fallen out of a 2-deep window, leaving [6.0, 6.5] and a 6.0 floor.
-    assert history.observe("/watch/f.bin", 7.9, 8192) == pytest.approx(1.9)
+
+    assert history.baseline("/watch/f.bin") == pytest.approx(2.0)
+    assert history.observe("/watch/f.bin", 7.9, 8192) == pytest.approx(5.9)
+
+
+def test_readings_below_the_rise_floor_still_lower_the_baseline():
+    """The floor has to move down as well as refuse to move up.
+
+    Warm-up writes are chosen to sit under ENTROPY_RISE_FLOOR precisely so they
+    do not alert. A floor that ignored them could be walked past by writing one
+    genuinely low file and then rising from it.
+    """
+    history = detection.EntropyHistory()
+    history.observe("/watch/f.bin", 6.5, 8192)
+    history.observe("/watch/f.bin", 3.1, 8192)
+
+    assert history.baseline("/watch/f.bin") == pytest.approx(3.1)
+    assert history.observe("/watch/f.bin", 7.9, 8192) == pytest.approx(4.8)
+
+
+def test_forgetting_a_path_drops_its_floor_too():
+    """Otherwise a deleted file leaves a floor a new file at that path inherits."""
+    history = detection.EntropyHistory()
+    history.observe("/watch/f.bin", 2.0, 8192)
+    history.forget("/watch/f.bin")
+
+    assert history.baseline("/watch/f.bin") is None
+    assert history.observe("/watch/f.bin", 7.9, 8192) is None
 
 
 # --------------------------------------- differential entropy drives a verdict

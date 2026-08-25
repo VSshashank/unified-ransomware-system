@@ -12,10 +12,14 @@ FEATURE_ORDER = [
     "shannon_entropy",
     "log_file_size",
     "has_container_header",
+    "container_structurally_valid",
     "ransom_extension",
     "printable_ratio",
     "byte_value_std",
     "chi_square_uniformity",
+    "entropy_max_block",
+    "entropy_block_spread",
+    "high_entropy_block_fraction",
 ]
 
 # Keys the caller may legitimately send that this model does not score, and the
@@ -65,11 +69,15 @@ SCORED_INPUT_KEYS = (
     "entropy",
     "file_size",
     "container_format",
+    "container_valid",
     "magic_bytes",
     "ransom_extension",
     "printable_ratio",
     "byte_value_std",
     "chi_square_uniformity",
+    "entropy_max_block",
+    "entropy_block_spread",
+    "high_entropy_block_fraction",
 )
 
 
@@ -115,12 +123,36 @@ def _has_container_header(payload: dict) -> float:
     return 1.0 if magic[4:8] == b"ftyp" else 0.0
 
 
+def _structural_validity(payload: dict) -> float:
+    """The Monitor's tri-state container check as the ordinal the model was fitted on.
+
+        +1.0  the declared format's structure is there
+         0.0  nothing was checked - no validator for this format, a file still
+              being written, or a caller that predates the field
+        -1.0  the header is a forgery
+
+    Absent has to map to 0.0 and not to -1.0. An older caller that never sends
+    the field would otherwise have every one of its files scored as though its
+    container had been examined and found fake, which is the single highest-
+    importance feature in the model saying the opposite of the truth.
+    """
+    value = payload.get("container_valid")
+    if value is True:
+        return 1.0
+    if value is False:
+        return -1.0
+    return 0.0
+
+
 def features_to_vector(payload: dict) -> list[float]:
     """Build the model's input row from whatever the Monitor sent.
 
-    The Monitor measures the byte statistics directly and sends them. Older
-    callers (and the gateway's /analyze passthrough) may not, so those three are
-    interpolated between the two ends measured on the training corpus:
+    The Monitor measures the byte statistics and the block profile directly and
+    sends them. Older callers (and the gateway's /analyze passthrough) may not,
+    so those are interpolated rather than zeroed.
+
+    The byte statistics interpolate between the two ends measured on the
+    training corpus:
 
         uniform random bytes  printable 0.371, std 73.9, chi-square ~0.00
         English text          printable 1.000, std 28.0, chi-square ~18.2
@@ -128,6 +160,14 @@ def features_to_vector(payload: dict) -> list[float]:
     Note 0.371, not ~0: 95 of the 256 byte values are printable ASCII, so a
     third of a ciphertext's bytes land in that range. Assuming ciphertext is
     "unprintable" inverts the feature and the classifier with it.
+
+    The block scalars interpolate under a uniformity assumption: with no profile
+    to go on, the best available guess is that every block looks like the file
+    as a whole, so the maximum block equals the file's entropy and the spread is
+    zero. That is deliberately the *least* alarming shape those three can take -
+    a file whose blocks vary is what the partial-encryption signal keys on, and
+    inventing variation for a caller that measured none would manufacture the
+    evidence. A caller that wants that signal has to send the measurement.
     """
     entropy = float(payload.get("shannon_entropy", payload.get("entropy", 0.0)) or 0.0)
     size = float(payload.get("file_size", 0) or 0)
@@ -137,8 +177,12 @@ def features_to_vector(payload: dict) -> list[float]:
         entropy,
         math.log10(max(size, 1.0)),
         _has_container_header(payload),
+        _structural_validity(payload),
         1.0 if payload.get("ransom_extension") else 0.0,
         float(payload.get("printable_ratio", 1.0 - 0.629 * uniformity)),
         float(payload.get("byte_value_std", 28.0 + 45.9 * uniformity)),
         float(payload.get("chi_square_uniformity", 18.2 * (1.0 - uniformity) ** 2)),
+        float(payload.get("entropy_max_block", entropy)),
+        float(payload.get("entropy_block_spread", 0.0)),
+        float(payload.get("high_entropy_block_fraction", 1.0 if entropy >= 7.9 else 0.0)),
     ]

@@ -78,10 +78,25 @@ def _families() -> list[str]:
     return sorted(module.FAMILIES)
 
 
+# Families whose setup phase expects a training window to be open. The Monitor's
+# training mode is what they are attacking, so the sweep has to be running it -
+# measuring `poisoner` against a monitor that never learned anything would be
+# measuring `silent` with five extra files.
+#
+# The window is opened with the production dwell requirement, which is the whole
+# point: the poison files are seconds old when the window closes, and a reading
+# that has not dwelled does not become a ceiling. `training_learned` in each
+# result records what the baseline actually took from them.
+TRAINING_FAMILIES = {"poisoner"}
+TRAINING_WINDOW_SECONDS = 600.0
+
+
 def _reset_monitor_state() -> None:
     monitor_app.EVENTS.clear()
     monitor_app._SEEN_FILES.clear()
     monitor_app.ENTROPY_HISTORY.clear()
+    monitor_app.TRAINING_MODE.reset()
+    monitor_app.WHITELIST.replace([], [])
 
 
 def _first_flag_time(deadline: float) -> float | None:
@@ -116,7 +131,11 @@ def run_family(family: str, files: int, settle_seconds: float) -> dict:
     observer.schedule(monitor_app.MonitorHandler(), str(workdir), recursive=True)
     observer.start()
 
+    if family in TRAINING_FAMILIES:
+        monitor_app.TRAINING_MODE.start(duration_seconds=TRAINING_WINDOW_SECONDS)
+
     first_write: list[float] = []
+    training_status: list[dict] = []
 
     process = subprocess.Popen(
         [sys.executable, str(SIMULATOR), "--target-dir", str(workdir),
@@ -128,6 +147,12 @@ def run_family(family: str, files: int, settle_seconds: float) -> dict:
 
     def read_stdout() -> None:
         for line in process.stdout:
+            if line.startswith("SETUP ") and family in TRAINING_FAMILIES:
+                # The simulator has written its poison files and is pausing.
+                # Closing the window here is what a real attacker would want -
+                # the ceiling is set, and the encryption that follows happens
+                # with training mode active and suppressing.
+                training_status.append(monitor_app.TRAINING_MODE.finish())
             if line.startswith("ENCRYPTED 1 ") and not first_write:
                 first_write.append(time.monotonic())
 
@@ -171,10 +196,17 @@ def run_family(family: str, files: int, settle_seconds: float) -> dict:
     targets = {p: e for p, e in latest.items() if Path(p).name in produced}
 
     flagged = [p for p, e in targets.items() if e["suspicious"]]
+    # Anything the family wrote that is not one of its encryption targets: a
+    # ransom note, or `poisoner`'s ceiling-raising files. Whether flagging one is
+    # a false positive depends on the family, so the count is reported rather
+    # than judged - see test_tc13_a_ransom_note_is_not_itself_a_false_positive.
     note_events = [e for p, e in latest.items() if Path(p).name not in produced]
+    suppressed = [e for e in targets.values() if e.get("suppressed_by")]
+    attenuated = [e for e in targets.values() if (e.get("admissibility") or {}).get("outcome") == "attenuated"]
 
     restored = _restore_and_verify(workdir, files)
     shutil.rmtree(workdir, ignore_errors=True)
+    monitor_app.TRAINING_MODE.reset()
 
     detection_seconds = round(flagged_at - started, 3) if flagged_at else None
     return {
@@ -185,6 +217,21 @@ def run_family(family: str, files: int, settle_seconds: float) -> dict:
         "detection_seconds": detection_seconds,
         "within_2s": detection_seconds is not None and detection_seconds <= DETECTION_DEADLINE_SECONDS,
         "verdicts": sorted({e["verdict"] for e in targets.values()}),
+        # Which detection actually fired. Two families can both read
+        # "suspected_encryption" and have been caught by completely different
+        # evidence, and only one of the two may survive an operator's whitelist.
+        "signals": sorted({e["signal"] for e in targets.values() if e.get("signal")}),
+        # What a suppression rule did to these events. `suppressed` means an
+        # alert was cancelled; `attenuated` means a rule matched, was outranked
+        # by the evidence, and the alert stood.
+        "files_suppressed": len(suppressed),
+        "files_attenuated": len(attenuated),
+        # For the families that attack the training baseline: what the baseline
+        # took from their setup phase. Empty is the result the dwell
+        # requirement is supposed to produce.
+        "training_learned": (
+            sorted(training_status[0]["learned_extensions"]) if training_status else None
+        ),
         "reason_sample": next(iter(targets.values()))["reason"] if targets else None,
         "mean_entropy": (
             round(sum(e["entropy"] for e in targets.values() if e["entropy"] is not None)

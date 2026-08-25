@@ -171,6 +171,23 @@ accident. To refresh them deliberately:
 URDS_WRITE_REPORTS=1 python -m pytest -m benchmark -q -s
 ```
 
+The simulator sweep is the held-out evidence for detection — thirteen ransomware
+families run past a live watcher, each one measured on what caught it and on
+whether `--restore` returned every file byte for byte:
+
+```bash
+URDS_WRITE_REPORTS=1 python scripts/simulator_sweep.py --files 8 --settle 2.0
+```
+
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [`docs/APPROACH.md`](docs/APPROACH.md) | Design decisions, and §8 where the implementation departs from the specification |
+| [`docs/DETECTION_HARDENING.md`](docs/DETECTION_HARDENING.md) | Five defects found by reading the source, the fixes, and the before/after evidence |
+| [`docs/test_cases.md`](docs/test_cases.md) | How each test case in the reference document maps to a test here |
+| [`docs/openapi/gateway.yaml`](docs/openapi/gateway.yaml) | The authoritative API contract (`docs/api_spec.md` is superseded) |
+
 ## Future Work
 
 Out of scope for Weeks 1-16:

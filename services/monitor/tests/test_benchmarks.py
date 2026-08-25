@@ -18,7 +18,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app as monitor_app
-from detection import calculate_entropy, classify, read_magic
+import synthetic_corpus
+from containers import validate_container
+from detection import (
+    calculate_entropy,
+    classify,
+    identify_container,
+    measure,
+    read_magic,
+    sample_file,
+)
 
 REPORTS = Path(__file__).resolve().parents[3] / "reports"
 MEASUREMENTS: dict = {}
@@ -105,7 +114,22 @@ def test_detection_latency_under_100ms(tmp_path):
 
 
 def _benign_corpus(root: Path) -> list[Path]:
-    """Legitimate files a normal user has, including high-entropy ones."""
+    """Legitimate files a normal user has, including high-entropy ones.
+
+    Seven of these forty used to be a magic number followed by `os.urandom`, and
+    the detector this benchmark was written for could not tell that from a
+    photograph - so it scored them benign and the corpus looked sound. Against a
+    detector that checks structure they are forgeries, and reporting 0/40 on
+    them would have meant reporting a false-positive rate over files no user has
+    ever had. They are built properly now: a real IHDR with a correct CRC and an
+    IDAT that inflates, a real JFIF marker chain, a real cross-reference table,
+    a real ISO box chain. The payloads are still noise, because a benign PNG of
+    a photograph *is* high entropy and that is the case worth testing.
+
+    `verdict_for` scores them the way `handle_event` does, structural check
+    included. Passing this benchmark now requires the detector to tell a real
+    container from a claimed one, rather than to trust four bytes.
+    """
     files = []
 
     for index in range(8):
@@ -115,38 +139,55 @@ def _benign_corpus(root: Path) -> list[Path]:
 
     for index in range(6):
         path = root / f"archive_{index}.zip"
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr("data.bin", os.urandom(120000))
-        path.write_bytes(buffer.getvalue())
+        path.write_bytes(synthetic_corpus.build_zip(120000))
         files.append(path)
 
     for index in range(6):
         path = root / f"backup_{index}.gz"
-        path.write_bytes(gzip.compress(os.urandom(120000)))
+        path.write_bytes(synthetic_corpus.build_gzip(400000))
         files.append(path)
 
     for index in range(6):
         path = root / f"photo_{index}.png"
-        path.write_bytes(b"\x89PNG\r\n\x1a\n" + os.urandom(120000))
+        path.write_bytes(synthetic_corpus.build_png(120000))
         files.append(path)
 
     for index in range(6):
         path = root / f"scan_{index}.jpg"
-        path.write_bytes(b"\xff\xd8\xff\xe0" + os.urandom(120000))
+        path.write_bytes(synthetic_corpus.build_jpeg(120000))
         files.append(path)
 
     for index in range(4):
         path = root / f"manual_{index}.pdf"
-        path.write_bytes(b"%PDF-1.7\n" + os.urandom(80000))
+        path.write_bytes(synthetic_corpus.build_pdf(80000))
         files.append(path)
 
     for index in range(4):
         path = root / f"clip_{index}.mp4"
-        path.write_bytes(b"\x00\x00\x00\x18ftypmp42" + os.urandom(120000))
+        path.write_bytes(synthetic_corpus.build_mp4(120000))
         files.append(path)
 
     return files
+
+
+def verdict_for(path: Path) -> dict:
+    """Classify one file the way the detection path does.
+
+    Split out so the benchmarks and `handle_event` cannot drift apart: a
+    benchmark that scored files with a weaker call than production would be
+    measuring a detector nobody runs.
+    """
+    size = path.stat().st_size
+    head, tail = sample_file(str(path), size)
+    entropy, statistics = measure(head)
+    magic = read_magic(str(path))
+    return classify(
+        str(path),
+        entropy,
+        magic,
+        container_valid=validate_container(head, tail, identify_container(magic), size),
+        statistics=statistics,
+    )
 
 
 @pytest.mark.benchmark
@@ -157,10 +198,9 @@ def test_false_positive_rate_under_5_percent(tmp_path):
     false_positives = []
 
     for path in files:
-        entropy = calculate_entropy(str(path))
-        verdict = classify(str(path), entropy, read_magic(str(path)))
+        verdict = verdict_for(path)
         if verdict["suspicious"]:
-            false_positives.append((path.name, entropy, verdict["verdict"]))
+            false_positives.append((path.name, verdict["entropy"], verdict["verdict"]))
 
     rate = len(false_positives) / len(files)
     high_entropy = sum(1 for p in files if calculate_entropy(str(p)) >= 7.5)
@@ -182,6 +222,37 @@ def test_false_positive_rate_under_5_percent(tmp_path):
 
 
 @pytest.mark.benchmark
+def test_forged_container_detection_rate(tmp_path):
+    """The measurement the false-positive rate is only half of.
+
+    Any false-positive rate can be driven to zero by detecting nothing, and
+    until structural validation existed this pair of numbers was 0/40 and 0/48 -
+    the second one silently. These are the same headers as the benign corpus
+    with random payloads behind them, which is what `spoofer` writes and what
+    the malicious half of the training corpus is made of.
+    """
+    forged = []
+    for index in range(8):
+        for magic, extension in synthetic_corpus.SPOOF_TARGETS:
+            path = tmp_path / f"spoofed_{index}{extension}"
+            path.write_bytes(synthetic_corpus.spoof(magic, 120000))
+            forged.append(path)
+
+    detected = [path.name for path in forged if verdict_for(path)["suspicious"]]
+
+    rate = len(detected) / len(forged)
+    MEASUREMENTS["forged_container_detection_rate"] = {
+        "samples": len(forged),
+        "detected": len(detected),
+        "rate": round(rate, 4),
+        "formats": sorted({extension for _, extension in synthetic_corpus.SPOOF_TARGETS}),
+    }
+    print(f"\nforged containers detected: {len(detected)}/{len(forged)} = {rate:.1%}")
+
+    assert rate == 1.0, f"missed {len(forged) - len(detected)} forged containers"
+
+
+@pytest.mark.benchmark
 def test_true_positive_rate_on_encrypted_corpus(tmp_path):
     """The mitigation must not be so lenient that it misses actual encryption."""
     detected = 0
@@ -189,8 +260,7 @@ def test_true_positive_rate_on_encrypted_corpus(tmp_path):
     for index in range(total):
         path = tmp_path / f"victim_{index}.docx"
         path.write_bytes(os.urandom(120000))
-        entropy = calculate_entropy(str(path))
-        if classify(str(path), entropy, read_magic(str(path)))["suspicious"]:
+        if verdict_for(path)["suspicious"]:
             detected += 1
 
     rate = detected / total

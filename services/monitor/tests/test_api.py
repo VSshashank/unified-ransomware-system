@@ -13,6 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app as monitor_app
+import synthetic_corpus
 
 
 @pytest.fixture
@@ -236,8 +237,13 @@ def test_ordinary_file_lifecycles_produce_no_differential_false_positives(tmp_pa
     drive("report.txt", [text * 100, text * 400, text * 900])
     # An office file re-saved: a .docx is a ZIP, so it sits near 8.0 throughout.
     drive("deck.docx", [zip_bytes(3), zip_bytes(4), zip_bytes(5)])
-    # A large download landing in pieces.
-    drive("movie.mp4", [b"\x00\x00\x00\x20ftypisom" + os.urandom(n) for n in (64_000, 256_000, 900_000)])
+    # A large download landing in pieces. Every write but the last is a real MP4
+    # cut short, which is what a partial download *is* - the box chain is sound
+    # and the final box has not finished arriving. Structural validation has to
+    # read that as "not finished" rather than "not an MP4", or every large file
+    # anyone downloads onto a watched path becomes an alert while it lands.
+    movie = synthetic_corpus.build_mp4(900_000)
+    drive("movie.mp4", [movie[:64_000], movie[:256_000], movie])
 
     assert not flagged, f"differential entropy produced false positives: {flagged}"
 
@@ -373,15 +379,47 @@ def test_status_counts_distinct_files_not_events(client, tmp_path):
 
 def test_features_are_measured_from_the_real_file(client, tmp_path):
     target = tmp_path / "sample.png"
-    target.write_bytes(b"\x89PNG\r\n\x1a\n" + os.urandom(50000))
+    target.write_bytes(synthetic_corpus.build_png(50000))
 
     body = client.post("/features", json={"path": str(target)}).json()
 
     assert body["magic_bytes"] == "89504E47"
     assert body["file_size"] == target.stat().st_size
     assert body["container_format"] == "png"
+    assert body["container_valid"] is True
     assert body["suspicious"] is False
     assert 0.0 <= body["modification_rate"] <= 1.0
+
+
+def test_features_report_a_forged_container_as_forged(client, tmp_path):
+    """The same eight magic bytes, nothing behind them.
+
+    This file used to be what the test above wrote, and the endpoint used to
+    call it a PNG. It is the `spoofer` evasion in a single file: the header is
+    free to write, and until the structure was checked it bought the container
+    exemption outright.
+    """
+    target = tmp_path / "spoofed.png"
+    target.write_bytes(b"\x89PNG\r\n\x1a\n" + os.urandom(50000))
+
+    body = client.post("/features", json={"path": str(target)}).json()
+
+    assert body["container_format"] == "png"
+    assert body["container_valid"] is False
+    assert body["suspicious"] is True
+    assert body["signal"] == "structural_mismatch"
+
+
+def test_features_do_not_judge_a_format_with_no_validator(client, tmp_path):
+    """`None` is not `False`. A RAR nobody parses stays exempt, as before."""
+    target = tmp_path / "archive.rar"
+    target.write_bytes(b"Rar!\x1a\x07\x00" + os.urandom(50000))
+
+    body = client.post("/features", json={"path": str(target)}).json()
+
+    assert body["container_format"] == "rar"
+    assert body["container_valid"] is None
+    assert body["suspicious"] is False
 
 
 def test_features_are_deterministic_for_the_same_file(client, tmp_path):

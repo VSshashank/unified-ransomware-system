@@ -1,9 +1,9 @@
 {
   "detection_latency_ms": {
     "samples": 40,
-    "mean": 11.238,
-    "p95": 27.002,
-    "max": 27.853,
+    "mean": 10.493,
+    "p95": 25.764,
+    "max": 27.167,
     "target": 100.0
   },
   "false_positive_rate": {
@@ -20,27 +20,40 @@
     "rate": 1.0
   },
   "cpu_percent": {
-    "files_written": 97,
-    "raw_percent_of_one_core": 18.9,
-    "percent_of_total_cpu": 1.35,
+    "files_written": 98,
+    "raw_percent_of_one_core": 14.3,
+    "percent_of_total_cpu": 1.02,
     "cores": 14,
     "target": 15.0
   },
   "process_kill_time_s": {
-    "measured": 0.1256,
+    "measured": 0.0909,
     "target": 2.0
   },
   "memory_mb": {
-    "files_processed": 102,
-    "baseline_mb": 68.83,
-    "peak_mb": 71.4,
-    "growth_mb": 2.57,
+    "files_processed": 154,
+    "baseline_mb": 67.22,
+    "peak_mb": 70.5,
+    "growth_mb": 3.29,
     "target": 500.0
   },
   "dashboard_update_latency_ms": {
     "samples": 5,
-    "mean": 10.5,
-    "max": 11.328,
+    "mean": 9.183,
+    "max": 13.226,
     "target": 1000.0
+  },
+  "forged_container_detection_rate": {
+    "samples": 48,
+    "detected": 48,
+    "rate": 1.0,
+    "formats": [
+      ".gz",
+      ".jpg",
+      ".mp4",
+      ".pdf",
+      ".png",
+      ".zip"
+    ]
   }
 }

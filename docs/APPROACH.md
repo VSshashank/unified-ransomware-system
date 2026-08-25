@@ -200,7 +200,7 @@ Real attribution needs eBPF/fanotify on Linux or ETW on Windows. That is Phase 5
 | Input | Model | Why |
 |---|---|---|
 | `ember_vector` (2381 floats) | `ember_xgboost` | EMBER's precomputed static-PE vector. **95.8%** accuracy on the 50,000 real EMBER-2018 samples §6.1 specifies (25,000 per class, 7,500 held out). |
-| `features` (dict) | `behavioral_xgboost` | The handful of signals the Monitor can actually measure from a file it just saw change. **88.4%** accuracy, ROC AUC 0.958. |
+| `features` (dict) | `behavioral_xgboost` | The handful of signals the Monitor can actually measure from a file it just saw change. **99.5%** accuracy, ROC AUC 1.000 — and see the warning below about what that number is worth. |
 
 The EMBER classifier cannot score the Monitor's feature dict — different
 dimensionality, different semantics. Before the second model existed, that path
@@ -209,9 +209,23 @@ at all. One model was not an option; the alternative was leaving half the system
 disconnected.
 
 The behavioural corpus is deliberately hard: header-spoofed ciphertext,
-LockBit-style intermittent encryption, and headerless high-entropy benign files.
-An earlier, easier corpus scored **1.000**, which measures nothing. The lower
-number is reported because it is the one that means something.
+LockBit-style intermittent encryption (both leading-run and strided), containers
+with no structural validator, and headerless high-entropy benign files.
+
+**Do not read 99.5% as a generalisation claim.** It is an in-distribution split
+of a corpus this repository generates itself, so it measures whether the feature
+vector can separate classes that were built to be separable — nothing more. The
+figure moved from 88.4% not because the model got better but because the corpus
+stopped contradicting itself: `photo_N.png` and `spoofed_N.png` were the same
+construction with opposite labels, which no model could have learned and none
+should have. Correcting that is a corpus fix, and a corpus fix does not earn a
+generalisation claim.
+
+The number to lead with is the simulator sweep in
+[`reports/simulator_families.json`](../reports/simulator_families.json) —
+**13 of 13 families detected, every file, all within 2 s** — because those files
+are produced by a separate program, by a separate mechanism, and were never seen
+during training. See [DETECTION_HARDENING.md](DETECTION_HARDENING.md).
 
 `services/ml-engine/features.py` exists as its own module solely so the training
 script and the serving path agree on feature *order*. A mismatch there does not
@@ -524,23 +538,32 @@ crosses a network boundary (§6.3). That is the right trade for a Weeks 1–16
 prototype on a single host, and the wrong one for anything else — §3.7.3 scopes
 TLS termination to production deployment, which this is not.
 
-**Intermittent (partial) encryption is not detected.** `scripts/ransomware_simulator.py`
-imitates four families. Three are caught on every file: `locker` (rewrite in
-place, append `.locked`), `silent` (rewrite in place, keep the name — entropy
-carries the decision with no extension to help) and `copycat` (write a new
-encrypted file, delete the original). The fourth, `partial`, scrambles only the
-leading quarter of each file, which is what LockBit 3 and BlackCat do to move
-less data. Whole-file entropy then lands around **5.2 bits/byte** — between
-plaintext and ciphertext, and below the 7.5 threshold — so it reads as an
-ordinary edit. Measured: 0 of 8 detected.
+**Intermittent encryption and header spoofing *were* the two blind spots, and
+are now closed.** This section previously recorded `partial` (0 of 8) and
+`spoofer` (0 of 8) as honest limits of whole-file entropy, with the reasoning
+that catching them would cost the 0 % false-positive rate. Both are now detected
+on every file, and the false-positive rate is still 0/40. What changed, and why
+the trade turned out not to be the trade it looked like, is written up in
+[DETECTION_HARDENING.md](DETECTION_HARDENING.md); the short version:
 
-Catching it needs per-block entropy rather than a whole-file average, and that
-carries its own false-positive cost: a `.docx` or a PDF already contains
-compressed blocks that look the same way under that test. The 0 % false-positive
-rate is a graded criterion and this is not, so the trade was not taken for
-Weeks 1–16. The gap is asserted in the suite
-(`test_partial_encryption_is_a_known_blind_spot`) rather than left absent, so it
-is visible to anyone reading the tests and fails loudly if detection improves.
+* **Intermittent encryption** is caught by scoring 4 KB blocks separately
+  (`detection.block_entropy_profile`). The objection was correct — a `.docx` or
+  a PDF does carry compressed blocks with the same profile — so the rule is
+  gated on the file *not* being a structurally valid container, which every one
+  of those is. The gate is what makes the technique affordable.
+* **Header spoofing on a fresh path** is caught by checking whether the declared
+  container is actually there (`services/monitor/containers.py`). A file being
+  written is separated from a forged one by whether its *leading* structure
+  parses, so an archiver mid-write is not an alert.
+
+Six formats have structural validators: ZIP, GZIP, PNG, JPEG, PDF and ISO base
+media. **A header from any other format still buys the exemption on four bytes.**
+A `Rar!` or `BZh` prefix over ciphertext is not distinguishable from the real
+thing by anything in the current feature vector, and the training corpus contains
+real bzip2 and XZ streams with no forged counterparts for exactly that reason —
+labelling a pair apart that the system cannot tell apart would be manufacturing
+the result. That is the residual, and it is a smaller one than "any four bytes at
+all", which is what it replaced.
 
 **`POST /response/terminate` can answer 409, which Table 3.2 does not list.**
 Table 3.2 enumerates nine status codes and 409 Conflict is not among them. The
@@ -624,7 +647,11 @@ Model quality, after retraining on the 50,000 samples §6.1 specifies:
 | Model | Accuracy | Precision | Recall | F1 | ROC AUC |
 |---|---|---|---|---|---|
 | EMBER static-PE (7,500 held out) | 0.9577 | 0.9625 | 0.9525 | 0.9575 | 0.9923 |
-| Behavioural (726 held out) | 0.8843 | 0.9486 | 0.8127 | 0.8754 | 0.9585 |
+| Behavioural (870 held out) | 0.9954 | 1.0000 | 0.9917 | 0.9958 | 0.9999 |
+
+The behavioural row is an in-distribution split of a self-generated corpus and
+is reported as such — see §3.1. The held-out evidence for that model's problem
+is the simulator sweep, not this row.
 
 Suite: **371 passed, 2 skipped, 0 failed.** The two skips are correct —
 `psutil.terminate()` maps to `TerminateProcess` on Windows, which no process can

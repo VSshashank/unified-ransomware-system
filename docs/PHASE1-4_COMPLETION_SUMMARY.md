@@ -7,6 +7,13 @@ Documentation*, v1.6, 31 January 2026, 68 pages (all 68 extracted and read).
 **Scope:** Phases 1–4 (Semester 1, Weeks 1–16). Weeks 17–32 items are judged
 against the document's own timeline, not counted as gaps.
 
+> **Superseded figures, 25 August 2026.** A later pass over the detection path
+> corrected five defects this report's numbers predate. The behavioural model's
+> accuracy, the simulator-family result (`8/10`), and the two families recorded
+> here as blind spots have all moved. The measurements below are kept as the
+> record of what was true on the date above; for the current figures and for why
+> they changed, see [`DETECTION_HARDENING.md`](DETECTION_HARDENING.md).
+
 ---
 
 ## 0. Verdict

@@ -11,11 +11,13 @@ real SQLite file, real hash chain, real endpoints.
 import hashlib
 import math
 import os
+import queue
 import sqlite3
 import sys
 from collections import Counter
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -172,6 +174,59 @@ def test_tc04_integrity_check_catches_a_bad_snapshot(manager, ledger_client, tmp
     assert result["status"] == "partial"
 
 
+def test_monitor_pipeline_hash_is_not_used_as_the_recovery_reference(manager, ledger_client, tmp_path):
+    """Regression: the Monitor records the *encrypted* file's hash.
+
+    services/monitor/pipeline.py fans out only for events it has already judged
+    suspicious, and writes `file_hash` - the hash of the file as the attacker
+    left it - into a `file_event` block, then again into `response_action`.
+    Those are the newest blocks on the path, so a lookup that took "the most
+    recent hash" checked the restored file against the ciphertext and reported
+    every successful recovery as unverified. It would have passed only if
+    recovery had handed back the encrypted file.
+
+    The rest of the suite could not catch this: its encryption events carry no
+    file_hash at all, which is a shape the running system never produces.
+    """
+    snapshot_root = Path(manager.snapshot_root)
+    document = tmp_path / "documents" / "thesis.doc"
+    document.parent.mkdir(parents=True)
+
+    clean = b"Chapter 1. The original, uncorrupted thesis. " * 64
+    clean_hash = hashlib.sha256(clean).hexdigest()
+    document.write_bytes(clean)
+    ledger_client.log_event(
+        "file_baseline", {"file_path": str(document), "file_hash": clean_hash}
+    )
+    take_snapshot(snapshot_root, "snap_pre_attack", document)
+
+    ciphertext = os.urandom(4096)
+    document.write_bytes(ciphertext)
+    cipher_hash = hashlib.sha256(ciphertext).hexdigest()
+
+    # Exactly the two blocks services/monitor/pipeline.py appends on detection.
+    for event_type in ("file_event", "response_action"):
+        ledger_client.log_event(
+            event_type,
+            {
+                "file_path": str(document),
+                "file_hash": cipher_hash,
+                "verdict": "suspected_encryption",
+                "prediction": "ransomware",
+                "threat_level": "critical",
+            },
+        )
+
+    result = manager.recover("snap_pre_attack", [str(document)], verify_integrity=True)
+    restored = result["files"][0]
+
+    assert document.read_bytes() == clean, "the restore itself works"
+    assert restored["expected_hash"] != cipher_hash, "must not verify against the attacker's hash"
+    assert restored["expected_hash"] == clean_hash
+    assert restored["integrity_verified"] is True
+    assert result["status"] == "success"
+
+
 def test_tc05_tampered_ledger_row_is_detected(manager, ledger_client, ledger_app, tmp_path):
     """TC-05: someone edits the audit log to hide the attack."""
     _, db_path = ledger_app
@@ -209,7 +264,11 @@ def test_tc05_tampered_ledger_row_is_detected(manager, ledger_client, ledger_app
 
 
 def test_recovery_works_when_the_baseline_hash_came_from_a_snapshot_event(manager, ledger_client, tmp_path):
-    """Any event carrying file_hash serves as the integrity reference."""
+    """A snapshot event carrying file_hash serves as the integrity reference.
+
+    Not *any* event carrying one: see GOOD_STATE_EVENT_TYPES in
+    recovery/ledger_client.py. The Monitor writes the attacker's hash.
+    """
     snapshot_root = Path(manager.snapshot_root)
     document = tmp_path / "notes.txt"
     content = b"meeting notes"
@@ -251,4 +310,160 @@ def test_multiple_files_recover_in_one_call(manager, ledger_client, tmp_path):
     for path, content in documents.items():
         assert path.read_bytes() == content
 
+    assert ledger_client.verify_chain()["valid"] is True
+
+
+# ----------------------------------------- the Monitor writing its own baseline
+
+
+def load_monitor():
+    """The Monitor service, loaded by file rather than by name.
+
+    `services/monitor/app.py`, `services/response/app.py` and
+    `services/ledger/app.py` are three different modules all called `app`, so a
+    plain `import app` here would resolve to whichever service happens to be
+    earlier on the path - and the Response suite runs in this same process.
+    Loading by location sidesteps that entirely; the monitor's directory is
+    *appended* to sys.path, not prepended, so its siblings (`detection`,
+    `pipeline`, `containers`) resolve while `import app` still means what it
+    meant before.
+    """
+    import importlib.util
+
+    monitor_dir = Path(__file__).resolve().parents[3] / "monitor"
+    if str(monitor_dir) not in sys.path:
+        sys.path.append(str(monitor_dir))
+    spec = importlib.util.spec_from_file_location("urds_monitor_app", monitor_dir / "app.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["urds_monitor_app"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def monitor_downstream(ledger_main):
+    """An httpx client that puts the real ledger behind the Monitor's fan-out.
+
+    The ML engine and the Response service are stubbed - neither is what this
+    test is about - but every /ledger call lands on the actual ledger app, so
+    the blocks the Monitor writes are the blocks recovery then reads.
+    """
+    ledger_http = TestClient(ledger_main.app)
+
+    def handler(request):
+        if request.url.path.startswith("/ledger/"):
+            response = ledger_http.request(
+                request.method,
+                request.url.path,
+                content=request.read(),
+                headers={"content-type": "application/json"},
+            )
+            return httpx.Response(
+                response.status_code,
+                content=response.content,
+                headers={"content-type": "application/json"},
+            )
+        if request.url.path == "/predict":
+            return httpx.Response(
+                200,
+                json={
+                    "prediction": "ransomware",
+                    "confidence": 0.91,
+                    "threat_level": "high",
+                    "model_version": "test",
+                },
+            )
+        return httpx.Response(200, json={"status": "success", "actions_taken": ["admin_notified"]})
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def drain(monitor, client):
+    """Run the Monitor's queued work, the way its worker thread would.
+
+    `_drain` builds its own client and blocks, so the dispatch it performs is
+    reproduced here instead. That dispatch is itself covered by
+    services/monitor/tests/test_baseline.py.
+    """
+    while not monitor._work.empty():
+        kind, *payload = monitor._work.get_nowait()
+        if kind == "baseline":
+            monitor._run_baseline(client, *payload)
+        else:
+            monitor._run_detection(client, *payload)
+
+
+def test_tc04_a_real_detect_encrypt_recover_cycle_verifies(manager, ledger_client, ledger_app, tmp_path):
+    """The whole loop with nothing hand-written into the ledger.
+
+    Every other TC-04 test above logs `file_baseline` itself, which proves the
+    integrity check works *given* a known-good hash. It could not prove the
+    running system ever produces one, and it did not: the Monitor reached the
+    ledger only for suspicious events, so the sole hash on an attacked path was
+    the ciphertext's. Recovery correctly refused to verify against it and every
+    real recovery reported "integrity could not be verified" - honest, and
+    useless.
+
+    Here the Monitor writes the baseline itself, on the first benign sighting,
+    and it is the only thing that makes the last assertion possible.
+    """
+    monitor = load_monitor()
+    ledger_main, _ = ledger_app
+    snapshot_root = Path(manager.snapshot_root)
+
+    monitor.EVENTS.clear()
+    monitor._SEEN_FILES.clear()
+    monitor.ENTROPY_HISTORY.clear()
+    monitor.WHITELIST.replace([], [])
+    monitor.TRAINING_MODE.reset()
+    monitor.PIPELINE_ENABLED = True
+    monitor.BASELINE_LOGGING_ENABLED = True
+    monitor._work = queue.Queue()
+
+    document = tmp_path / "documents" / "thesis.doc"
+    document.parent.mkdir(parents=True)
+    clean = b"Chapter 1. The original, uncorrupted thesis. " * 64
+    clean_hash = hashlib.sha256(clean).hexdigest()
+
+    with monitor_downstream(ledger_main) as client:
+        # 1. The file appears and the Monitor finds it benign. This is the only
+        #    step that is new, and the whole test turns on it.
+        document.write_bytes(clean)
+        first = monitor.handle_event(str(document), "created")
+        assert first["suspicious"] is False
+        assert first["file_hash"] == clean_hash
+        drain(monitor, client)
+
+        # 2. A snapshot captures it while it is still clean.
+        take_snapshot(snapshot_root, "snap_pre_attack", document)
+
+        # 3. It is encrypted in place. The Monitor detects that and fans out,
+        #    which writes the *ciphertext's* hash as the newest one on the path.
+        document.write_bytes(os.urandom(4096))
+        attacked = monitor.handle_event(str(document), "modified")
+        assert attacked["suspicious"] is True
+        drain(monitor, client)
+
+    with TestClient(ledger_main.app) as ledger_http:
+        blocks = ledger_http.get(
+            "/ledger/blocks", params={"file_path": str(document), "newest_first": True, "limit": 50}
+        ).json()["blocks"]
+
+    types = [block["event_type"] for block in blocks]
+    assert "file_baseline" in types, "the Monitor recorded no known-good hash"
+    assert types.count("file_baseline") == 1, "one baseline per path per run"
+    # The newest hash on this path belongs to the attacker, which is exactly why
+    # last_known_hash cannot simply take the most recent one.
+    assert (blocks[0]["event_data"] or {}).get("file_hash") != clean_hash
+
+    reference = ledger_client.last_known_hash(str(document))
+    assert reference["event_type"] == "file_baseline"
+    assert reference["file_hash"] == clean_hash
+
+    # 4. Recover, and verify against a hash the system produced by itself.
+    result = manager.recover("snap_pre_attack", [str(document)], verify_integrity=True)
+
+    assert result["status"] == "success"
+    assert result["integrity_verified"] is True
+    assert result["files"][0]["expected_hash"] == clean_hash
+    assert document.read_bytes() == clean
     assert ledger_client.verify_chain()["valid"] is True

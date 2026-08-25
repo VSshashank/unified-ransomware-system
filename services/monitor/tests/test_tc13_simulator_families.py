@@ -1,32 +1,40 @@
-"""TC-13 - Scenario A: ten ransomware families past a live Monitor.
+"""TC-13 - Scenario A: every simulated ransomware family past a live Monitor.
 
 Section 6.4.1: *"we executed 10 different ransomware simulators (e.g., RanSim).
 Measured Result Placeholder: The system successfully detected and terminated
 10/10 instances within 2 seconds. (To be replaced with real evidence)"*
 
-This is the replacement, and it does not report 10/10. It reports **8/10**, and
-asserts the two misses by name so they cannot quietly become "10/10" in a later
-edit of a document. See `scripts/simulator_sweep.py` for the measurement and
+This is the replacement. It now reports **13/13**, and the number is worth
+reading with its history attached, because for most of this project's life it
+read 8/10 and this file asserted the two misses by name so they could not
+quietly become "10/10" in a later edit of a document:
+
+    `partial`  intermittent encryption. A quarter of each file scrambled puts
+               whole-file entropy at ~5.2 bits/byte against a 7.5 threshold, and
+               an average cannot see it. Closed by scoring 4KB blocks
+               separately - the objection at the time was that a .docx or PDF
+               carries compressed blocks with the same profile, which is true,
+               and is why the rule is gated on the file not being a
+               structurally valid container.
+    `spoofer`  a new .zip carrying a real ZIP header over ciphertext, with the
+               original deleted. No prior reading on that path, so no rise; the
+               container exemption then explained the entropy away. Closed by
+               checking whether the ZIP structure is actually there - it costs
+               four bytes to claim a format and an encoder to have one.
+
+Three families were added afterwards, each written against a hole found by
+reading the detector's source rather than by watching it fail:
+
+    `strider`  strided intermittent encryption rather than a leading run, so
+               that `partial` being caught cannot be an artefact of only ever
+               looking at the front of a file.
+    `grinder`  five sub-floor writes to flush the differential-entropy window,
+               then ciphertext behind a ZIP header.
+    `poisoner` high-entropy files written while training mode is learning, to
+               raise the ceiling the encryption then hides under.
+
+See `scripts/simulator_sweep.py` for the measurement and
 `reports/simulator_families.json` for the recorded run.
-
-Why the two misses are misses on purpose
-----------------------------------------
-`partial` is intermittent encryption (LockBit 3, BlackCat): a quarter of each
-file is scrambled, so whole-file entropy lands at ~5.2 bits/byte against a 7.5
-threshold. Catching it needs per-block entropy, which also fires on the
-compressed blocks inside any .docx or PDF - trading a measured 0% false-positive
-rate, which is a graded criterion, for a technique the reference document never
-asks for.
-
-`spoofer` writes a *new* `.zip` carrying a real ZIP header over ciphertext and
-deletes the original. With no prior reading on that path there is no entropy rise
-to catch, and what remains - a new archive appearing while a document
-disappears - is byte-for-byte what "compress a file and delete the original"
-looks like. Separating the two needs to know *which process* did both, and
-process attribution does not exist here (see APPROACH.md section 8).
-
-Both are therefore honest limits of whole-file entropy, not tuning that was left
-undone. If either starts being detected, this test fails and should be rewritten.
 """
 
 import sys
@@ -45,7 +53,30 @@ import simulator_sweep  # noqa: E402
 FILES_PER_FAMILY = 4
 SETTLE_SECONDS = 1.0
 
-KNOWN_BLIND_SPOTS = {"partial", "spoofer"}
+# Empty, and it is an assertion rather than a deletion. A family that stops
+# being caught has to fail a test rather than disappear from a list.
+KNOWN_BLIND_SPOTS: set[str] = set()
+
+# Which evidence each family is expected to be caught by. Asserting the signal
+# and not just the flag is what stops a family from passing for the wrong
+# reason - `grinder` is caught by structural validation even when the entropy
+# floor has been flushed, so "detected" alone would hide a regression in the
+# floor completely.
+EXPECTED_SIGNALS = {
+    "locker": "static_entropy",
+    "silent": "entropy_rise",
+    "copycat": "static_entropy",
+    "partial": "partial_entropy",
+    "headerspoof": "entropy_rise",
+    "renamer": "static_entropy",
+    "notedrop": "entropy_rise",
+    "slowburn": "entropy_rise",
+    "staged": "entropy_rise",
+    "spoofer": "structural_mismatch",
+    "strider": "partial_entropy",
+    "grinder": "entropy_rise",
+    "poisoner": "entropy_rise",
+}
 
 
 @pytest.fixture(scope="module")
@@ -58,20 +89,25 @@ def sweep():
 
 
 @pytest.mark.benchmark
-def test_tc13_ten_families_are_simulated(sweep):
+def test_tc13_at_least_ten_families_are_simulated(sweep):
     """Section 6.4.1 says ten. Fewer than ten is not the scenario it describes."""
-    assert len(sweep) == 10, f"expected 10 families, got {sorted(sweep)}"
+    assert len(sweep) >= 10, f"expected at least 10 families, got {sorted(sweep)}"
+    assert set(sweep) == set(EXPECTED_SIGNALS), (
+        "a family was added or removed without saying what should catch it: "
+        f"{sorted(set(sweep) ^ set(EXPECTED_SIGNALS))}"
+    )
 
 
 @pytest.mark.benchmark
-def test_tc13_eight_of_ten_families_are_detected_within_two_seconds(sweep):
-    """The honest N/10, with the deadline section 6.4.1 states."""
+def test_tc13_every_family_is_detected_within_two_seconds(sweep):
+    """The N/N, with the deadline section 6.4.1 states."""
     detected = {name for name, r in sweep.items() if r["detected"]}
     missed = set(sweep) - detected
 
     assert missed == KNOWN_BLIND_SPOTS, (
         f"the set of undetected families changed: {sorted(missed)}. "
-        f"If it shrank, update this test, docs/test_cases.md and APPROACH.md section 8."
+        f"If it grew, that is a regression. If it shrank, update this test, "
+        f"docs/test_cases.md and APPROACH.md section 8."
     )
 
     late = {
@@ -80,6 +116,17 @@ def test_tc13_eight_of_ten_families_are_detected_within_two_seconds(sweep):
         if not sweep[name]["within_2s"]
     }
     assert not late, f"detected but outside the 2s deadline: {late}"
+
+
+@pytest.mark.benchmark
+def test_tc13_every_family_is_caught_by_the_evidence_it_is_meant_to_test(sweep):
+    """A family caught for the wrong reason has stopped testing what it exists for."""
+    wrong = {
+        name: result["signals"]
+        for name, result in sweep.items()
+        if result["signals"] != [EXPECTED_SIGNALS[name]]
+    }
+    assert not wrong, f"caught, but not by the expected evidence: {wrong}"
 
 
 @pytest.mark.benchmark
@@ -94,18 +141,19 @@ def test_tc13_every_detected_family_is_caught_on_every_file(sweep):
 
 
 @pytest.mark.benchmark
-def test_tc13_intermittent_encryption_stays_below_the_entropy_threshold(sweep):
-    """`partial` is missed for the stated reason, not for an unrelated one.
+@pytest.mark.parametrize("family", ["partial", "strider"])
+def test_tc13_intermittent_encryption_stays_below_the_entropy_threshold(sweep, family):
+    """Both intermittent families are caught *without* whole-file entropy helping.
 
-    Without this, the blind-spot assertion above would still pass if `partial`
-    started failing because the simulator broke rather than because whole-file
-    entropy cannot see it.
+    Without this, the detection assertion above would still pass if the
+    simulator broke and started writing fully encrypted files - which would make
+    the block profile look like it was working when it had never been consulted.
     """
-    result = sweep["partial"]
+    result = sweep[family]
     assert result["files_encrypted"] == FILES_PER_FAMILY
     assert 4.0 < result["mean_entropy"] < 7.5, (
-        f"partial's entropy is {result['mean_entropy']}; the blind spot is only "
-        "explained by entropy landing between plaintext and ciphertext"
+        f"{family}'s entropy is {result['mean_entropy']}; the block profile only "
+        "means anything while whole-file entropy stays under the threshold"
     )
 
 
@@ -113,13 +161,45 @@ def test_tc13_intermittent_encryption_stays_below_the_entropy_threshold(sweep):
 def test_tc13_header_spoofing_is_caught_by_differential_entropy(sweep):
     """`headerspoof` is the case the container exemption would otherwise wave through.
 
-    It is detected only because the rise is checked before the exemption. This is
-    the test that fails if that ordering is ever swapped.
+    It is detected because the rise is checked before the exemption. This is the
+    test that fails if that ordering is ever swapped.
     """
     result = sweep["headerspoof"]
     assert result["detected"]
     assert result["files_flagged"] == result["files_encrypted"]
     assert result["verdicts"] == ["suspected_encryption"]
+
+
+@pytest.mark.benchmark
+def test_tc13_a_forged_container_is_caught_with_no_history_to_help(sweep):
+    """`spoofer` is the same evasion with the one thing that made it work.
+
+    It writes a *new* path, so there is no prior reading to rise from and
+    differential entropy has nothing to say. Only the structure does.
+    """
+    result = sweep["spoofer"]
+    assert result["detected"]
+    assert result["signals"] == ["structural_mismatch"]
+    assert result["files_flagged"] == result["files_encrypted"]
+
+
+@pytest.mark.benchmark
+def test_tc13_poisoning_the_training_baseline_teaches_it_nothing(sweep):
+    """`poisoner` writes its ceiling-raisers during a real training window.
+
+    The window is opened with the production dwell requirement, so files created
+    seconds before it closes are recorded as candidates and never promoted. An
+    empty `training_learned` is the measurement: the ceiling the attacker tried
+    to buy does not exist, and the encryption that follows is not suppressed.
+    """
+    result = sweep["poisoner"]
+    assert result["training_learned"] == [], (
+        f"the baseline learned {result['training_learned']} from files created "
+        "during the window"
+    )
+    assert result["detected"]
+    assert result["files_suppressed"] == 0
+    assert result["files_flagged"] == result["files_encrypted"]
 
 
 @pytest.mark.benchmark
@@ -137,6 +217,6 @@ def test_tc13_a_ransom_note_is_not_itself_a_false_positive(sweep):
 
 @pytest.mark.benchmark
 def test_tc13_every_family_restores_byte_for_byte(sweep):
-    """Reversibility is what makes any of these safe to run - all ten, not eight."""
+    """Reversibility is what makes any of these safe to run - all of them."""
     broken = [name for name, r in sweep.items() if not r["restore_round_trips"]]
     assert not broken, f"--restore did not round-trip: {broken}"

@@ -53,16 +53,27 @@ document files with high-entropy content — without any malicious payload, and
 asserts the "<5 files encrypted" bound. Running the real sample in a proper lab
 would strengthen this; the detection path exercised is identical either way.
 
-**§5.6.2's "3+ different ransomware simulators".** The simulator imitates four
-families, differing in the shape of what the watcher sees rather than in the
-payload. Three are detected on every file: `locker` (rewrite in place, append
-`.locked`), `silent` (rewrite in place, keep the name, so entropy decides with no
-extension to help) and `copycat` (write a new encrypted file, delete the
-original — `created` + `deleted` rather than `modified`). The fourth, `partial`,
-imitates LockBit-3-style intermittent encryption and is **not** detected: it
-scrambles a quarter of each file, leaving whole-file entropy near 5.2 against a
-7.5 threshold. That is asserted as a known blind spot rather than omitted — see
-`test_partial_encryption_is_a_known_blind_spot` and `APPROACH.md` §8.
+**§5.6.2's "3+ different ransomware simulators" and §6.4.1's ten.** The
+simulator imitates **thirteen** families, differing in the shape of what the
+watcher sees rather than in the payload — every one of them is the same
+reversible keystream XOR. All thirteen are detected, on every file, within 2 s,
+and all thirteen round-trip byte-for-byte through `--restore`
+(`reports/simulator_families.json`, `test_tc13_simulator_families.py`).
+
+This paragraph used to record two misses, and the record is worth keeping:
+`partial` (intermittent encryption, whole-file entropy ~5.2 against a 7.5
+threshold) and `spoofer` (a real ZIP header over ciphertext on a path with no
+measurement history) were both 0 of 8, and both were argued to be honest limits
+of whole-file entropy rather than tuning left undone. They were limits of
+whole-file entropy. They were not limits of the detector, and the three families
+added afterwards — `strider`, `grinder`, `poisoner` — were written specifically
+to attack what replaced them. See
+[`DETECTION_HARDENING.md`](DETECTION_HARDENING.md) and `APPROACH.md` §8.
+
+Each family is asserted against the *evidence* that should catch it, not merely
+against being caught: `test_tc13_every_family_is_caught_by_the_evidence_it_is_meant_to_test`
+fails if `spoofer` starts being caught by an entropy rise instead of by its
+structure, which is how a regression in one layer hides behind another.
 
 **TC-02 — "zero-day".** Verified in the sense the spec means: detection with no
 signature and no prior knowledge of the sample. The behavioural classifier scores

@@ -24,12 +24,14 @@ What makes this safe, and why each guard is here:
     meant to be - the point is high-entropy output, and a reversible
     transformation is a feature here, not a weakness.
 
-Ten families are imitated. Section 5.6.2 asks the system to detect "3+ different
-ransomware simulators" and section 6.4.1 describes a run of "10 different
-ransomware simulators", so ten is the number the document's own methodology
-chapter uses. They differ in the *shape of what the watcher sees* - which is
-what a detector either handles or does not - rather than in the payload, which
-is the same reversible keystream XOR in every one:
+Thirteen families are imitated. Section 5.6.2 asks the system to detect "3+
+different ransomware simulators" and section 6.4.1 describes a run of "10
+different ransomware simulators", so ten was the number the document's own
+methodology chapter uses; the last three were added afterwards, each written
+against a specific hole that reading the detector's own source turned up. They
+differ in the *shape of what the watcher sees* - which is what a detector either
+handles or does not - rather than in the payload, which is the same reversible
+keystream XOR in every one:
 
     locker       rewrite in place, append .locked    entropy + extension signal
     silent       rewrite in place, keep the name     entropy alone, no rename
@@ -44,6 +46,21 @@ is the same reversible keystream XOR in every one:
     staged       two passes, half the file each      entropy walked up in steps
     spoofer      new .zip file with ZIP magic over   magic-byte evasion with no
                  ciphertext, delete the original     baseline to rise from
+
+    strider      encrypt 4KB, skip 8KB, repeat       true strided intermittent
+                                                     encryption - `partial` only
+                                                     touches the front, which a
+                                                     leading-block check would
+                                                     catch by accident
+    grinder      five sub-floor warm-up writes, then flushes the differential-
+                 ciphertext behind a ZIP header      entropy window, then
+                                                     collects the container
+                                                     exemption. Both of Table
+                                                     5.7's built mitigations in
+                                                     six writes.
+    poisoner     write a high-entropy file of each   raises a training-mode
+                 extension, then encrypt in place    ceiling and encrypts
+                                                     underneath it
 
 Every family round-trips through --restore; a family that cannot be undone is
 not safe to ship in a defensive project.
@@ -90,6 +107,32 @@ def keystream(seed: bytes, length: int) -> bytes:
 
 def _xor(data: bytes, seed: bytes) -> bytes:
     return bytes(a ^ b for a, b in zip(data, keystream(seed, len(data))))
+
+
+_KEYSTREAM_BLOCK = 32  # one SHA-256 digest
+
+
+def _keystream_at(seed: bytes, offset: int, length: int) -> bytes:
+    """The slice of the same keystream that covers `offset`.
+
+    `strider` encrypts disjoint regions of a file and has to XOR each one with
+    the keystream bytes belonging to *its* offset, not with the keystream from
+    the beginning. Restarting the keystream per region would give two regions of
+    identical plaintext identical ciphertext, which is both wrong for imitating
+    a real stream cipher and quietly lowers the entropy the detector measures -
+    the number this family exists to test.
+    """
+    first = offset // _KEYSTREAM_BLOCK
+    last = (offset + length + _KEYSTREAM_BLOCK - 1) // _KEYSTREAM_BLOCK
+    out = bytearray()
+    for counter in range(first, last):
+        out += hashlib.sha256(seed + counter.to_bytes(8, "big")).digest()
+    skip = offset - first * _KEYSTREAM_BLOCK
+    return bytes(out[skip : skip + length])
+
+
+def _xor_at(data: bytes, seed: bytes, offset: int) -> bytes:
+    return bytes(a ^ b for a, b in zip(data, _keystream_at(seed, offset, len(data))))
 
 
 # Windows opens files without FILE_SHARE_DELETE by default, so *any* process
@@ -289,8 +332,130 @@ def encrypt_spoofer(path: Path, seed: bytes) -> Path:
     return encrypted
 
 
+# ------------------------------------------------------------------- strider
+#
+# LockBit 3.0 and BlackCat encrypt a fraction of each file in a repeating
+# stride, not a single leading run. `partial` only scrambles the front, which a
+# detector could catch by looking at the first block alone and never notice it
+# had solved a narrower problem. This is the general shape: encrypt
+# STRIDE_ENCRYPT_BYTES, skip STRIDE_SKIP_BYTES, to the end of the file.
+#
+# One in three, at 4KB granularity, is chosen so a ~34KB decoy alternates
+# several times rather than being one encrypted chunk and one plaintext chunk.
+# The whole-file entropy that results sits well under the static threshold,
+# which is the point: only a per-block view sees it.
+STRIDE_ENCRYPT_BYTES = 4096
+STRIDE_SKIP_BYTES = 8192
+
+
+def _stride_regions(length: int):
+    offset = 0
+    while offset < length:
+        yield offset, min(STRIDE_ENCRYPT_BYTES, length - offset)
+        offset += STRIDE_ENCRYPT_BYTES + STRIDE_SKIP_BYTES
+
+
+def _stride(data: bytes, seed: bytes) -> bytes:
+    out = bytearray(data)
+    for offset, size in _stride_regions(len(data)):
+        out[offset : offset + size] = _xor_at(bytes(out[offset : offset + size]), seed, offset)
+    return bytes(out)
+
+
+def encrypt_strider(path: Path, seed: bytes) -> Path:
+    """Strided intermittent encryption, in place, keeping the name.
+
+    The file is unusable and most of its bytes were never touched. Whole-file
+    entropy lands around 6 bits/byte - below the static threshold, above the
+    plaintext, and the rise is under the 2.0 the differential check needs. What
+    gives it away is that a third of its 4KB blocks are at ciphertext entropy
+    and the rest are at document entropy, which no ordinary file does.
+    """
+    path.write_bytes(_stride(path.read_bytes(), seed))
+    return path
+
+
+# ------------------------------------------------------------------- grinder
+#
+# The differential-entropy window keeps ENTROPY_HISTORY_WINDOW readings and
+# takes the lowest as the baseline. Five is that window's size in
+# services/monitor/detection.py, so five writes are enough to push the original
+# document's reading out of it - and any reading below ENTROPY_RISE_FLOOR does
+# not alert on its own. Warm up with five, then write the ciphertext: measured
+# against the warm-up writes the rise is too small to flag, and a ZIP header
+# over the top collects the container exemption as well.
+#
+# Hardcoded rather than imported: the simulator is a black box to the detector
+# and must not read its constants, or a test would pass by construction.
+GRINDER_WARMUP_WRITES = 5
+GRINDER_WARMUP_ALPHABET = 96  # log2(96) = 6.58 bits/byte, under the 7.0 floor
+GRINDER_WARMUP_DELAY_SECONDS = 0.06
+
+
+def encrypt_grinder(path: Path, seed: bytes) -> Path:
+    """Flush the entropy window with sub-floor writes, then encrypt behind a header.
+
+    Each warm-up write is drawn from a 96-symbol alphabet, which caps it at 6.58
+    bits/byte - high enough to lift the window's minimum above 5.99, low enough
+    that ENTROPY_RISE_FLOOR (7.0) means none of them alerts by itself.
+    """
+    original = path.read_bytes()
+    for index in range(GRINDER_WARMUP_WRITES):
+        filler = keystream(seed + b"warmup" + bytes([index]), len(original))
+        path.write_bytes(bytes(byte % GRINDER_WARMUP_ALPHABET + 32 for byte in filler))
+        # The watcher has to see these as separate events, or the window is
+        # never flushed and the family is testing nothing.
+        time.sleep(GRINDER_WARMUP_DELAY_SECONDS)
+
+    path.write_bytes(ZIP_MAGIC + _xor(original, seed))
+    return path
+
+
+# ------------------------------------------------------------------ poisoner
+#
+# Training mode learns the highest entropy each extension reached and then stops
+# alerting at or below it. Anything that can write into the watched tree while
+# that window is open can therefore choose the ceiling. These files are what
+# does the choosing: one per extension in use, at the top of the range, carrying
+# the decoy marker so the script still only ever touches files it created.
+POISON_PREFIX = "cache_bundle"
+POISON_SIZE = 256 * 1024
+POISON_SETTLE_SECONDS = 1.0
+
+
+def _poison_files(target: Path, seed: bytes) -> list[Path]:
+    written = []
+    for index, suffix in enumerate(DECOY_SUFFIXES):
+        path = target / f"{POISON_PREFIX}_{index:02d}{suffix}"
+        path.write_bytes(MARKER + keystream(seed + b"poison" + bytes([index]), POISON_SIZE))
+        written.append(path)
+    return written
+
+
+def poison_names() -> list[str]:
+    """The extra files a `poisoner` run leaves behind, for the manifest."""
+    return [f"{POISON_PREFIX}_{index:02d}{suffix}" for index, suffix in enumerate(DECOY_SUFFIXES)]
+
+
+def encrypt_poisoner(path: Path, seed: bytes) -> Path:
+    """Encrypt in place, underneath a ceiling the poison files already raised.
+
+    Byte for byte this is `silent`. What makes it a different family is the
+    setup, which happens once before the loop: a high-entropy file of every
+    extension the decoys use, written while training mode is learning. If the
+    baseline accepts them, every one of these encryptions then sits at or below
+    a ceiling the attacker chose.
+    """
+    path.write_bytes(_xor(path.read_bytes(), seed))
+    return path
+
+
 def _decrypt_full(data: bytes, seed: bytes) -> bytes:
     return _xor(data, seed)
+
+
+def _decrypt_stride(data: bytes, seed: bytes) -> bytes:
+    return _stride(data, seed)
 
 
 def _decrypt_partial(data: bytes, seed: bytes) -> bytes:
@@ -314,11 +479,19 @@ FAMILIES = {
     "slowburn": (encrypt_slowburn, _decrypt_full, ()),
     "staged": (encrypt_staged, decrypt_staged, ()),
     "spoofer": (encrypt_spoofer, _strip_zip_magic, ()),
+    "strider": (encrypt_strider, _decrypt_stride, ()),
+    "grinder": (encrypt_grinder, decrypt_headerspoof, ()),
+    "poisoner": (encrypt_poisoner, _decrypt_full, tuple(poison_names())),
 }
 
 # Families whose default pace differs from --delay-ms's default, because the
 # pace is the behaviour being imitated.
 FAMILY_DEFAULT_DELAY_MS = {"slowburn": 800}
+
+# Families that write something before the encryption loop starts. The setup is
+# part of the behaviour, not scaffolding: `poisoner` is only a distinct family
+# because of what it writes first.
+FAMILY_SETUP = {"poisoner": _poison_files}
 
 
 def _legacy_encrypted_name(name: str, family: str) -> str:
@@ -390,7 +563,7 @@ def main() -> int:
         "--family",
         choices=sorted(FAMILIES),
         default="locker",
-        help="Which behaviour to imitate; see the module docstring for all ten.",
+        help="Which behaviour to imitate; see the module docstring for all thirteen.",
     )
     args = parser.parse_args()
 
@@ -436,6 +609,16 @@ def main() -> int:
     print(f"created {len(decoys)} decoy document(s) in {target}", flush=True)
     time.sleep(0.5)  # let the watcher enumerate them before anything changes
 
+    setup = FAMILY_SETUP.get(args.family)
+    if setup:
+        written = setup(target, seed)
+        # Announced on stdout and then paused on, because a harness driving this
+        # against a live monitor has to do something between the setup and the
+        # attack - scripts/simulator_sweep.py closes the training window here,
+        # which is exactly when a real attacker would want it closed.
+        print(f"SETUP {len(written)} {args.family}", flush=True)
+        time.sleep(POISON_SETTLE_SECONDS)
+
     print(f"beginning simulated encryption (family: {args.family})", flush=True)
     encrypted = 0
     for decoy in decoys:
@@ -449,7 +632,7 @@ def main() -> int:
         # reported is the one now on disk, not the original - `renamer` and
         # `spoofer` choose names the original does not determine, and a harness
         # that reconstructed the name by appending ".locked" would only ever work
-        # for one of the ten families.
+        # for one of the thirteen families.
         print(f"ENCRYPTED {encrypted} {result.name}", flush=True)
         if delay_ms:
             time.sleep(delay_ms / 1000)
