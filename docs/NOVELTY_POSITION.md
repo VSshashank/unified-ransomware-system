@@ -1,21 +1,21 @@
 # URDS Novelty Position
 
-This file is the executive entry point for the project’s novelty position. The earlier RECF-DR-first drafts are superseded.
+This file is the executive entry point for the current novelty position. Earlier RECF-DR-first and governance-only drafts are superseded by the evidence-gated proof plan below.
 
 ## Current position
 
-The project’s primary contribution is **cost-ordered governance of false-positive mitigations** in the URDS Monitor. A mitigation may cancel suspicious evidence only when the attacker’s auditable capability to forge the mitigation is not lower than the capability required to avoid the detection signal. Unvalidated or unavailable evidence must not be treated as positive validation, and ambiguous decisions must fail closed or remain attenuated and auditable.
+The project should present its contribution as an **empirical cost-of-defense evaluation**. The cost-ordered admissibility principle already exists in the repository and is therefore the starting point, not the novelty claim by itself. The novelty-bearing result must be a measured sequence: calibrate the least auditable attacker capability required to forge each mitigation, reproduce the unvalidated-container bypass, compare the current policy with a no-exemption null control, implement a positive-validation repair, and measure the security/false-positive/recovery/audit trade-off.
 
-The key implementation finding is that whitelist and training-mode suppressions reach the common admissibility policy, while the container exemption is a direct branch in `detection.classify()`. That branch tests `container_valid is not False`, which treats `None`—no validator or no definitive result—as equivalent to `True`. The current registry recognizes 16 unique formats through 20 signature entries, while 11 unique formats have no structural validator. The multi-format evidence script reproduces the resulting fresh-path high-entropy acceptance behavior.
+The primary scope is the **URDS Monitor**. The full unified-system claim is allowed only if the ML, response, recovery, and ledger paths are separately evaluated under the numerical gates defined in the proof plan.
 
-RECF-DR remains the supporting characterization and calibration workflow. Adaptive search, Pareto optimization, and a large repair framework are optional extensions only if a non-predictable interaction survives source-level characterization and deterministic witnesses.
+## Canonical proof plan
 
-## Canonical plan
+Read [`NOVELTY_PROOF_PLAN.md`](NOVELTY_PROOF_PLAN.md) for the complete research questions, attack-objective definition, mitigation audit, tooling-availability cost scale, multi-format evidence protocol, current/null/repair experiment, acceptance criteria, benign-corpus statistics, pipeline scope, milestones, and claim discipline.
 
-Read [`ADMISSIBILITY_GOVERNANCE_PLAN.md`](ADMISSIBILITY_GOVERNANCE_PLAN.md) for the complete contribution statement, threat model, tooling-availability cost scale, evidence protocol, surgical repair, mitigation audit, recovery/audit extension, external validation, statistical plan, milestones, acceptance criteria, and claim discipline.
+Read [`EXEMPTION_EVIDENCE.md`](EXEMPTION_EVIDENCE.md) for the reproducible 11-of-16-format unvalidated-container finding.
 
-Read [`EXEMPTION_EVIDENCE.md`](EXEMPTION_EVIDENCE.md) for the reproducible 11-of-16-format finding and its exact reproduction steps.
+The earlier [`ADMISSIBILITY_GOVERNANCE_PLAN.md`](ADMISSIBILITY_GOVERNANCE_PLAN.md) remains historical background and should not be used as the final proof plan without the corrections in `NOVELTY_PROOF_PLAN.md`.
 
 ## Scope disclaimer
 
-The evidence currently supports a **URDS Monitor-level** architectural claim. It should not be generalized to all ransomware detectors or represented as a patentability determination without independent validation and formal prior-art/legal review.
+The current evidence supports a URDS Monitor-level architectural finding. It does not establish universal ransomware-detector performance, patentability, or legal novelty without independent technical validation and formal prior-art/legal review.
