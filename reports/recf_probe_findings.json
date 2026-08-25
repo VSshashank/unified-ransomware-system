@@ -1,0 +1,6001 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-25T14:03:19.510526Z",
+  "probe": "recf_probe",
+  "pipeline_enabled": false,
+  "cases_run": 20,
+  "case_set": "witness_set",
+  "cases_expected": 20,
+  "cases_detected": 3,
+  "cases_missed": 17,
+  "case_miss_rate": 0.85,
+  "all_restore_verified": true,
+  "attacker_objective_met": 20,
+  "attacker_objective_not_met": 0,
+  "all_executed_cases_met_attacker_objective": true,
+  "within_2s": 3,
+  "fastest_detection_seconds": 0.0028,
+  "slowest_detection_seconds": 0.0115,
+  "signals": {
+    "entropy_rise": 1,
+    "static_entropy": 1,
+    "structural_mismatch": 1
+  },
+  "analytical_predictions": {
+    "below_declared_changed_fraction_boundary": 1,
+    "entropy_preserving_block_interaction": 5,
+    "guaranteed_below_entropy_threshold_unless_extension_signal": 3,
+    "interaction_dependent": 2,
+    "partial_profile_unavailable": 3,
+    "static_entropy_expected": 1,
+    "valid_structure_entropy_rise_requires_history": 5
+  },
+  "by_payload_mode": {
+    "base64": {
+      "cases": 3,
+      "detected": 0,
+      "missed": 3
+    },
+    "format_preserving": {
+      "cases": 5,
+      "detected": 1,
+      "missed": 4
+    },
+    "keystream": {
+      "cases": 7,
+      "detected": 2,
+      "missed": 5
+    },
+    "position_shuffle": {
+      "cases": 5,
+      "detected": 0,
+      "missed": 5
+    }
+  },
+  "by_file_size": {
+    "4096": {
+      "cases": 6,
+      "detected": 1,
+      "missed": 5
+    },
+    "12288": {
+      "cases": 5,
+      "detected": 0,
+      "missed": 5
+    },
+    "65536": {
+      "cases": 6,
+      "detected": 2,
+      "missed": 4
+    },
+    "1048576": {
+      "cases": 3,
+      "detected": 0,
+      "missed": 3
+    }
+  },
+  "rejected_combinations": [
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "reason": "structural_validity=valid requires format_preserving construction"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.05,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    },
+    {
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "reason": "format_preserving requires structural_validity=valid"
+    }
+  ],
+  "results": [
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:01:31.385071Z",
+      "case_id": "40b6ab58ca88ea1d1b67",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "analytical_prediction": "static_entropy_expected",
+      "detected": true,
+      "flag_seen": true,
+      "signal": "static_entropy",
+      "verdict": "suspected_encryption",
+      "reason": "entropy 7.95 >= 7.5 with no recognised container header",
+      "entropy": 7.95,
+      "entropy_delta": 0.0,
+      "container_format": null,
+      "container_valid": null,
+      "detection_seconds": 0.0028,
+      "within_2s": true,
+      "restore_verified": true,
+      "restored_sha256": "f25c3ee75fd545b94a48db9d966d92d5d126eb7bb5285baa2ed56d5c286c50e2",
+      "original_sha256": "f25c3ee75fd545b94a48db9d966d92d5d126eb7bb5285baa2ed56d5c286c50e2",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:01:33.490303Z",
+      "case_id": "e0fb499da66801e6c52b",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "analytical_prediction": "partial_profile_unavailable",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 4.72 below threshold 7.5",
+      "entropy": 4.72,
+      "entropy_delta": 0.0,
+      "container_format": null,
+      "container_valid": null,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "f25c3ee75fd545b94a48db9d966d92d5d126eb7bb5285baa2ed56d5c286c50e2",
+      "original_sha256": "f25c3ee75fd545b94a48db9d966d92d5d126eb7bb5285baa2ed56d5c286c50e2",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:01:35.716845Z",
+      "case_id": "3d1df9ecfb5a6d770677",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "analytical_prediction": "partial_profile_unavailable",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 4.73 below threshold 7.5",
+      "entropy": 4.73,
+      "entropy_delta": 0.41,
+      "container_format": null,
+      "container_valid": null,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "a041c239f53832a1f9c2223ebc9475b134f9991408a1f7547051a740b8695fa8",
+      "original_sha256": "a041c239f53832a1f9c2223ebc9475b134f9991408a1f7547051a740b8695fa8",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:01:38.200430Z",
+      "case_id": "3a410b7ff5576970490d",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "analytical_prediction": "below_declared_changed_fraction_boundary",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 5.05 below threshold 7.5",
+      "entropy": 5.05,
+      "entropy_delta": 0.75,
+      "container_format": null,
+      "container_valid": null,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
+      "original_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:01:40.686920Z",
+      "case_id": "be0c698db52208323543",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 1048576,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "analytical_prediction": "interaction_dependent",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 5.81 below threshold 7.5",
+      "entropy": 5.81,
+      "entropy_delta": 1.52,
+      "container_format": null,
+      "container_valid": null,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "59c5479529a0530b5a9ac00a16d10e437e8a05750724b623874686e6846c086c",
+      "original_sha256": "59c5479529a0530b5a9ac00a16d10e437e8a05750724b623874686e6846c086c",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:01:42.796035Z",
+      "case_id": "a330ee0f3524c04525e1",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "analytical_prediction": "guaranteed_below_entropy_threshold_unless_extension_signal",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 5.99 below threshold 7.5",
+      "entropy": 5.99,
+      "entropy_delta": 0.0,
+      "container_format": null,
+      "container_valid": null,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "f25c3ee75fd545b94a48db9d966d92d5d126eb7bb5285baa2ed56d5c286c50e2",
+      "original_sha256": "f25c3ee75fd545b94a48db9d966d92d5d126eb7bb5285baa2ed56d5c286c50e2",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:01:46.592482Z",
+      "case_id": "2f1f439dd8a540494ab3",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "analytical_prediction": "guaranteed_below_entropy_threshold_unless_extension_signal",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 5.15 below threshold 7.5",
+      "entropy": 5.15,
+      "entropy_delta": 0.85,
+      "container_format": "zip",
+      "container_valid": false,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
+      "original_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:01:48.699722Z",
+      "case_id": "ee57d78465b7fce6d121",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 4096,
+        "changed_fraction": 1.0,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "analytical_prediction": "entropy_preserving_block_interaction",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 4.37 below threshold 7.5",
+      "entropy": 4.37,
+      "entropy_delta": 0.0,
+      "container_format": null,
+      "container_valid": null,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "f25c3ee75fd545b94a48db9d966d92d5d126eb7bb5285baa2ed56d5c286c50e2",
+      "original_sha256": "f25c3ee75fd545b94a48db9d966d92d5d126eb7bb5285baa2ed56d5c286c50e2",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:01:50.930512Z",
+      "case_id": "391f1fce7fbf9e96c6a5",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "analytical_prediction": "entropy_preserving_block_interaction",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 4.31 below threshold 7.5",
+      "entropy": 4.31,
+      "entropy_delta": 0.0,
+      "container_format": null,
+      "container_valid": null,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "a041c239f53832a1f9c2223ebc9475b134f9991408a1f7547051a740b8695fa8",
+      "original_sha256": "a041c239f53832a1f9c2223ebc9475b134f9991408a1f7547051a740b8695fa8",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:01:53.212954Z",
+      "case_id": "18147243bccd95ba2ded",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "analytical_prediction": "entropy_preserving_block_interaction",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 4.25 below threshold 7.5",
+      "entropy": 4.25,
+      "entropy_delta": 0.0,
+      "container_format": "zip",
+      "container_valid": false,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
+      "original_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:03:03.697105Z",
+      "case_id": "b346fe71dc70e38da60c",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "analytical_prediction": "entropy_preserving_block_interaction",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 4.29 below threshold 7.5",
+      "entropy": 4.29,
+      "entropy_delta": 0.0,
+      "container_format": null,
+      "container_valid": null,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "59c5479529a0530b5a9ac00a16d10e437e8a05750724b623874686e6846c086c",
+      "original_sha256": "59c5479529a0530b5a9ac00a16d10e437e8a05750724b623874686e6846c086c",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:03:05.924920Z",
+      "case_id": "5df6e43ebddf324a7aa4",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 4096,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "analytical_prediction": "valid_structure_entropy_rise_requires_history",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 4.93 below threshold 7.5",
+      "entropy": 4.93,
+      "entropy_delta": 0.56,
+      "container_format": "zip",
+      "container_valid": true,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "f25c3ee75fd545b94a48db9d966d92d5d126eb7bb5285baa2ed56d5c286c50e2",
+      "original_sha256": "f25c3ee75fd545b94a48db9d966d92d5d126eb7bb5285baa2ed56d5c286c50e2",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:03:08.167463Z",
+      "case_id": "2b60be3d55e39a000423",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 12288,
+        "changed_fraction": 0.25,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "analytical_prediction": "valid_structure_entropy_rise_requires_history",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 5.86 below threshold 7.5",
+      "entropy": 5.86,
+      "entropy_delta": 1.54,
+      "container_format": "zip",
+      "container_valid": true,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "a041c239f53832a1f9c2223ebc9475b134f9991408a1f7547051a740b8695fa8",
+      "original_sha256": "a041c239f53832a1f9c2223ebc9475b134f9991408a1f7547051a740b8695fa8",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:03:08.415675Z",
+      "case_id": "e4afb76f2adf352b132d",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "valid",
+        "history_mode": "observed"
+      },
+      "analytical_prediction": "valid_structure_entropy_rise_requires_history",
+      "detected": true,
+      "flag_seen": true,
+      "signal": "entropy_rise",
+      "verdict": "suspected_encryption",
+      "reason": "entropy rose 3.7 to 8.0 on a file already being watched, which is replacement rather than editing; the zip header does not explain a rise this large",
+      "entropy": 8.0,
+      "entropy_delta": 3.7,
+      "container_format": "zip",
+      "container_valid": true,
+      "detection_seconds": 0.0106,
+      "within_2s": true,
+      "restore_verified": true,
+      "restored_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
+      "original_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:03:10.699285Z",
+      "case_id": "d3ac166c6df618b339db",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 1048576,
+        "changed_fraction": 0.1,
+        "block_pattern": "strided",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "analytical_prediction": "valid_structure_entropy_rise_requires_history",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 5.05 below threshold 7.5",
+      "entropy": 5.05,
+      "entropy_delta": 0.0,
+      "container_format": "zip",
+      "container_valid": true,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "59c5479529a0530b5a9ac00a16d10e437e8a05750724b623874686e6846c086c",
+      "original_sha256": "59c5479529a0530b5a9ac00a16d10e437e8a05750724b623874686e6846c086c",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:03:12.932423Z",
+      "case_id": "5b7f0916288378d03b1b",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 4096,
+        "changed_fraction": 0.25,
+        "block_pattern": "scattered",
+        "structural_validity": "magic_only",
+        "history_mode": "observed"
+      },
+      "analytical_prediction": "partial_profile_unavailable",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 5.86 below threshold 7.5",
+      "entropy": 5.86,
+      "entropy_delta": 1.49,
+      "container_format": "zip",
+      "container_valid": false,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "f25c3ee75fd545b94a48db9d966d92d5d126eb7bb5285baa2ed56d5c286c50e2",
+      "original_sha256": "f25c3ee75fd545b94a48db9d966d92d5d126eb7bb5285baa2ed56d5c286c50e2",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:03:15.159111Z",
+      "case_id": "091ae7d4e3b9b94967a3",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "base64",
+        "file_size": 12288,
+        "changed_fraction": 0.1,
+        "block_pattern": "leading",
+        "structural_validity": "broken",
+        "history_mode": "observed"
+      },
+      "analytical_prediction": "guaranteed_below_entropy_threshold_unless_extension_signal",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 4.72 below threshold 7.5",
+      "entropy": 4.72,
+      "entropy_delta": 0.4,
+      "container_format": null,
+      "container_valid": null,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "a041c239f53832a1f9c2223ebc9475b134f9991408a1f7547051a740b8695fa8",
+      "original_sha256": "a041c239f53832a1f9c2223ebc9475b134f9991408a1f7547051a740b8695fa8",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:03:17.274969Z",
+      "case_id": "5e4a002ec126a17965a6",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "position_shuffle",
+        "file_size": 12288,
+        "changed_fraction": 1.0,
+        "block_pattern": "scattered",
+        "structural_validity": "broken",
+        "history_mode": "fresh"
+      },
+      "analytical_prediction": "entropy_preserving_block_interaction",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 4.32 below threshold 7.5",
+      "entropy": 4.32,
+      "entropy_delta": 0.0,
+      "container_format": null,
+      "container_valid": null,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "a041c239f53832a1f9c2223ebc9475b134f9991408a1f7547051a740b8695fa8",
+      "original_sha256": "a041c239f53832a1f9c2223ebc9475b134f9991408a1f7547051a740b8695fa8",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:03:17.397762Z",
+      "case_id": "593d6fb64dd938b4a53c",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "keystream",
+        "file_size": 65536,
+        "changed_fraction": 0.25,
+        "block_pattern": "leading",
+        "structural_validity": "magic_only",
+        "history_mode": "fresh"
+      },
+      "analytical_prediction": "interaction_dependent",
+      "detected": true,
+      "flag_seen": true,
+      "signal": "structural_mismatch",
+      "verdict": "suspected_encryption",
+      "reason": "the file declares a zip container but the zip structure is not there behind it, and the content is high entropy (5.86)",
+      "entropy": 5.86,
+      "entropy_delta": 0.0,
+      "container_format": "zip",
+      "container_valid": false,
+      "detection_seconds": 0.0115,
+      "within_2s": true,
+      "restore_verified": true,
+      "restored_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
+      "original_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    },
+    {
+      "schema_version": 1,
+      "generated_at": "2026-08-25T14:03:19.510096Z",
+      "case_id": "1a3f6516a979aa7be951",
+      "seed": "recf-probe-2026",
+      "behavior": {
+        "payload_mode": "format_preserving",
+        "file_size": 65536,
+        "changed_fraction": 0.05,
+        "block_pattern": "leading",
+        "structural_validity": "valid",
+        "history_mode": "fresh"
+      },
+      "analytical_prediction": "valid_structure_entropy_rise_requires_history",
+      "detected": false,
+      "flag_seen": false,
+      "signal": null,
+      "verdict": "benign",
+      "reason": "entropy 4.73 below threshold 7.5",
+      "entropy": 4.73,
+      "entropy_delta": 0.0,
+      "container_format": "zip",
+      "container_valid": true,
+      "detection_seconds": null,
+      "within_2s": false,
+      "restore_verified": true,
+      "restored_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
+      "original_sha256": "c48d35f7d8fd742acb36a49e7337e7834876cde967e33e37ed66c62b1f26925d",
+      "event_type": "modified",
+      "attacker_objective_met": true,
+      "attacker_objective_reason": "application_integrity_failed"
+    }
+  ]
+}
