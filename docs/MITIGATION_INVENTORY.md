@@ -32,21 +32,37 @@ A path that is "no" in both columns can remove evidence with no record and no pr
 
 ## Summary
 
-**28 paths found across the six services. 3 reach `adjudicate()`. 4 reach the ledger.**
+**34 call sites documented across the six services. 29 of them can cancel,
+attenuate or defer evidence. 3 reach `adjudicate()`.**
 
-| Service | Paths | → adjudicate | → ledger |
-|---|---|---|---|
-| Monitor | 20 | 3 | 2 |
-| ML Engine | 3 | 0 | 0 |
-| Response | 3 | 0 | 2 |
-| Ledger | 1 | 0 | n/a |
-| Gateway | 3 | 0 | 1 (best-effort) |
-| Dashboard | 2 | 0 | 0 |
+| Service | Rows | Can cancel / attenuate / defer | → adjudicate | → ledger |
+|---|---|---|---|---|
+| Monitor | 21 | 19 | 3 | 3, and only when *attenuated* |
+| ML Engine | 3 | 3 | 0 | 0 |
+| Response | 4 | 2 | 0 | 2 |
+| Ledger | 1 | 0 | — | n/a |
+| Gateway | 3 | 3 | 0 | 1, best-effort |
+| Dashboard | 2 | 2 | 0 | 0 |
+| **Total** | **34** | **29** | **3** | **6** |
+
+The five rows that are *not* evidence-cancelling are listed anyway, so the
+inventory is complete rather than selective: **M-18** (an unreadable whitelist
+file becomes an empty whitelist, which suppresses nothing), **M-21** (a validator
+that raises returns FORGED — it fails closed), **D-01** (`verify_chain` reports
+how far it got rather than certifying a short walk), **R-02** (a refused
+termination is recorded with its reason and not counted as an action) and
+**R-04** (an unverifiable restore reports `integrity_verified: false`).
 
 The three governed paths are the whitelist hash rule, the whitelist path rule and
-the training-mode ceiling — the three that `Table 5.7` names as mitigations and that
+the training-mode ceiling — the three that Table 5.7 names as mitigations and that
 the admissibility layer was written for. **Every other evidence-cancelling path in
 the system is ungoverned**, including the one the Monitor uses most.
+
+The `→ ledger` column is weaker than its count suggests. Of the six, three are the
+governed rules and they reach the chain **only when the suppression was
+outranked** (M-16); one is best-effort by design and fails open (G-02); one is
+best-effort and fails open (R-03 affects R-02's record). No evidence-cancelling
+decision reaches the ledger unconditionally.
 
 ---
 
