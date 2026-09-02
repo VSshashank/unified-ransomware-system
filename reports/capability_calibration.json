@@ -1,7 +1,7 @@
 {
   "schema": "urds.capability_calibration/1",
-  "generated_at": "2026-09-02T07:05:16.012328Z",
-  "commit": "2c242d6ef610afc7aa13f3384f980810de192e09",
+  "generated_at": "2026-09-02T13:29:53.754283Z",
+  "commit": "7d8ee7ec8147b6e08a05e908bed94565b5895e1f",
   "branch": "feat/admissibility-governance-novelty-v2",
   "ladder": {
     "0": "negligible",
@@ -13,7 +13,13 @@
   "second_reviewer_statement": "\u00a79.15 requires the AS\u2194NI ring. Every level here was derived twice, in opposite decision orders, over the same recorded operational facts and without reference to the first conclusion - which is the reproduction protocol. Both derivations were written in one session by one author. No record claims an independent human reviewer, and every record carries reproduction.independent_human_reviewer = false.",
   "summary": {
     "levels_measured": 10,
-    "with_reproducible_source_trail": 10,
+    "with_empirical_source_trail": 9,
+    "derived_from_source_only": [
+      {
+        "strategy": "partial_entropy / never reach ciphertext entropy in any block",
+        "why": "Producing ciphertext whose every block sits below the threshold means either encrypting less of the file or post-processing the output to flatten it - both of which are the attacker writing format-aware, distribution-aware code. The level is derived from that fact, and the fact is not in dispute; building a partial encryptor to confirm it would add no evidence the source does not already give."
+      }
+    ],
     "reproduced": 10,
     "unresolved_under_d2": 0,
     "disagree_with_the_declared_cost_table": [
@@ -72,7 +78,7 @@
       "matches_declared": false,
       "source_trail": {
         "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
-        "artefact_sha256": "53ee3d4ac49afc7656d5ae3417cde63a27f70c088be5c260c3420d8556a626a4",
+        "artefact_sha256": "ac6017a6abd8dba3f908d9de6fc861d110307434c13aaa3f5e8243b3f4067aa6",
         "scored_by": "detection.classify via scripts/capability_calibration.py::score"
       },
       "reproduction": {
@@ -344,7 +350,7 @@
       "measurement": {
         "rule_matched": {
           "rule": "path",
-          "value": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\capability_h8raqln9\\approved\\*"
+          "value": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\capability_f32gpcnj\\approved\\*"
         },
         "adjudication_outcome": "cancelled",
         "admitted": true,
@@ -441,14 +447,14 @@
             ".zip": {
               "entropy_ceiling": 8.0,
               "directories": [
-                "c:/users/nikhi/appdata/local/temp/capability_h8raqln9/watched"
+                "c:/users/nikhi/appdata/local/temp/capability_f32gpcnj/watched"
               ],
               "profiles": [
                 {
                   "structure": "container:zip",
                   "entropy_ceiling": 8.0,
                   "directories": [
-                    "c:/users/nikhi/appdata/local/temp/capability_h8raqln9/watched"
+                    "c:/users/nikhi/appdata/local/temp/capability_f32gpcnj/watched"
                   ]
                 }
               ]
@@ -462,7 +468,7 @@
         "attack_signal": null,
         "rule_matched": {
           "rule": "training_mode",
-          "value": ".zip (container:zip) in c:/users/nikhi/appdata/local/temp/capability_h8raqln9/watched at or below 8.0 bits/byte"
+          "value": ".zip (container:zip) in c:/users/nikhi/appdata/local/temp/capability_f32gpcnj/watched at or below 8.0 bits/byte"
         },
         "adjudication_outcome": "cancelled",
         "admitted": true,

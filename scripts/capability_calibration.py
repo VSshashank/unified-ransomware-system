@@ -1057,8 +1057,22 @@ def main() -> int:
 
     reproduced = [r for r in levels if r.get("reproduction", {}).get("status") == "reproduced"]
     unresolved = [r for r in levels if r.get("reproduction", {}).get("status") == "unresolved"]
-    with_trail = [r for r in levels if r.get("source_trail", {}).get("command")]
     disagreements = [r for r in levels if r.get("matches_declared") is False]
+
+    # Table 9.8 asks for "capability levels with a reproducible source trail -
+    # 100%". A record whose attack was never built has a rationale, not a trail,
+    # and counting the two together would report 100% for a set that includes
+    # one level nobody can re-run. They are counted apart.
+    # "Empirical" means an attack was actually executed and its outcome
+    # recorded - succeeding or failing. An artefact hash is not the test: the
+    # SHA-256 preimage attack legitimately has no artefact, and its negative
+    # control (an attacker-controlled file offered against a populated hash
+    # whitelist, which did not match) is a real measurement. Only a level whose
+    # attack was never built is derived-only.
+    empirical = [
+        r for r in levels if r.get("measurement", {}).get("attack_succeeded") is not None
+    ]
+    derived_only = [r for r in levels if r not in empirical]
 
     report = {
         "schema": "urds.capability_calibration/1",
@@ -1079,7 +1093,14 @@ def main() -> int:
         ),
         "summary": {
             "levels_measured": len(levels),
-            "with_reproducible_source_trail": len(with_trail),
+            "with_empirical_source_trail": len(empirical),
+            "derived_from_source_only": [
+                {
+                    "strategy": r["strategy"],
+                    "why": r["attack"].get("why_it_is_not_run_here", "attack not built"),
+                }
+                for r in derived_only
+            ],
             "reproduced": len(reproduced),
             "unresolved_under_d2": len(unresolved),
             "disagree_with_the_declared_cost_table": [
@@ -1094,7 +1115,8 @@ def main() -> int:
         "levels": levels,
     }
 
-    print(f"levels measured: {len(levels)}   reproduced: {len(reproduced)}   "
+    print(f"levels measured: {len(levels)}   empirical trail: {len(empirical)}   "
+          f"derived only: {len(derived_only)}   reproduced: {len(reproduced)}   "
           f"unresolved: {len(unresolved)}")
     print(f"{'strategy':<62} {'declared':<11} {'measured':<11} attack")
     for row in levels:
