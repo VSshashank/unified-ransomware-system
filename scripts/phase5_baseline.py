@@ -15,6 +15,14 @@ watcher can idle cheaply for five seconds and still drift upward over an hour,
 and the RSS peak of a five-second burst is not the peak of a stress test. This
 script runs the window Table 5.9 asks for. It takes an hour, which is the point.
 
+The window is counted in **samples actually taken**, not in wall-clock seconds.
+The first version of this script used a wall-clock condition and reported a
+5587-second window holding 1164 one-per-second samples - about 19 minutes of
+monitoring spread over 93 minutes, because the host suspended underneath it.
+A wall clock cannot tell an hour of monitoring from an hour of being unscheduled,
+and reporting one as the other would be the same defect this script was written
+to correct. See `cpu_over_window`.
+
 What is measured here directly
 ------------------------------
 Detection latency, false-positive rate, forged-container detection, CPU over the
@@ -311,12 +319,38 @@ def forged_container_rate(workdir: Path) -> dict:
 def cpu_over_window(workdir: Path, seconds: float) -> dict:
     """Table 5.9 row 6, by its stated method.
 
-    The load is a steady write cadence into a watched directory - one 32KB file
-    every 50ms - held for the whole window, so the figure is the cost of
-    monitoring under continuous activity rather than the cost of monitoring an
-    idle disk. CPU and RSS are both sampled once a second; the RSS series is
-    kept because a leak that only shows after forty minutes is invisible to any
-    shorter run, and this is the only run long enough to see one.
+    Driven by **effective samples, not wall clock**, and that distinction is the
+    whole reason this function was rewritten.
+
+    The first attempt ran `while time.time() - started < 3600`. It reported a
+    5587-second window carrying 1164 one-per-second samples - so roughly 19
+    minutes of monitoring stretched over 93 minutes of wall time, because the
+    host suspended underneath it. The write count corroborates it exactly: 23215
+    files at the loop's own 50ms cadence is 1161 seconds of active loop, against
+    1164 samples. A wall-clock condition cannot tell "an hour of monitoring"
+    from "an hour during which this process was mostly not scheduled", and
+    reporting the second as the first would be precisely the defect this whole
+    script exists to correct in test_benchmarks.py.
+
+    So the loop now runs until it has collected `seconds` actual samples. A
+    suspend extends the wall span and is reported as such; it no longer shortens
+    the measurement.
+
+    Two further corrections to the first attempt:
+
+    * **The load is a monitoring period, not an attack.** Table 5.9 asks for the
+      average "during 1-hour monitoring period". The first version wrote nothing
+      but `os.urandom`, so every single file was high-entropy with no container
+      header - `suspected_encryption`, every time. That is not a monitoring
+      period, it is a sustained ransomware burst, and it measured the cost of
+      one. The mix here is 90% ordinary documents and 10% high-entropy
+      archive-shaped files, and the realised mix is recorded.
+    * **The downstream fan-out is off.** With no Compose stack up, every
+      suspicious event queued an HTTP call that failed DNS resolution. That
+      measured `getaddrinfo` failure latency, not the cost of monitoring. The
+      fan-out is a separate service hop and is excluded here deliberately; the
+      queue behaviour it exposed is measured on its own in
+      `queue_backpressure`.
     """
     from fastapi.testclient import TestClient
 
@@ -328,20 +362,33 @@ def cpu_over_window(workdir: Path, seconds: float) -> dict:
     system_samples: list[float] = []
     rss_series: list[float] = []
     written = 0
+    suspicious_written = 0
     cores = psutil.cpu_count() or 1
+    target_samples = int(seconds)
 
-    with TestClient(monitor_app.app) as client:
+    prose = (b"quarterly deployment report, section body text. " * 700)[:32768]
+
+    # Measured with the fan-out disabled - see the docstring. Restored in the
+    # finally so no later stage inherits it.
+    previous_pipeline = monitor_app.PIPELINE_ENABLED
+    monitor_app.PIPELINE_ENABLED = False
+    try:
+      with TestClient(monitor_app.app) as client:
         client.post("/monitor/start", json={"watch_path": str(workdir), "recursive": True})
         process.cpu_percent(interval=None)  # prime
         started = time.time()
         next_sample = started + 1.0
 
-        while True:
+        while len(samples) < target_samples:
             now = time.time()
-            if now - started >= seconds:
-                break
-            target = workdir / f"load_{written}.bin"
-            target.write_bytes(os.urandom(32768))
+            # One file in ten is high-entropy, the rest are ordinary documents.
+            if written % 10 == 0:
+                target = workdir / f"load_{written}.bin"
+                target.write_bytes(os.urandom(32768))
+                suspicious_written += 1
+            else:
+                target = workdir / f"load_{written}.txt"
+                target.write_bytes(prose)
             written += 1
             if now >= next_sample:
                 samples.append(process.cpu_percent(interval=None) / cores)
@@ -354,23 +401,45 @@ def cpu_over_window(workdir: Path, seconds: float) -> dict:
                 system_samples.append(psutil.cpu_percent(interval=None))
                 rss_series.append(process.memory_info().rss / (1024 * 1024))
                 next_sample = now + 1.0
-                # The window is an hour; keeping every file would be 2.3GB of
-                # disk for a CPU measurement. Old load files are recycled.
+                # An hour of writes would be gigabytes of disk for a CPU
+                # measurement. Old load files are recycled. The first version
+                # sorted lexicographically and kept the last 20 of that order,
+                # which is not the last 20 written - it left 2635 files behind.
+                # Sorting by write order fixes it.
                 if written % 200 == 0:
-                    for stale in sorted(workdir.glob("load_*.bin"))[:-20]:
-                        stale.unlink(missing_ok=True)
+                    stale = sorted(workdir.glob("load_*"), key=lambda q: q.stat().st_mtime)
+                    for old_file in stale[:-20]:
+                        old_file.unlink(missing_ok=True)
             time.sleep(0.05)
 
         client.post("/monitor/stop")
+    finally:
+        monitor_app.PIPELINE_ENABLED = previous_pipeline
 
     duration = time.time() - started
     # The first sample covers the priming interval and is discarded - it
     # attributes the whole of process startup to one second of monitoring.
     usable = samples[1:] or samples
     return {
-        "window_seconds": round(duration, 1),
-        "files_written": written,
+        "requested_samples": target_samples,
         "samples": len(usable),
+        "effective_monitoring_seconds": len(samples),
+        "wall_span_seconds": round(duration, 1),
+        "suspended_or_descheduled_seconds": round(max(0.0, duration - len(samples)), 1),
+        "window_satisfies_table_5_9": len(samples) >= target_samples,
+        "files_written": written,
+        "load_mix": {
+            "high_entropy_files": suspicious_written,
+            "document_files": written - suspicious_written,
+            "high_entropy_fraction": round(suspicious_written / written, 4) if written else 0.0,
+            "note": (
+                "A monitoring period, not an attack. The first version of this "
+                "measurement wrote nothing but os.urandom, so every file was "
+                "suspected_encryption and the figure was the cost of a sustained "
+                "ransomware burst."
+            ),
+        },
+        "downstream_fan_out": "disabled for this measurement; see queue_backpressure",
         "mean_percent_of_total_cpu": round(sum(usable) / len(usable), 3),
         "max_percent_of_total_cpu": round(max(usable), 3),
         "p95_percent_of_total_cpu": round(sorted(usable)[int(len(usable) * 0.95) - 1], 3),
@@ -383,6 +452,68 @@ def cpu_over_window(workdir: Path, seconds: float) -> dict:
         "rss_last_mb": round(rss_series[-1], 2) if rss_series else None,
         "rss_peak_over_window_mb": round(max(rss_series), 2) if rss_series else None,
         "method": TARGETS["cpu_percent"][1],
+    }
+
+
+def queue_backpressure(workdir: Path, events: int = 4000) -> dict:
+    """What happens to memory when detections outrun the fan-out.
+
+    Not a Table 5.9 row. It is here because the first attempt at the CPU window
+    found it by accident and the finding is worth keeping.
+
+    `app._work` is `queue.Queue()` with no `maxsize` (app.py:129), and the only
+    consumer is a single worker thread whose `pipeline.run` makes three HTTP
+    calls per event. When the downstream services are unreachable - which is
+    exactly the situation during an incident that has taken out the ledger, and
+    was the situation on this host - each call waits for DNS to fail, so the
+    producer outruns the consumer without bound and every queued item holds a
+    full event dict, a feature dict and a verdict.
+
+    `_SEEN_FILES` (app.py:92) is a second unbounded structure: a `set[str]` that
+    gains one entry per unique path ever seen and is never trimmed.
+
+    This drives suspicious events at the queue with the fan-out pointed at an
+    address that does not resolve, and records the growth. It is a robustness
+    measurement, not a performance one.
+    """
+    import app as monitor_app
+
+    workdir.mkdir(parents=True, exist_ok=True)
+    process = psutil.Process()
+
+    previous_pipeline = monitor_app.PIPELINE_ENABLED
+    monitor_app.PIPELINE_ENABLED = True
+    baseline_mb = process.memory_info().rss / (1024 * 1024)
+    seen_before = len(monitor_app._SEEN_FILES)
+
+    try:
+        for index in range(events):
+            target = workdir / f"backpressure_{index}.bin"
+            target.write_bytes(os.urandom(16384))
+            monitor_app.handle_event(str(target), "created")
+            target.unlink(missing_ok=True)
+        depth = monitor_app._work.qsize()
+        peak_mb = process.memory_info().rss / (1024 * 1024)
+    finally:
+        monitor_app.PIPELINE_ENABLED = previous_pipeline
+
+    return {
+        "events_driven": events,
+        "queue_depth_after": depth,
+        "queue_is_bounded": monitor_app._work.maxsize > 0,
+        "baseline_mb": round(baseline_mb, 2),
+        "peak_mb": round(peak_mb, 2),
+        "growth_mb": round(peak_mb - baseline_mb, 2),
+        "seen_files_before": seen_before,
+        "seen_files_after": len(monitor_app._SEEN_FILES),
+        "seen_files_is_bounded": False,
+        "finding": (
+            "app._work is queue.Queue() with no maxsize and app._SEEN_FILES is an "
+            "untrimmed set. A Monitor producing detections faster than the fan-out "
+            "drains them grows without bound, and the condition that causes it - an "
+            "unreachable ledger or ML engine - is the one that arises during an "
+            "incident. The 5-second benchmark in test_benchmarks.py cannot see it."
+        ),
     }
 
 
@@ -629,6 +760,11 @@ def main() -> int:
     parser.add_argument("--files-per-family", type=int, default=8)
     parser.add_argument("--skip-suite", action="store_true", help="skip the pytest counts")
     parser.add_argument(
+        "--merge",
+        action="store_true",
+        help="keep stages absent from this run at their value in the existing report",
+    )
+    parser.add_argument(
         "--quick",
         action="store_true",
         help="60s CPU window, 30s stress - a smoke run that refuses to write the report",
@@ -656,6 +792,7 @@ def main() -> int:
     measured["ledger_verify_ms"] = stage("ledger verification", ledger_verify_time, workdir / "ledger")
     measured["dashboard_latency_ms"] = stage("dashboard freshness", dashboard_latency, workdir / "dash")
     measured["ram_peak_mb"] = stage("ram under stress", ram_under_stress, workdir / "stress", args.stress_seconds)
+    measured["queue_backpressure"] = stage("queue backpressure", queue_backpressure, workdir / "backpressure")
     measured["delegated"] = stage("delegated benchmarks", delegated_benchmarks)
     measured["simulator_families"] = stage("simulator sweep", simulator_families, args.files_per_family)
     measured["cpu_percent"] = stage("cpu over window", cpu_over_window, workdir / "cpu", args.cpu_seconds)
@@ -683,6 +820,19 @@ def main() -> int:
             path: sha256_of(REPO_ROOT / path) for path in HASHED_ARTEFACTS
         },
     }
+
+    if args.merge and (REPORTS / "phase5_baseline.json").exists():
+        # A re-measurement of the physical stages should not silently drop the
+        # test-suite counts from the run that took five hours to produce them.
+        previous = json.loads((REPORTS / "phase5_baseline.json").read_text())
+        if not suite and previous.get("test_suite"):
+            baseline["test_suite"] = previous["test_suite"]
+            baseline["test_suite"]["carried_from"] = previous["provenance"]["generated_at"]
+        baseline["supersedes"] = {
+            "generated_at": previous["provenance"]["generated_at"],
+            "reason": "re-measured after correcting the CPU window; see measurements.cpu_percent",
+            "superseded_cpu_percent": previous.get("measurements", {}).get("cpu_percent"),
+        }
 
     print(json.dumps(baseline["table_5_9"], indent=2))
 
