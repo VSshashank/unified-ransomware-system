@@ -285,9 +285,21 @@ for Phase 6/7.
 | What | Commit | Tag |
 |---|---|---|
 | Corpus manifest frozen (Week 19, §9.15) | `2c242d6` | `corpus-frozen-week19` |
-| Cost table frozen (Week 20, §9.4.1 exit gate) | `947ed8c` | `cost-table-frozen-week20` |
+| Cost table frozen (Week 20, §9.4.1 exit gate) | `947ed8c` — artefacts | `cost-table-frozen-week20` |
 
-Both are annotated tags. Quote these hashes in the thesis, per §9.15.
+Both are annotated tags. Quote them in the thesis, per §9.15.
+
+`947ed8c` is the commit at which every Phase 5 artefact reached its final measured
+state — the baseline, the evidence report, the corpus manifest, the calibration,
+the admission matrix, the ledger-coverage measurement and the predeclared bounds.
+The tag itself sits one commit later, on the commit that finalises *this document*,
+so that checking the tag out gives a reader the complete and self-consistent gate
+state. A report cannot contain the hash of the commit that contains it; resolve the
+tag instead:
+
+```bash
+git rev-list -n 1 cost-table-frozen-week20
+```
 
 ### The Week 20 gate, condition by condition
 
