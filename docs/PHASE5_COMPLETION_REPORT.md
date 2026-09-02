@@ -285,23 +285,37 @@ for Phase 6/7.
 | What | Commit | Tag |
 |---|---|---|
 | Corpus manifest frozen (Week 19, §9.15) | `2c242d6` | `corpus-frozen-week19` |
-| Cost table frozen (Week 20, §9.4.1 exit gate) | *see `cost-table-frozen-week20`* | `cost-table-frozen-week20` |
+| Cost table frozen (Week 20, §9.4.1 exit gate) | `947ed8c` | `cost-table-frozen-week20` |
 
-The Week 20 gate is the point before which no repair branch may be opened. No
-repair branch was opened, and `services/` is unchanged for the whole of Phase 5:
+Both are annotated tags. Quote these hashes in the thesis, per §9.15.
+
+### The Week 20 gate, condition by condition
+
+| §9.4.1 requires | Status |
+|---|---|
+| Every evidence-cancelling path classified | **34 call sites**, 29 of them evidence-cancelling, across all six services — `docs/MITIGATION_INVENTORY.md` |
+| Every capability level with a reproducible source trail **or** an unresolved record | **9 of 10 empirical, 1 derived and labelled as derived.** 0 unresolved |
+| Confirmed by a second reviewer | **Protocol reproduced, independence not.** See D2 — this is a shortfall, not a pass |
+| Admission-flip table complete | **20 cells × 4 policies, 6 flips attributed** — `docs/ADMISSION_RECOMPUTE.md` |
+| Cost table frozen **before any repair branch is opened** | **No repair branch was opened.** `services/` has zero diff lines across the whole phase |
+
+The last row is the one §9.4.1 cares most about, and it is checkable in one
+command:
 
 ```bash
-git diff --stat feat/detection-hardening..HEAD -- services/
+git diff feat/detection-hardening..HEAD -- services/ | wc -l
 ```
 
-returns nothing.
+returns **0**. `services/monitor/admissibility.py` — the cost table itself — is
+byte-for-byte identical to the branch point. Nothing in Phase 5 touched the code;
+the five harnesses in `scripts/` measure it and the seven documents record it.
 
 ---
 
 ## 7. Regression
 
-Measured at the start of the session and again inside the baseline harness, both
-green and identical:
+Measured three times — at the start of the session, inside the baseline harness,
+and again at the gate. All three green and identical:
 
 | Service | Passed | Skipped |
 |---|---|---|
