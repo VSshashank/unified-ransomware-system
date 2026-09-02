@@ -1,0 +1,67 @@
+{
+  "schema": "urds.ledger_coverage/1",
+  "generated_at": "2026-09-02T13:23:28.674595Z",
+  "commit": "8602a3974582218e0abc0a14566d07fd792ec6a8",
+  "branch": "feat/admissibility-governance-novelty-v2",
+  "table_9_8_row": "Mitigation decisions reaching the ledger",
+  "target": "100%",
+  "measured_coverage": 0.5,
+  "meets_target": false,
+  "adjudications_made": 24,
+  "adjudications_reaching_ledger": 12,
+  "by_population": {
+    "cancelled": {
+      "events": 12,
+      "adjudicated": 12,
+      "outcomes": [
+        "cancelled"
+      ],
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "static_entropy"
+      ],
+      "suspicious_after_suppression": 0,
+      "ledger_writes": 0,
+      "ledger_event_types": [],
+      "adjudications_reaching_ledger": 0
+    },
+    "attenuated": {
+      "events": 12,
+      "adjudicated": 12,
+      "outcomes": [
+        "attenuated"
+      ],
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "structural_mismatch"
+      ],
+      "suspicious_after_suppression": 12,
+      "ledger_writes": 24,
+      "ledger_event_types": [
+        "file_event",
+        "response_action"
+      ],
+      "adjudications_reaching_ledger": 12
+    },
+    "ungoverned": {
+      "events": 12,
+      "adjudicated": 0,
+      "outcomes": [],
+      "verdicts": [
+        "benign_compressed"
+      ],
+      "signals": [],
+      "suspicious_after_suppression": 0,
+      "ledger_writes": 12,
+      "ledger_event_types": [
+        "file_baseline"
+      ],
+      "adjudications_reaching_ledger": 0
+    }
+  },
+  "mechanism": "app.py:491 gates the downstream fan-out on `suppression is None`, and the ledger is only reachable through that fan-out (app.py:502, :515). A cancelled suppression sets `suppression` non-None, so the fan-out is skipped and the adjudication that removed the alert is never chained. An attenuated one leaves `suppression` None, so it is chained with both costs in event_data.admissibility (pipeline.py:192). The container exemption produces no adjudication at all - app.py:424 only adjudicates a verdict that is already suspicious, and benign_compressed is not."
+}

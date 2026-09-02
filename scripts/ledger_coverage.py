@@ -1,0 +1,231 @@
+"""How many mitigation decisions actually reach the ledger - SI.
+
+Table 9.8 carries the row *"Mitigation decisions reaching the ledger — 100%"*.
+`docs/MITIGATION_INVENTORY.md` M-16 says from source reading that the figure
+cannot be 100%, because `app.py:491` gates the downstream fan-out on
+`suppression is None` and the ledger is only reachable through that fan-out - so
+a *cancelled* suppression is never chained.
+
+This measures it instead of arguing it. Three populations are driven through the
+real `handle_event` with the fan-out pointed at a stub that records every
+`/ledger/log` body:
+
+    cancelled    a whitelist hash rule against a signal it outranks
+    attenuated   a whitelist path rule against a signal that outranks it
+    ungoverned   the container exemption, which never reaches adjudicate at all
+
+and the report says, per population, how many events produced an adjudication and
+how many of those adjudications arrived at the ledger.
+
+    .venv\\Scripts\\python.exe scripts/ledger_coverage.py
+
+Writes reports/ledger_coverage.json only when URDS_WRITE_REPORTS=1.
+"""
+
+from __future__ import annotations
+
+import gzip
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+REPORTS = REPO_ROOT / "reports"
+
+sys.path.insert(0, str(REPO_ROOT / "services" / "monitor"))
+
+EVENTS_PER_POPULATION = 12
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def git(*args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=REPO_ROOT, capture_output=True, text=True, check=False
+    ).stdout.strip()
+
+
+def payload(tag: str, size: int = 120_000) -> bytes:
+    return hashlib.shake_256(tag.encode()).digest(size)
+
+
+class LedgerStub:
+    """Records every ledger write the pipeline attempts.
+
+    Replaces `pipeline._post` rather than standing up a real service: the
+    question is which calls are *made*, and a stub answers it without needing
+    the Compose stack. ML and response calls are answered plausibly so the
+    pipeline runs to completion and the ledger call is actually reached.
+    """
+
+    def __init__(self) -> None:
+        self.ledger_writes: list[dict] = []
+        self.calls: list[str] = []
+
+    def __call__(self, client, base_url, path, payload_body):
+        self.calls.append(path)
+        if path == "/ledger/log":
+            self.ledger_writes.append(payload_body)
+            return {"block_id": len(self.ledger_writes), "current_hash": "stub"}
+        if path == "/predict":
+            return {"prediction": "ransomware", "confidence": 0.95, "threat_level": "critical"}
+        if path == "/response/trigger":
+            return {"status": "success", "actions_taken": ["admin_notified"]}
+        return {}
+
+    def adjudications(self) -> list[dict]:
+        return [
+            w["event_data"]["admissibility"]
+            for w in self.ledger_writes
+            if w.get("event_type") == "file_event"
+            and (w.get("event_data") or {}).get("admissibility")
+        ]
+
+
+def drive(workdir: Path, monkeypatched_stub: LedgerStub, population: str) -> dict:
+    """Write one population and return what the Monitor and the ledger saw."""
+    import app as monitor_app
+    import suppression as suppression_module
+
+    workdir.mkdir(parents=True, exist_ok=True)
+    results = []
+
+    for index in range(EVENTS_PER_POPULATION):
+        if population == "cancelled":
+            # A hash whitelist entry (HIGH to forge) against static_entropy
+            # (NEGLIGIBLE to avoid). The suppression outranks the signal, so
+            # adjudicate admits it and the alert is cancelled.
+            blob = payload(f"cancelled:{index}")
+            path = workdir / f"cancelled_{index}.docx"
+            path.write_bytes(blob)
+            monitor_app.WHITELIST.replace(paths=[], hashes=[hashlib.sha256(blob).hexdigest()])
+        elif population == "attenuated":
+            # A path whitelist entry (LOW to forge) against structural_mismatch
+            # (MODERATE to avoid, as declared). The signal outranks the rule, so
+            # the alert stands and the decision is attenuated.
+            blob = b"PK\x03\x04" + payload(f"attenuated:{index}")
+            path = workdir / f"attenuated_{index}.zip"
+            path.write_bytes(blob)
+            monitor_app.WHITELIST.replace(paths=[str(workdir / "*")], hashes=[])
+        else:
+            # The container exemption: a genuine gzip member carrying
+            # ciphertext. Never reaches adjudicate, because the verdict is not
+            # suspicious and app.py:424 only adjudicates suspicious verdicts.
+            path = workdir / f"ungoverned_{index}.gz"
+            path.write_bytes(gzip.compress(payload(f"ungoverned:{index}")))
+            monitor_app.WHITELIST.replace(paths=[], hashes=[])
+
+        event = monitor_app.handle_event(str(path), "created")
+        results.append(
+            {
+                "verdict": event["verdict"],
+                "suspicious": event["suspicious"],
+                "signal": event["signal"],
+                "adjudicated": event["admissibility"] is not None,
+                "outcome": (event["admissibility"] or {}).get("outcome"),
+            }
+        )
+
+    # The fan-out is queued to a worker thread; let it drain.
+    monitor_app._work.join()
+    time.sleep(0.2)
+
+    adjudicated = [r for r in results if r["adjudicated"]]
+    return {
+        "events": len(results),
+        "adjudicated": len(adjudicated),
+        "outcomes": sorted({r["outcome"] for r in adjudicated if r["outcome"]}),
+        "verdicts": sorted({r["verdict"] for r in results}),
+        "signals": sorted({r["signal"] for r in results if r["signal"]}),
+        "suspicious_after_suppression": sum(1 for r in results if r["suspicious"]),
+    }
+
+
+def main() -> int:
+    import app as monitor_app
+    import pipeline as monitor_pipeline
+    import suppression as suppression_module
+
+    populations = ("cancelled", "attenuated", "ungoverned")
+    findings: dict[str, dict] = {}
+
+    original_post = monitor_pipeline._post
+    previous_pipeline = monitor_app.PIPELINE_ENABLED
+    monitor_app.PIPELINE_ENABLED = True
+    monitor_app._ensure_worker()
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="ledger_coverage_") as tmp:
+            for population in populations:
+                stub = LedgerStub()
+                monitor_pipeline._post = stub
+                monitor_app.ENTROPY_HISTORY.__init__()  # no history: judge each file fresh
+                monitored = drive(Path(tmp) / population, stub, population)
+                findings[population] = {
+                    **monitored,
+                    "ledger_writes": len(stub.ledger_writes),
+                    "ledger_event_types": sorted({w.get("event_type") for w in stub.ledger_writes}),
+                    "adjudications_reaching_ledger": len(stub.adjudications()),
+                }
+    finally:
+        monitor_pipeline._post = original_post
+        monitor_app.PIPELINE_ENABLED = previous_pipeline
+        monitor_app.WHITELIST.replace(paths=[], hashes=[])
+
+    total_adjudicated = sum(f["adjudicated"] for f in findings.values())
+    total_reaching = sum(f["adjudications_reaching_ledger"] for f in findings.values())
+    coverage = (total_reaching / total_adjudicated) if total_adjudicated else 0.0
+
+    report = {
+        "schema": "urds.ledger_coverage/1",
+        "generated_at": utc_now(),
+        "commit": git("rev-parse", "HEAD"),
+        "branch": git("rev-parse", "--abbrev-ref", "HEAD"),
+        "table_9_8_row": "Mitigation decisions reaching the ledger",
+        "target": "100%",
+        "measured_coverage": round(coverage, 4),
+        "meets_target": total_reaching == total_adjudicated and total_adjudicated > 0,
+        "adjudications_made": total_adjudicated,
+        "adjudications_reaching_ledger": total_reaching,
+        "by_population": findings,
+        "mechanism": (
+            "app.py:491 gates the downstream fan-out on `suppression is None`, and "
+            "the ledger is only reachable through that fan-out (app.py:502, :515). A "
+            "cancelled suppression sets `suppression` non-None, so the fan-out is "
+            "skipped and the adjudication that removed the alert is never chained. An "
+            "attenuated one leaves `suppression` None, so it is chained with both "
+            "costs in event_data.admissibility (pipeline.py:192). The container "
+            "exemption produces no adjudication at all - app.py:424 only adjudicates "
+            "a verdict that is already suspicious, and benign_compressed is not."
+        ),
+    }
+
+    print("Table 9.8 - mitigation decisions reaching the ledger")
+    print(f"  target 100%   measured {coverage:.1%}   meets_target={report['meets_target']}")
+    for name, f in findings.items():
+        print(
+            f"  {name:<11} events={f['events']:<3} adjudicated={f['adjudicated']:<3} "
+            f"outcomes={f['outcomes'] or '-'} ledger_writes={f['ledger_writes']:<3} "
+            f"adjudications_chained={f['adjudications_reaching_ledger']}"
+        )
+
+    if os.getenv("URDS_WRITE_REPORTS", "").lower() not in {"1", "true", "yes"}:
+        print("\nURDS_WRITE_REPORTS is not set: report not written")
+        return 0
+
+    REPORTS.mkdir(exist_ok=True)
+    (REPORTS / "ledger_coverage.json").write_text(json.dumps(report, indent=2))
+    print(f"\nwrote {REPORTS / 'ledger_coverage.json'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
