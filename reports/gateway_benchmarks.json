@@ -1,43 +1,43 @@
 {
   "api_response_time_ms": {
     "samples": 1000,
-    "mean": 2.198,
-    "p95": 3.219,
-    "max": 25.474,
+    "mean": 1.908,
+    "p95": 2.528,
+    "max": 24.036,
     "target": 200.0,
     "per_route": {
       "GET /monitor/status": {
         "samples": 200,
-        "mean_ms": 2.413,
-        "p95_ms": 3.246
+        "mean_ms": 1.711,
+        "p95_ms": 1.987
       },
       "GET /ledger/blocks": {
         "samples": 200,
-        "mean_ms": 2.145,
-        "p95_ms": 3.128
+        "mean_ms": 1.797,
+        "p95_ms": 2.09
       },
       "GET /model/metrics": {
         "samples": 200,
-        "mean_ms": 2.137,
-        "p95_ms": 3.241
+        "mean_ms": 1.768,
+        "p95_ms": 2.257
       },
       "POST /ledger/log": {
         "samples": 200,
-        "mean_ms": 2.179,
-        "p95_ms": 3.503
+        "mean_ms": 2.063,
+        "p95_ms": 2.418
       },
       "POST /analyze": {
         "samples": 200,
-        "mean_ms": 2.119,
-        "p95_ms": 3.154
+        "mean_ms": 2.202,
+        "p95_ms": 3.473
       }
     },
     "note": "downstream services stubbed; this is gateway overhead only"
   },
   "rejected_request_time_ms": {
     "samples": 200,
-    "mean": 2.145,
-    "p95": 3.292,
+    "mean": 1.532,
+    "p95": 1.842,
     "target": 200.0
   }
 }

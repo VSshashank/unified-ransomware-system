@@ -195,7 +195,7 @@ Five of the nine rows are Phase 6 measurements and cannot be answered at the Wee
 | # | Measure | Target | Measured at Week 20 | Met |
 |---|---|---|---|---|
 | 1 | Simulator families detected and restored | 13/13, no regression | **13/13**, all within 2 s, all restore round-trips true | **yes** |
-| 2 | Detection-path latency *after repair* | median within sub-100 ms; median and IQR over ≥10 reps | *no repair exists in Phase 5.* Baseline over 40 reps is in §3 below | **n/a** |
+| 2 | Detection-path latency *after repair* | median within sub-100 ms; median and IQR over ≥10 reps | *no repair exists in Phase 5.* Baseline over 40 reps: **median 11.29 ms, IQR 20.47 ms**, p95 23.99 ms | **n/a** |
 | 3 | False-positive difference, validated formats | ≤2 pp, one-sided 95% | *needs Arm C.* **And the corpus cannot support the bound**: 85 validated files bound a perfect result at 3.46 pp; 149 needed | **not evaluable** |
 | 4 | False-positive difference, unvalidated × incompressible | measured and reported; D5 applies | *needs Arm C.* Arm A baseline on the frozen corpus is **0 / 48** | **pending** |
 | 5 | Capability levels with a reproducible source trail | 100% | **9 of 10 empirical**, 1 derived from source and labelled as derived | **9/10** |
@@ -207,6 +207,63 @@ Five of the nine rows are Phase 6 measurements and cannot be answered at the Wee
 Row 7 is the one that fails outright, and it fails by construction rather than by
 accident — see D1's neighbour finding, M-16. Row 6 fails only in the sense that
 matters: the protocol was reproduced, the independence was not.
+
+## 4b. Table 5.9, measured by the methods it states
+
+From `reports/phase5_baseline.json`. All ten rows met.
+
+| Measure | Target | Measured | Method as actually run |
+|---|---|---|---|
+| Detection latency | <100 ms | **23.99 ms** p95 (median 11.29, IQR 20.47, n=40) | timestamp diff, entry to verdict |
+| Response time | <2 s | **0.052 s** worst of 10 | real child process through `actions.terminate_process` |
+| False positive rate | <5 % | **0 %** (0/40) | benign corpus through `classify` |
+| ML inference | <100 ms | **1.10 ms** | `services/ml-engine` benchmark suite, run by this harness |
+| API response p95 | <200 ms | **2.53 ms** | `services/gateway` benchmark suite, run by this harness |
+| CPU during monitoring | <15 % | **1.278 %** of 14 cores | **3600 effective samples over a 3732.8 s wall span** |
+| RAM peak | <500 MB | **69.79 MB** (baseline 63.07, +6.73) | 300 s stress, 3499 × 512 KB events |
+| File recovery | 100 % | **true** | 13/13 simulator restore round-trips |
+| Ledger verification | <50 ms | **4.76 ms** worst of 20 | 500-block chain, fresh connection per verify |
+| Dashboard latency | <1 s | **31.0 ms** worst of 10 | write → readable on `GET /monitor/events` |
+
+**The CPU row is the one that took work to earn.** Table 5.9 says *"Average during
+1-hour monitoring period"*, and this is the first measurement in the repository
+that is one: 3600 samples at one per second, over a 3732.8 s wall span, of which
+132.8 s was suspend or descheduling — a 3.6 % overhead, recorded in
+`suspended_or_descheduled_seconds` rather than hidden inside the average. The load
+was 71,683 files at a realistic 10 % high-entropy / 90 % document mix, not the
+all-`os.urandom` burst the first attempt used.
+
+The committed 5-second figure it supersedes (1.02 %, `reports/as_benchmarks.json`)
+is **not wrong** — it is a correct 5-second measurement. It simply is not the
+measurement Table 5.9 specifies, and 1.278 % over the full hour is close enough to
+it that no conclusion changes.
+
+### What the hour showed that five seconds cannot
+
+`rss_first_mb` 67.88 → `rss_last_mb` **58.41**, peak 81.7 MB. With the fan-out
+disabled, RSS does **not** grow over an hour — it ends lower than it started. That
+is what identifies the 116 MB → 233 MB growth seen in the superseded run as the
+undrained fan-out backlog rather than a leak in the monitoring path.
+
+`measurements.queue_backpressure` then pins that down directly:
+
+| | |
+|---|---|
+| events driven | 4000 |
+| queue depth afterwards | **3999** — the worker drained one |
+| `_work.maxsize` | **0 (unbounded)** |
+| `_SEEN_FILES` after one hour of monitoring | **71,797 paths**, growing to 75,797 |
+
+`app._work` is `queue.Queue()` with no bound (`app.py:129`), drained by a single
+worker making three HTTP calls per event. When the downstream is unreachable the
+producer outruns the consumer without limit, and each queued item retains an event
+dict, a feature dict and a verdict. `app._SEEN_FILES` (`app.py:92`) is a `set[str]`
+that gains an entry per unique path and is never trimmed — one hour of monitoring
+left 71,797 path strings resident.
+
+Both stay under the 500 MB target here. **Neither is fixed** — §9.4.1 forbids
+writing repairs in Phase 5, and neither is in the Phase 5 scope. They are recorded
+for Phase 6/7.
 
 ## 5. Left undone
 

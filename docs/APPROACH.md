@@ -747,18 +747,45 @@ relaxed after the numbers are in.
 
 ## 11. Summary of measured results
 
-| Metric (Table 5.9) | Target | Measured |
-|---|---|---|
-| Detection latency | <100 ms | **23.7 ms** p95 (40 files, 4 KB–2 MB) |
-| Response time | <2 s | **125.6 ms** native |
-| False positive rate | <5 % | **0 %** (0/40, 32 deliberately high-entropy) |
-| ML inference | <100 ms | **1.95 ms** p95 end-to-end, 0.44 ms model-only |
-| API response (p95) | <200 ms | **3.22 ms** over 1000 requests |
-| CPU during monitoring | <15 % | **0.96 %** of 14 cores (13.4 % of one) |
-| RAM peak | <500 MB | **70.3 MB** (+2.7 MB over 150 × 512 KB) |
-| File recovery | 100 % | **100 %** native |
-| Ledger verification | <50 ms | **3.1 ms** median / 1000 blocks (2.1–5.7 ms, 50 warm runs) |
-| Dashboard latency | <1 s | **10.5 ms** mean to queryable, 11.3 ms worst (`test_tc09_*`); 439 ms end-to-end through Compose (`reports/attack_chain_evidence.txt`) |
+Re-measured at the Week 20 gate by the methods Table 5.9 states, in
+`reports/phase5_baseline.json`. Superseded figures are retained below with the
+reason, as §9.9's risk row requires.
+
+| Metric (Table 5.9) | Target | Measured (Week 20) | Phase 4 figure |
+|---|---|---|---|
+| Detection latency | <100 ms | **23.99 ms** p95 — median 11.29, IQR 20.47 | 23.7 ms p95 |
+| Response time | <2 s | **52 ms** worst of 10 | 125.6 ms |
+| False positive rate | <5 % | **0 %** (0/40) | 0 % (0/40) |
+| ML inference | <100 ms | **1.10 ms** | 1.95 ms p95 |
+| API response (p95) | <200 ms | **2.53 ms** | 3.22 ms |
+| CPU during monitoring | <15 % | **1.278 %** of 14 cores, **over a full hour** | 0.96 % over 5 s |
+| RAM peak | <500 MB | **69.79 MB** (+6.73 over 3499 × 512 KB) | 70.3 MB |
+| File recovery | 100 % | **13/13** restore round-trips | 100 % |
+| Ledger verification | <50 ms | **4.76 ms** worst of 20 / 500 blocks | 3.1 ms median / 1000 |
+| Dashboard latency | <1 s | **31.0 ms** worst of 10 | 10.5 ms mean, 11.3 ms worst |
+
+**The CPU row is the only one whose method changed, and it is the reason the file
+exists.** `test_benchmarks.py` samples a 5-second loop; Table 5.9 asks for the
+average during a *1-hour monitoring period*. The Week 20 figure is 3600 samples at
+one per second over a 3732.8-second wall span, with the 132.8 seconds of suspend
+recorded separately rather than averaged in, under a realistic 10 % high-entropy /
+90 % document load. The Phase 4 figure is not wrong — it is a correct 5-second
+measurement of a different thing, and the two agree closely enough that no
+conclusion changes.
+
+### What an hour showed that five seconds could not
+
+With the fan-out disabled, RSS ends the hour *lower* than it started — 67.9 MB to
+58.4 MB, peak 81.7 MB. No leak in the monitoring path. That is what identified the
+116 MB → 233 MB growth in the first (flawed) run as something else, and
+`queue_backpressure` pins it down: 4000 events driven, **3999 still queued**, and
+`app._work` is `queue.Queue()` with no `maxsize`. A single worker makes three HTTP
+calls per event, so when the downstream is unreachable the producer outruns the
+consumer without limit. `app._SEEN_FILES` is a second unbounded structure — one
+hour of monitoring left **71,797** path strings resident, never trimmed.
+
+Both stay under the 500 MB target. Neither is fixed: §9.4.1 forbids writing repairs
+in Phase 5.
 
 Model quality, after retraining on the 50,000 samples §6.1 specifies:
 
@@ -771,7 +798,8 @@ The behavioural row is an in-distribution split of a self-generated corpus and
 is reported as such — see §3.1. The held-out evidence for that model's problem
 is the simulator sweep, not this row.
 
-Suite: **371 passed, 2 skipped, 0 failed.** The two skips are correct —
+Suite: **465 passed, 2 skipped, 0 failed**, measured twice at the Week 20 gate.
+The two skips are correct —
 `psutil.terminate()` maps to `TerminateProcess` on Windows, which no process can
 ignore, so the SIGTERM-escalation tests assert a POSIX guarantee with no Windows
 equivalent. A Windows-specific test covers the same ground.

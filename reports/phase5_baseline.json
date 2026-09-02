@@ -1,0 +1,346 @@
+{
+  "schema": "urds.phase5_baseline/1",
+  "purpose": "The measured starting state for Phases 5-8. Every later no-regression claim is compared against this file.",
+  "provenance": {
+    "generated_at": "2026-09-02T14:35:56.253204Z",
+    "commit": "0c6b3b17abf205cecd4841ed9118ccb95f678437",
+    "branch": "feat/admissibility-governance-novelty-v2",
+    "working_tree_clean": false,
+    "uncommitted_paths": [
+      "eports/gateway_benchmarks.json",
+      "reports/ni_inference_benchmark.json",
+      "reports/simulator_families.json",
+      "reports/phase5_baseline.json"
+    ],
+    "host": {
+      "platform": "Windows-11-10.0.26200-SP0",
+      "python": "3.13.9",
+      "logical_cores": 14,
+      "physical_cores": 14,
+      "total_ram_mb": 15807
+    }
+  },
+  "run": {
+    "cpu_window_seconds": 3600.0,
+    "stress_seconds": 300.0,
+    "files_per_family": 8,
+    "quick": false,
+    "total_seconds": 4106.9
+  },
+  "test_suite": {
+    "per_service": {
+      "monitor": {
+        "passed": 222,
+        "failed": 0,
+        "skipped": 0,
+        "exit_code": 0,
+        "seconds": 17962.7
+      },
+      "gateway": {
+        "passed": 78,
+        "failed": 0,
+        "skipped": 0,
+        "exit_code": 0,
+        "seconds": 4.4
+      },
+      "ledger": {
+        "passed": 42,
+        "failed": 0,
+        "skipped": 0,
+        "exit_code": 0,
+        "seconds": 12.5
+      },
+      "ml-engine": {
+        "passed": 37,
+        "failed": 0,
+        "skipped": 0,
+        "exit_code": 0,
+        "seconds": 2.6
+      },
+      "response": {
+        "passed": 86,
+        "failed": 0,
+        "skipped": 2,
+        "exit_code": 0,
+        "seconds": 32.7
+      }
+    },
+    "total_passed": 465,
+    "total_failed": 0,
+    "total_skipped": 2,
+    "all_green": true,
+    "carried_from": "2026-09-02T13:12:42.451053Z"
+  },
+  "table_5_9": {
+    "detection_latency_ms": {
+      "target": "<100ms",
+      "method": "Timestamp diff between modification and alert",
+      "measured": 23.992,
+      "meets_target": true
+    },
+    "response_time_s": {
+      "target": "<2 seconds",
+      "method": "Time from detection to termination",
+      "measured": 0.0522,
+      "meets_target": true
+    },
+    "false_positive_rate": {
+      "target": "<5%",
+      "method": "(False Positives / Total) x 100",
+      "measured": 0.0,
+      "meets_target": true
+    },
+    "ml_inference_ms": {
+      "target": "<100ms",
+      "method": "Average prediction time across 1000 samples",
+      "measured": 1.097,
+      "meets_target": true
+    },
+    "api_p95_ms": {
+      "target": "<200ms",
+      "method": "95th percentile of all API requests",
+      "measured": 2.528,
+      "meets_target": true
+    },
+    "cpu_percent": {
+      "target": "<15%",
+      "method": "Average during 1-hour monitoring period",
+      "measured": 1.278,
+      "meets_target": true
+    },
+    "ram_peak_mb": {
+      "target": "<500MB",
+      "method": "Peak memory consumption during stress test",
+      "measured": 69.79,
+      "meets_target": true
+    },
+    "file_recovery_success": {
+      "target": "100%",
+      "method": "Successful restoration of encrypted files",
+      "measured": true,
+      "meets_target": true
+    },
+    "ledger_verify_ms": {
+      "target": "<50ms",
+      "method": "Time to verify hash chain integrity",
+      "measured": 4.758,
+      "meets_target": true
+    },
+    "dashboard_latency_ms": {
+      "target": "<1 second",
+      "method": "Time from event to dashboard display",
+      "measured": 31.016,
+      "meets_target": true
+    }
+  },
+  "measurements": {
+    "detection_latency_ms": {
+      "samples": 40,
+      "mean": 9.488,
+      "median": 11.286,
+      "q1": 2.081,
+      "q3": 22.554,
+      "iqr": 20.473,
+      "p95": 23.992,
+      "max": 24.478
+    },
+    "false_positive_rate": {
+      "corpus_size": 40,
+      "high_entropy_in_corpus": 32,
+      "false_positives": 0,
+      "rate": 0.0,
+      "offenders": []
+    },
+    "forged_container_rate": {
+      "samples": 48,
+      "detected": 48,
+      "rate": 1.0,
+      "formats": [
+        ".gz",
+        ".jpg",
+        ".mp4",
+        ".pdf",
+        ".png",
+        ".zip"
+      ]
+    },
+    "response_time_s": {
+      "repetitions": 10,
+      "mean_s": 0.0512,
+      "median_s": 0.0515,
+      "max_s": 0.0522
+    },
+    "ledger_verify_ms": {
+      "chain_length": 500,
+      "repetitions": 20,
+      "mean_ms": 3.329,
+      "median_ms": 3.149,
+      "max_ms": 4.758,
+      "chain_valid": true
+    },
+    "dashboard_latency_ms": {
+      "samples": 10,
+      "visible_within_1s": 10,
+      "mean_ms": 18.327,
+      "max_ms": 31.016
+    },
+    "ram_peak_mb": {
+      "stress_seconds": 300.2,
+      "events_processed": 3499,
+      "baseline_mb": 63.07,
+      "peak_mb": 69.79,
+      "growth_mb": 6.73,
+      "downstream_fan_out": "disabled; the queue backlog is measured in queue_backpressure",
+      "method": "Peak memory consumption during stress test"
+    },
+    "delegated": {
+      "ml_inference": {
+        "source": "reports/ni_inference_benchmark.json",
+        "sha256": "66f50060d850c1a437799944775c46600ea06b0b1a41c3e7aac040fdcdab9c6b",
+        "suite_exit_code": 0,
+        "report": {
+          "samples": 60,
+          "end_to_end_mean_ms": 1.097,
+          "end_to_end_p95_ms": 1.314,
+          "model_only_ms": 0.536,
+          "target_ms": 100.0
+        }
+      },
+      "gateway_api": {
+        "source": "reports/gateway_benchmarks.json",
+        "sha256": "cf6468e4d14a5f824f3b1de2ba3151fa6b99eac8894f8291ee2b697daf9e1903",
+        "suite_exit_code": 0,
+        "report": {
+          "api_response_time_ms": {
+            "samples": 1000,
+            "mean": 1.908,
+            "p95": 2.528,
+            "max": 24.036,
+            "target": 200.0,
+            "per_route": {
+              "GET /monitor/status": {
+                "samples": 200,
+                "mean_ms": 1.711,
+                "p95_ms": 1.987
+              },
+              "GET /ledger/blocks": {
+                "samples": 200,
+                "mean_ms": 1.797,
+                "p95_ms": 2.09
+              },
+              "GET /model/metrics": {
+                "samples": 200,
+                "mean_ms": 1.768,
+                "p95_ms": 2.257
+              },
+              "POST /ledger/log": {
+                "samples": 200,
+                "mean_ms": 2.063,
+                "p95_ms": 2.418
+              },
+              "POST /analyze": {
+                "samples": 200,
+                "mean_ms": 2.202,
+                "p95_ms": 3.473
+              }
+            },
+            "note": "downstream services stubbed; this is gateway overhead only"
+          },
+          "rejected_request_time_ms": {
+            "samples": 200,
+            "mean": 1.532,
+            "p95": 1.842,
+            "target": 200.0
+          }
+        }
+      }
+    },
+    "simulator_families": {
+      "source": "reports/simulator_families.json",
+      "sha256": "80c7a67ad23d49dc633ef18fd57dcaec6c15f32db38e1a61bbee7de932fe7860",
+      "sweep_exit_code": 0,
+      "families_run": 13,
+      "families_detected": 13,
+      "families_detected_within_2s": 13,
+      "all_restore_round_trips": true,
+      "slowest_detection_seconds": 0.011,
+      "stderr_tail": []
+    },
+    "cpu_percent": {
+      "requested_samples": 3600,
+      "samples": 3599,
+      "effective_monitoring_seconds": 3600,
+      "wall_span_seconds": 3732.8,
+      "suspended_or_descheduled_seconds": 132.8,
+      "window_satisfies_table_5_9": true,
+      "files_written": 71683,
+      "load_mix": {
+        "high_entropy_files": 7169,
+        "document_files": 64514,
+        "high_entropy_fraction": 0.1,
+        "note": "A monitoring period, not an attack. The first version of this measurement wrote nothing but os.urandom, so every file was suspected_encryption and the figure was the cost of a sustained ransomware burst."
+      },
+      "downstream_fan_out": "disabled for this measurement; see queue_backpressure",
+      "mean_percent_of_total_cpu": 1.278,
+      "max_percent_of_total_cpu": 8.9,
+      "p95_percent_of_total_cpu": 1.814,
+      "cores": 14,
+      "host_wide_mean_percent": 8.07,
+      "host_wide_max_percent": 64.0,
+      "rss_first_mb": 67.88,
+      "rss_last_mb": 58.41,
+      "rss_peak_over_window_mb": 81.7,
+      "method": "Average during 1-hour monitoring period"
+    },
+    "queue_backpressure": {
+      "events_driven": 4000,
+      "queue_depth_after": 3999,
+      "queue_items_discarded_after_measuring": 3999,
+      "queue_is_bounded": false,
+      "baseline_mb": 58.47,
+      "peak_mb": 63.03,
+      "growth_mb": 4.55,
+      "seen_files_before": 71797,
+      "seen_files_after": 75797,
+      "seen_files_is_bounded": false,
+      "finding": "app._work is queue.Queue() with no maxsize and app._SEEN_FILES is an untrimmed set. A Monitor producing detections faster than the fan-out drains them grows without bound, and the condition that causes it - an unreachable ledger or ML engine - is the one that arises during an incident. The 5-second benchmark in test_benchmarks.py cannot see it."
+    }
+  },
+  "artefact_hashes": {
+    "services/monitor/detection.py": "2b5806fb9e97ee5d279564b179362aa31d7653b894b327ba015d41fbd1ac569a",
+    "services/monitor/containers.py": "4972ec4f5f6f88e92da83bd28c2a0b2e535124ac7bc4e2261056377ae2ff6bd8",
+    "services/monitor/suppression.py": "a0e4b097e561e64e30b14a8419324d571777bd55e98e25dde88fcc50eb603eab",
+    "services/monitor/admissibility.py": "f1441e7857f587d9ac562e1f91bcf3ff17d7003dfc76c6b789fe6caddc7f12f1",
+    "services/monitor/pipeline.py": "fb4450f50291849f9a2c7c34457c60f766a2c99be7cd3a435f41a6a9f3c45096",
+    "services/monitor/app.py": "b8f3a38299d93cf211b9ad96d109ade0252568c31944124ca25464f20fe683fa",
+    "services/ml-engine/app.py": "807370883609f5402510894c17bee0e265405ae458fd7e408eafebce35f59f89",
+    "services/response/app.py": "a024ccf2060e3a4248618d3379b559fa710163ca4cf473f4cbcf1c48c3a57016",
+    "services/ledger/hash_chain.py": "3bb7df5947da431e8379329b584753ee9f35e08880e3dbdd322a43894511c0c1",
+    "scripts/ransomware_simulator.py": "cb0ce41dfacbea5e80645d15a60d3d39b3644dbf16fb62d5776dc2041cf232af",
+    "scripts/simulator_sweep.py": "71ab808843e08f7b33141b941f6789d865184cfcfcb77a1e4a941d0c46c71ee8",
+    "scripts/synthetic_corpus.py": "4bb29efaf8c4cd96c519292c52e2064f8f58b12ab7bd0bd1d1014bfe0bfe603e",
+    "docs/CAPABILITY_GOVERNED_EXCEPTIONS.md": "0f13f661c200eeae4df6dd01436ddb9bb0f1f3084adf80cec816bf4d81b3a5ac",
+    "docs/DETECTION_HARDENING.md": "249eb4b302124df8b12d1519a87e33f9d59d51faac55fa0acd36d1592307b510",
+    "docs/PHASE1-4_COMPLETION_SUMMARY.md": "5f7bc02d397fd8f98fb94d1aca9734997527e98cd3935c9a18f0a668c001dd2a",
+    "docs/PHASE4_VERIFICATION_REPORT.md": "a07931cccee2f06813b1dddab7a4a2f69c86e7a1832953a1de1757c04b25e884"
+  },
+  "supersedes": {
+    "generated_at": "2026-09-02T13:12:42.451053Z",
+    "reason": "re-measured after correcting the CPU window; see measurements.cpu_percent",
+    "superseded_cpu_percent": {
+      "window_seconds": 5587.3,
+      "files_written": 23215,
+      "samples": 1164,
+      "mean_percent_of_total_cpu": 1.102,
+      "max_percent_of_total_cpu": 9.271,
+      "p95_percent_of_total_cpu": 1.721,
+      "cores": 14,
+      "host_wide_mean_percent": 21.37,
+      "host_wide_max_percent": 84.0,
+      "rss_first_mb": 116.04,
+      "rss_last_mb": 233.04,
+      "rss_peak_over_window_mb": 233.04,
+      "method": "Average during 1-hour monitoring period"
+    }
+  }
+}
