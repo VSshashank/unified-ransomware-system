@@ -15,3 +15,7 @@ watched_files/
 dist/
 build/
 data/
+# Scratch extractions of the source PDFs - regenerate, never commit
+docs/_plan_ch9.txt
+docs/_ref.txt
+.sf/

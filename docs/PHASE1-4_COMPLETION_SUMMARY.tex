@@ -1,0 +1,758 @@
+% =====================================================================
+%  Phase 1-4 Completion Summary
+%  LaTeX rendering of docs/PHASE1-4_COMPLETION_SUMMARY.md
+%
+%  Compile with:  pdflatex PHASE1-4_COMPLETION_SUMMARY.tex   (run twice,
+%                 so the table of contents resolves)
+% =====================================================================
+\documentclass[11pt,a4paper]{article}
+
+% ---------- encoding & fonts ----------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{textcomp}
+\usepackage{amssymb}
+\usepackage{microtype}
+
+% ---------- page ----------
+\usepackage[a4paper,left=2.3cm,right=2.3cm,top=2.5cm,bottom=2.5cm]{geometry}
+\usepackage{fancyhdr}
+\usepackage{parskip}
+
+% ---------- tables ----------
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xltabular}   % longtable + X columns, for tables that span pages
+\usepackage{array}
+
+% ---------- colour, symbols, code, links ----------
+\usepackage{xcolor}
+\usepackage{pifont}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{hyperref}
+
+% ---------------------------------------------------------------------
+%  Palette
+% ---------------------------------------------------------------------
+\definecolor{okgreen}{HTML}{1B7F3B}
+\definecolor{nored}{HTML}{B3261E}
+\definecolor{warnamber}{HTML}{B36B00}
+\definecolor{deferblue}{HTML}{2B5EA8}
+\definecolor{rulecol}{HTML}{BFBFBF}
+\definecolor{codebg}{HTML}{F5F5F2}
+\definecolor{codeframe}{HTML}{D6D6D0}
+\definecolor{linkcol}{HTML}{1F4E79}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=linkcol,
+  urlcolor=linkcol,
+  pdftitle={Phase 1-4 Completion Summary},
+  pdfsubject={Unified Ransomware Detection \& Recovery System}
+}
+
+% ---------------------------------------------------------------------
+%  Status symbols  (stand in for the markdown emoji)
+% ---------------------------------------------------------------------
+\newcommand{\ok}{\textcolor{okgreen}{\ding{51}}}
+\newcommand{\no}{\textcolor{nored}{\ding{55}}}
+\newcommand{\warn}{\textcolor{warnamber}{$\blacktriangle$}}
+\newcommand{\defer}{\textcolor{deferblue}{\textbf{\textbardbl}}}
+
+% ---------------------------------------------------------------------
+%  Column types
+% ---------------------------------------------------------------------
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcolumntype{Y}[1]{>{\hsize=#1\hsize\raggedright\arraybackslash}X}
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{K}[1]{>{\centering\arraybackslash}p{#1}}
+
+\renewcommand{\arraystretch}{1.25}
+\setlength{\tabcolsep}{5pt}
+
+% ---------------------------------------------------------------------
+%  Headings - numbered from 0, matching the markdown's own numbering
+% ---------------------------------------------------------------------
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{2}
+
+\titleformat{\section}
+  {\normalfont\Large\bfseries}{\thesection.}{0.6em}{}
+  [\vspace{1pt}{\color{rulecol}\titlerule[0.8pt]}]
+\titlespacing*{\section}{0pt}{2.4ex plus 1ex minus .2ex}{1.4ex plus .2ex}
+
+\titleformat{\subsection}
+  {\normalfont\large\bfseries}{\thesubsection}{0.6em}{}
+\titlespacing*{\subsection}{0pt}{2.2ex plus 1ex minus .2ex}{1.0ex plus .2ex}
+
+% ---------------------------------------------------------------------
+%  Code blocks
+% ---------------------------------------------------------------------
+\lstdefinestyle{shell}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codeframe},
+  framesep=7pt,
+  framexleftmargin=3pt,
+  breaklines=true,
+  breakatwhitespace=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  aboveskip=1.2\baselineskip,
+  belowskip=1.2\baselineskip
+}
+\lstset{style=shell}
+
+% ---------------------------------------------------------------------
+%  Running head
+% ---------------------------------------------------------------------
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{rulecol}\leaders\hrule height \headrulewidth\hfill}}
+\fancyhead[L]{\footnotesize Phase 1--4 Completion Summary}
+\fancyhead[R]{\footnotesize\thepage}
+
+\begin{document}
+
+% =====================================================================
+%  Front matter
+% =====================================================================
+\begin{center}
+  {\LARGE\bfseries Phase 1--4 Completion Summary}\\[4pt]
+  {\large every requirement, checked against the reference PDF}
+\end{center}
+
+\vspace{0.8em}
+
+\noindent
+\begin{tabularx}{\linewidth}{@{}P{2.4cm}L@{}}
+\toprule
+\textbf{Reference}  & \emph{Unified Ransomware Detection \& Recovery System --- Complete Project
+                      Documentation}, v1.6, 31 January 2026, 68 pages (all 68 extracted and read). \\
+\textbf{Repository} & \texttt{D:\textbackslash{}Unified\_Ransomware\_Project}, branch
+                      \texttt{fix/phase1-4-remediation} \\
+\textbf{Date}       & 12 August 2026 \\
+\textbf{Scope}      & Phases 1--4 (Semester 1, Weeks 1--16). Weeks 17--32 items are judged
+                      against the document's own timeline, not counted as gaps. \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1.0em}
+
+\noindent\textbf{Status symbols.}\quad
+\ok\ met \quad\textbullet\quad
+\warn\ deviation, documented \quad\textbullet\quad
+\defer\ deferred to a later phase \quad\textbullet\quad
+\no\ not built
+
+\vspace{1.2em}
+\hrule height 0.4pt
+\vspace{0.6em}
+
+\tableofcontents
+
+\clearpage
+
+% =====================================================================
+\setcounter{section}{-1}
+\section{Verdict}
+% =====================================================================
+
+\noindent
+\begin{tabularx}{\linewidth}{@{}P{4.3cm}L@{}}
+\toprule
+\textbf{Test suite}          & \textbf{371 passed, 2 skipped, 0 failed} (baseline at session start: 305/2/0) \\
+\textbf{API contract checks} & \textbf{53 / 53} --- the document's own listings replayed verbatim against the running services \\
+\textbf{Table 5.9 benchmarks}& \textbf{10 / 10} met, all re-measured today \\
+\textbf{Table 5.8 test cases}& \textbf{11 of 11} in-scope pass, each with a \texttt{tc*}-named test. TC-12 is Weeks 17--24 \\
+\textbf{Documented endpoints}& \textbf{10 / 10} implemented, field-for-field \\
+\textbf{Blocking defects}    & \textbf{0} \\
+\textbf{Known gaps, all documented} & 4 (TLS, CI/CD, intermittent encryption, CLEAR-as-training) \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1em}
+
+The project meets \S5.6.1 (70\,\%) and \S5.6.2 (80--85\,\%) in full, and clears five of
+seven \S5.6.3 Distinction criteria. The two it does not reach --- Polygon anchoring
+and CI/CD --- are placed in Weeks 17--24 by the document's own Tables 5.5 and 5.6.
+
+\textbf{How this was checked.} The PDF was extracted in full and read end to end. All
+125 tracked files were opened. The document's API listings (3.1--3.16) were sent
+verbatim to the real services and the responses compared field by field. The
+benchmarks were re-measured rather than read from \texttt{reports/}. Where a claim and
+the code disagreed, the code was treated as the truth and the claim corrected.
+
+% =====================================================================
+\section{What changed this session}
+% =====================================================================
+
+Ten remediation tasks, then a full re-audit against the PDF that found five more
+issues. Fourteen commits on \texttt{fix/phase1-4-remediation}.
+
+\subsection{The blocking defect: small encrypted files produced no response}
+
+\textbf{Where:} \texttt{services/monitor/pipeline.py}
+
+The Monitor flagged them, the ledger recorded them, and nothing acted. The
+response gate read only the ML engine's \texttt{threat\_level}, and the behavioural
+classifier needs Shannon entropy near 7.995 before it is confident --- which
+ciphertext under roughly 40\,KB does not reach through sampling noise. Reproduced
+before fixing, five trials per size, in-place encryption keeping the filename:
+
+\begin{center}
+\begin{tabular}{@{}llllc@{}}
+\toprule
+\textbf{Size} & \textbf{Entropy} & \textbf{Monitor verdict} & \textbf{Model p(ransomware)} & \textbf{Response fired} \\
+\midrule
+4\,KB    & 7.95 & \texttt{suspected\_encryption} & 0.18 & \textbf{No} \\
+8\,KB    & 7.98 & \texttt{suspected\_encryption} & 0.04 & \textbf{No} \\
+16\,KB   & 7.99 & \texttt{suspected\_encryption} & 0.36 & \textbf{No} \\
+32\,KB   & 7.99 & \texttt{suspected\_encryption} & 0.49 & \textbf{No} \\
+40\,KB   & 8.00 & \texttt{suspected\_encryption} & 1.00 & Yes \\
+64\,KB+  & 8.00 & \texttt{suspected\_encryption} & 1.00 & Yes \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The ML score now refines the Monitor's verdict instead of overruling it: the
+effective threat level is the higher of the two. That also keeps the level
+coherent downstream --- the Response service runs network isolation on
+\texttt{high}/\texttt{critical} only, so forwarding ``low'' would have triggered a response that
+then declined most of its job.
+
+\texttt{pipeline.py} had no direct test coverage, which is how this survived. It now has
+21 tests; 7 of them fail against the old gate.
+
+\subsection{The rest}
+
+\begin{xltabular}{\linewidth}{@{}K{0.9cm}Y{0.72}Y{1.28}@{}}
+\toprule
+\textbf{\#} & \textbf{Finding} & \textbf{What was done} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{\#} & \textbf{Finding} & \textbf{What was done} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+F-2 & Dashboard banner scored a partly fabricated feature vector
+    & Four constants came from the document's illustrative example. Fixing them was not
+      enough: three more of the model's seven inputs (the byte statistics) were absent
+      from the event and being interpolated from entropy --- which is what rendered a
+      legitimate ZIP as a threat. The event now carries what was measured, and
+      \texttt{handle\_event} derives entropy and statistics from \textbf{one} read instead
+      of two. Verified 8/8 across ZIP, text, PDF, 4/8/32/256\,KB encryption and a
+      \texttt{.locked} file. \\
+
+F-3 & \texttt{file\_patterns} accepted, echoed, never applied
+    & Filtered in \texttt{handle\_event}, so it covers deletes and renames too.
+      \texttt{/monitor/status} reports the filter in force. \\
+
+F-4 & A plain \texttt{pytest -q} rewrote three committed benchmark files
+    & Writes gated behind \texttt{URDS\_WRITE\_REPORTS=1}. Verified both directions. \\
+
+F-5 & ``Differential Entropy Analysis'' named three times in the spec, not implemented
+    & \texttt{EntropyHistory} per path; a rise of $\geq$2.0 bits/byte landing at
+      $\geq$7.0 flags replacement. Checked \textbf{before} the container exemption, so it
+      catches an encryptor that writes a ZIP header over its ciphertext --- which magic
+      bytes alone clear. \\
+
+V-2 & \texttt{/monitor/stop} ignored \texttt{monitor\_id}
+    & Accepted and validated; a mismatch is refused with 404. The gateway forwards it
+      instead of sending \texttt{\{\}}. \\
+
+V-3 & \texttt{/ledger/log} returned 200
+    & Returns 201, per Table 3.2. The proxy passes it through. \\
+
+V-8 & Trained on 19,480 samples, not \S6.1's 50,000
+    & Retrained: 35,000 / 7,500 / 7,500, 25,000 per class. \textbf{See \S2 --- the finding
+      was not what it first appeared.} \\
+
+D-1 & ``64 features''
+    & Actually \textbf{70}. Corrected in 8 places across 4 files; three other ``64''s are
+      SHA-256 lengths and were left alone. \\
+
+D-2 & Ledger verification ``$\sim$3.7\,ms''
+    & Re-measured properly: \textbf{3.1\,ms median} over 50 warm runs, range 2.1--5.7\,ms.
+      The previous audit's 2.3\,ms was a single run near the floor --- the README was
+      closer to right than the correction. \\
+
+D-3 & \texttt{attack\_chain\_evidence.txt} headlined ``18/18 checks passed''
+    & Actually 16 PASS + 2 SKIP. The generator counted \texttt{None} as a pass; fixed at
+      source and in the committed file. \\
+
+D-4 & Table 6.1 describes hardware never used
+    & Actual machine recorded against it in \texttt{APPROACH.md} \S10. \\
+
+D-5 & The document gives the hash formula three incompatible ways
+    & Footnoted at the design; the code follows Listing 4.7, the document's own reference
+      implementation. \\
+\end{xltabular}
+
+% =====================================================================
+\section{The most important correction: the metrics were stale, not the model}
+% =====================================================================
+
+The first pass reported that retraining on 50,000 samples had \textbf{lowered}
+accuracy from 0.9774 to 0.9577. That reading was wrong, and the truth matters
+more.
+
+The model on disk was \textbf{already} the 50,000-sample model.
+\texttt{reports/model\_metrics.json} was a leftover record of an earlier, smaller run
+that had since been overwritten. Three independent proofs:
+
+\begin{enumerate}[leftmargin=*,itemsep=0.5em]
+  \item \textbf{Training is bit-for-bit deterministic.} Two runs over the same parquet with
+        \texttt{random\_state=42} produced \texttt{xgboost\_model.pkl} with the same SHA-256
+        (\texttt{78ab2978\ldots d09b3d1}) and the same 1,064,299 bytes. Every metric matched
+        to 16 significant digits; only \texttt{trained\_at} differed.
+  \item \textbf{SHAP output is unchanged.} \texttt{reports/shap\_feature\_importance.json}
+        was committed \emph{before} the retrain, generated from the old model. Re-running
+        \texttt{src/shap\_analysis.py} against the new model reproduced it byte-for-byte.
+        SHAP values are a deterministic function of tree structure over a seeded sample,
+        so identical output means identical trees.
+  \item \textbf{The file size never moved.} 1,064,299 bytes before and after. A model fitted
+        on 13,636 training rows rather than 35,000 would not land on the same count.
+\end{enumerate}
+
+So the deployed classifier has been the 0.9577 model throughout, while
+\texttt{model\_metrics.json}, \texttt{/model/metrics}, \texttt{APPROACH.md}, \texttt{FLOW.md},
+\texttt{test\_cases.md} and the verification report all cited 0.9774. \textbf{Every document
+was overstating the classifier that was actually running, by about two points.}
+They now describe the model in the container.
+
+Corroboration: \texttt{reports/ransomware\_specific\_metrics.json} is byte-identical
+before and after --- 0.9993 accuracy, 1.0000 precision, 0.9987 recall over 752 real
+ransomware-family samples.
+
+\subsection{Current model performance}
+
+\begin{center}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Model} & \textbf{Accuracy} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} & \textbf{ROC-AUC} \\
+\midrule
+\textbf{XGBoost (EMBER static PE)} & 0.9577 & 0.9625 & 0.9525 & 0.9575 & 0.9923 \\
+Random Forest baseline            & 0.9389 & 0.9490 & 0.9277 & 0.9382 & 0.9859 \\
+Behavioural classifier            & 0.8843 & 0.9486 & 0.8127 & 0.8754 & 0.9585 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Both EMBER models are trained and evaluated on the same 50,000-row parquet with
+the same seed and split, so \textbf{Table 8.1's comparison is apples-to-apples}.
+XGBoost beats Random Forest on every metric, which is the relationship Table 8.1
+asserts. Every threshold clears: TC-06 wants P/R/F1 above 85\,\%, \S5.6.2 wants ML
+above 85\,\%, \S5.6.3 wants above 90\,\% across all metrics.
+
+Ransomware-family detection, measured on the 752 labelled samples in the corpus
+(WannaCry 389, GandCrab 343, CryptoLocker 7, Cerber 6, Petya 3, Locky 3,
+TeslaCrypt 1): \textbf{99.87\,\% recall, 100\,\% precision}.
+
+% =====================================================================
+\section{Chapter 3 --- Architecture \& API, verified line by line}
+% =====================================================================
+
+\subsection{Technology stack (Table 3.1)}
+
+\begin{xltabular}{\linewidth}{@{}P{2.2cm}Y{1.00}Y{1.10}Y{0.90}@{}}
+\toprule
+\textbf{Layer} & \textbf{Document requires} & \textbf{In the repo} & \textbf{Status} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Layer} & \textbf{Document requires} & \textbf{In the repo} & \textbf{Status} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+Presentation    & Streamlit, Plotly, HTML5/CSS3
+                & Streamlit 1.41.1, Plotly 5.24.1, inline CSS & \ok \\
+Application     & FastAPI, Python 3.9+, Uvicorn, Pydantic
+                & FastAPI 0.115.6, Uvicorn 0.32.1, Pydantic 2.10.4, Python 3.11/3.13 & \ok \\
+Business Logic  & XGBoost, watchdog, SHA-256
+                & \texttt{xgboost-cpu} 3.4.0, \texttt{watchdog} 6.0.0, \texttt{hashlib.sha256} & \ok \\
+Data            & SQLite, file system, Windows VSS
+                & \texttt{ledger/database.py}, \texttt{recovery/vss\_manager.py} (WMI) & \ok \\
+Security        & JWT, cryptography, \textbf{TLS 1.3}
+                & JWT via \texttt{python-jose[cryptography]}; \textbf{no TLS}
+                & \warn\ stated in APPROACH \S8 \\
+DevOps          & Docker, Compose, \textbf{GitHub Actions}, pytest
+                & Docker + Compose + pytest; \textbf{no \texttt{.github/}}
+                & \defer\ Table 5.6, Weeks 17--24 \\
+\end{xltabular}
+
+\subsection{API contracts --- the document's listings replayed verbatim}
+
+Every listing was sent to the real service and the response compared field by
+field. \textbf{53 / 53 checks pass.}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}P{3.0cm}K{1.6cm}K{1.4cm}L@{}}
+\toprule
+\textbf{Service} & \textbf{Checks} & \textbf{Result} & \textbf{Notes} \\
+\midrule
+Monitor (8001)   & 13 & \ok & Listings 3.1--3.4 exact; responses are supersets \\
+ML Engine (8002) & 13 & \ok & Listing 3.5 sent verbatim returns a well-formed 3.6 \\
+Ledger (8003)    & 11 & \ok & Listings 3.8/3.9 \textbf{exact match}, no extra fields \\
+Response (8004)  & 16 & \ok & Listings 3.10--3.16 all accepted \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+All 10 documented endpoints exist. Additions (\texttt{/health}, \texttt{/auth/token},
+\texttt{/monitor/events}, \texttt{/features}, \texttt{/ledger/entries}, \texttt{/ledger/verify},
+\texttt{/ledger/blocks}, \texttt{/analyze}) are required by the orchestration in Listing 4.9,
+the dashboard in \S7.1, or TC-05.
+
+\textbf{Hash chain, recomputed from the response alone.}
+\texttt{SHA256(timestamp + event\_type + event\_data + previous\_hash)} reproduces
+\texttt{current\_hash} exactly; genesis is 64 zeros; block N+1's \texttt{previous\_hash}
+equals block N's \texttt{current\_hash}.
+
+\textbf{HTTP status codes (Table 3.2).} 200, 201, 400, 401, 403, 404, 429, 500, 503
+all produced. One code is returned that Table 3.2 does not list --- \textbf{409} from
+\texttt{/response/terminate} when the guard refuses. It is now declared on the route and
+the deviation is recorded in \texttt{APPROACH.md} \S8, with the reasoning: the request is
+well-formed and authorised, and 403 already means ``your role is not permitted''
+at this gateway.
+
+\textbf{Error envelope (Listing 3.22).} Identical in all six places: gateway, monitor,
+ml-engine, ledger, response, recovery.
+
+\textbf{JWT (Listing 3.23).} \texttt{\{sub, role, exp, iat\}} all present, plus \texttt{tier}.
+
+\textbf{Rate limits (Table 3.3).} Free 60/100, Premium 300/500, Enterprise 1000/2000 ---
+exact transcription.
+
+\subsection{Data models (\S3.5)}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}P{3.6cm}L@{}}
+\toprule
+\textbf{Model} & \textbf{Status} \\
+\midrule
+\texttt{FileEvent} (3.17)   & All fields present; \texttt{hash\_md5} $\rightarrow$ \texttt{file\_hash} holding SHA-256 (justified in APPROACH \S8) \\
+\texttt{Prediction} (3.18)  & Exact \\
+\texttt{LedgerBlock} (3.19) & Exact, including \texttt{blockchain\_anchor} present and always null \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{Sequence diagrams (\S3.6)}
+
+\begin{itemize}[leftmargin=*,itemsep=0.4em]
+  \item \textbf{Figure 3.4 (attack):} implemented exactly --- modification $\rightarrow$
+        entropy $\rightarrow$ features $\rightarrow$ RANSOMWARE $\rightarrow$ trigger
+        $\rightarrow$ kill $\rightarrow$ alert $\rightarrow$ isolate.
+  \item \textbf{Figure 3.3 (benign):} diverges deliberately. Benign events are recorded but
+        do not fan out to ML and the ledger, which is what keeps CPU near 1\,\%. The
+        documented flow is still reachable via \texttt{POST /analyze}. Stated in
+        APPROACH \S8.
+\end{itemize}
+
+\subsection{Deployment (\S3.7.1, Listing 3.20)}
+
+\texttt{docker-compose.yml} is a strict superset. \texttt{docker compose config} validates.
+Every item in Listing 3.20 is present including the exact \texttt{cpus: '2' / memory: 2G}
+limits; ports are bound to \texttt{127.0.0.1} for the four backends (hardening), and
+\texttt{depends\_on} is upgraded to \texttt{condition: service\_healthy}.
+
+% =====================================================================
+\section{Chapters 4--5 --- deliverables, test cases, criteria}
+% =====================================================================
+
+\subsection{Weekly deliverables (Tables 4.1--4.4)}
+
+All Weeks 1--16 rows met. Notable: entropy calculator tested against known values
+(uniform = 8.0, single byte = 0.0, two symbols = 1.0); PE pipeline extracts \textbf{70}
+features against a ``50+'' requirement; VSS snapshots every 6 hours
+(\texttt{DEFAULT\_INTERVAL\_HOURS = 6}); backup creation measured at 2.8\,s against a 30\,s
+target. Several Weeks 17--24 rows are already met early (false positives $<$5\,\%,
+model $>$90\,\%, SHAP documented).
+
+\subsection{Test cases (Table 5.8)}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}P{1.5cm}Y{0.85}Y{1.15}@{}}
+\toprule
+\textbf{ID} & \textbf{Scenario} & \textbf{Verified} \\
+\midrule
+TC-01 & Known ransomware, $<$5 files encrypted   & \ok\ detected after \textbf{1 file} \\
+TC-02 & Zero-day / behavioural                   & \ok \\
+TC-03 & Legitimate ZIP, no alert                 & \ok\ 0/40 false positives \\
+TC-04 & Recovery from backup                     & \ok\ native \\
+TC-05 & Audit-log tampering detected             & \ok\ exact block identified \\
+TC-06 & P/R/F1 all $>$85\,\%                      & \ok\ 0.9625 / 0.9525 / 0.9575 \\
+TC-07 & Terminated within 2\,s                   & \ok\ 125.6\,ms \\
+TC-08 & CPU $<$15\,\%, RAM $<$500\,MB             & \ok\ 0.96\,\% / 70.3\,MB --- \textbf{now \texttt{tc08}-named} \\
+TC-09 & Dashboard alert within 1\,s              & \ok\ \textbf{10.5\,ms --- this had no automated test before this session} \\
+TC-10 & 401 + audit entry                        & \ok\ all three parts \\
+TC-11 & Simultaneous attacks                     & \ok\ 12 concurrent detections, 8 concurrent kills \\
+TC-12 & Polygon anchoring \textit{(if implemented)} & \defer\ Weeks 17--24 \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{Testing pyramid (\S5.5.1)}
+
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Tier} & \textbf{Document target} & \textbf{Actual} \\
+\midrule
+Unit        & 100+ & \textbf{165} \\
+Integration & 20   & \textbf{177} \\
+E2E         & 5    & \textbf{25}  \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Performance benchmarks (Table 5.9) --- all re-measured}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}P{4.0cm}P{2.0cm}L@{}}
+\toprule
+\textbf{Metric} & \textbf{Target} & \textbf{Measured} \\
+\midrule
+Detection latency    & $<$100\,ms  & \textbf{23.7\,ms} p95 (40 files, 4\,KB--2\,MB) \\
+Response time        & $<$2\,s     & \textbf{125.6\,ms} \\
+False positive rate  & $<$5\,\%     & \textbf{0\,\%} (0/40, 32 deliberately high-entropy) \\
+ML inference         & $<$100\,ms  & \textbf{1.95\,ms} p95 end-to-end, 0.44\,ms model-only \\
+API response p95     & $<$200\,ms  & \textbf{3.22\,ms} over 1000 requests \\
+System CPU           & $<$15\,\%    & \textbf{0.96\,\%} of 14 cores \\
+System RAM           & $<$500\,MB  & \textbf{70.3\,MB} peak \\
+File recovery        & 100\,\%      & \textbf{100\,\%} native \\
+Ledger verification  & $<$50\,ms   & \textbf{3.1\,ms} median / 1000 blocks \\
+Dashboard latency    & $<$1\,s     & \textbf{10.5\,ms} to queryable; 439\,ms end-to-end in Compose \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{Success criteria (\S5.6)}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}P{2.6cm}Y{1.20}Y{0.80}@{}}
+\toprule
+\textbf{Tier} & \textbf{Criterion} & \textbf{Met} \\
+\midrule
+\S5.6.1 (70\,\%)    & Monitoring + entropy                    & \ok \\
+                   & ML $>$70\,\%                             & \ok\ 95.8\,\% \\
+                   & Stops $\geq$1 simulator                 & \ok \\
+                   & Hash-chain audit trail                  & \ok \\
+                   & Basic recovery                          & \ok \\
+\addlinespace
+\S5.6.2 (80--85\,\%)& ML $>$85\,\% (P/R/F1)                    & \ok \\
+                   & \textbf{3+ ransomware simulators}       & \ok\ \textbf{now three} --- see \S5 \\
+                   & False positives $<$5\,\%                 & \ok\ 0\,\% \\
+                   & Response $<$2\,s                        & \ok\ 125.6\,ms \\
+                   & 8--10 test cases                        & \ok\ 11 \\
+                   & Dashboard with real-time alerts         & \ok \\
+\addlinespace
+\S5.6.3 (90\,\%+)   & ML $>$90\,\% all metrics                 & \ok \\
+                   & Blockchain anchoring                    & \defer\ Weeks 17--24 \\
+                   & Professional dashboard                  & \ok \\
+                   & 12--15 test cases                       & \warn\ 11 of 12 (TC-12 gates the 12th) \\
+                   & CI/CD pipeline                          & \defer\ Weeks 17--24 \\
+                   & SHAP documented                         & \ok \\
+                   & Research paper draft                    & \defer\ Weeks 25--32 \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{Risk register (Table 5.7)}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}P{3.2cm}Y{0.92}Y{1.08}@{}}
+\toprule
+\textbf{Risk} & \textbf{Document's mitigation} & \textbf{In the repo} \\
+\midrule
+ML underperforms      & Random Forest fallback                        & \ok\ trained, fills Table 8.1 \\
+Integration issues    & API contracts by Week 4, Compose              & \ok\ bidirectional parity tests \\
+High false positives  & Differential entropy, magic bytes, whitelist  & \ok\ \ok\ / \no\ whitelist not built (FP rate is 0\,\%) \\
+Blockchain costs      & Testnet, hash chain fallback                  & \ok\ fallback is the shipped path \\
+Dataset access        & Smaller subsets                               & \ok\ \texttt{--per-class} supported \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+% =====================================================================
+\section{Ransomware simulators --- \S5.6.2's ``3+'' requirement}
+% =====================================================================
+
+Previously one simulator run in four configurations, which is one behaviour. It
+now imitates four families that differ in \textbf{what the watcher sees}, not in the
+payload. Measured, not assumed:
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}P{2.2cm}LK{2.2cm}@{}}
+\toprule
+\textbf{Family} & \textbf{Behaviour} & \textbf{Detected} \\
+\midrule
+\texttt{locker}  & Rewrite in place, append \texttt{.locked}                                          & \textbf{8/8} \\
+\texttt{silent}  & Rewrite in place, keep the name --- no extension signal                            & \textbf{8/8} \\
+\texttt{copycat} & Write a new encrypted file, delete the original (\texttt{created}+\texttt{deleted}) & \textbf{8/8} \\
+\texttt{partial} & Scramble the leading quarter (LockBit 3 / BlackCat)                                & \textbf{0/8} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Three families detected satisfies \S5.6.2. All four round-trip through
+\texttt{--restore}, which is what keeps them safe to run.
+
+\textbf{\texttt{partial} is a genuine blind spot and is asserted as one.} Intermittent
+encryption leaves whole-file entropy near \textbf{5.2 bits/byte} against a 7.5
+threshold, so it reads as an ordinary edit. Catching it needs per-block entropy
+rather than a whole-file average, which would also flag the compressed blocks
+inside any \texttt{.docx} or PDF --- and the 0\,\% false-positive rate is a graded criterion
+while intermittent encryption is not mentioned anywhere in the reference
+document. The gap is captured by
+\texttt{test\_\allowbreak partial\_\allowbreak encryption\_\allowbreak is\_\allowbreak a\_\allowbreak known\_\allowbreak blind\_\allowbreak spot},
+so it is visible in the suite rather than absent from it, and that test fails loudly
+if detection ever improves.
+
+% =====================================================================
+\section{Chapter 6 --- experimental methodology}
+% =====================================================================
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}P{3.2cm}Y{1.05}Y{0.95}P{2.9cm}@{}}
+\toprule
+\textbf{\S6.1 requirement} & \textbf{Document} & \textbf{Actual} & \textbf{Status} \\
+\midrule
+Total samples    & 50,000 PE files                        & \textbf{50,000}            & \ok \\
+Class balance    & 25,000 / 25,000                        & \textbf{25,000 / 25,000}   & \ok \\
+Split ratio      & 70 / 15 / 15                           & \textbf{35,000 / 7,500 / 7,500} & \ok\ exact \\
+Training source  & EMBER \textbf{+ CLEAR behavioral logs} & EMBER only; CLEAR used for EDA & \warn\ stated in APPROACH \S8 \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\S6.2's five metrics are all computed and reported. \S6.3's Table 6.1 describes an
+i7-12700K / 32\,GB / Python 3.9.13 that was never used; the actual machine
+(Core Ultra 5 225H, 14 cores, 15\,GB, Windows 11 build 26200, Python 3.13.9) is
+recorded against it in \texttt{APPROACH.md} \S10. Every target is met with room on this
+hardware, so no conclusion depends on the difference.
+
+% =====================================================================
+\section{Known gaps, all documented}
+% =====================================================================
+
+Each is stated in \texttt{APPROACH.md} \S8 or \S9 rather than left to be discovered.
+
+\begin{xltabular}{\linewidth}{@{}Y{0.62}Y{1.38}@{}}
+\toprule
+\textbf{Gap} & \textbf{Why it stands} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Gap} & \textbf{Why it stands} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+\textbf{No TLS 1.3 between services} (Table 3.1)
+  & Real gap. Mitigated by binding the four backends to loopback so unauthenticated
+    traffic never crosses a network boundary. \S3.7.3 scopes TLS to production. \\
+
+\textbf{Intermittent encryption not detected}
+  & Needs per-block entropy; the false-positive cost is not worth it for Weeks 1--16,
+    and the spec never asks for it. \\
+
+\textbf{CLEAR is EDA-only, not training input} (\S6.1)
+  & Folding it in means retraining and restating every cited figure. Deferred
+    deliberately, not half-done. \\
+
+\textbf{SMOTE omitted} (p.\,40)
+  & The corpus is balanced 25,000/25,000, so \texttt{scale\_pos\_weight} computes to
+    $\sim$1.0 and SMOTE has no minority to oversample. Implementing it would be a
+    no-op that looked like a safeguard. \\
+
+\textbf{Whitelist / training mode} (Table 5.7)
+  & Two of four listed FP mitigations are built; the measured FP rate is 0\,\%, so the
+    remaining two are unnecessary for now. \S8.5 lists whitelisting as future work. \\
+
+\textbf{Behavioral fingerprinting is static} (\S1.4)
+  & API-call features come from the PE import table grouped by behaviour class, not
+    from runtime call sequences. Runtime attribution needs ETW/eBPF --- Phase 5. \\
+
+\textbf{Process attribution is null}
+  & Watchdog reports \emph{what} changed, never \emph{who}. Reporting the monitor's own
+    PID would name an unrelated process to the response container. \\
+
+\textbf{VSS deletion protection}
+  & \S2.5 reviews it but no Weeks 1--16 deliverable lists it. Correctly out of scope;
+    named in the limitations. \\
+
+\textbf{CI/CD, Polygon/TC-12, 95\,\% coverage, SHAP per-prediction, research paper}
+  & All Weeks 17--32 by Tables 5.4--5.6. \\
+\end{xltabular}
+
+\vspace{0.8em}
+
+Minor, non-blocking: the directory is \texttt{services/ml-engine} where Appendix A.1
+writes \texttt{ml\_engine} and Listing 3.20 writes \texttt{ml} --- the document is internally
+inconsistent, and the Compose \emph{service} name is \texttt{ml\_engine}, so the DNS name in
+Listing 3.20's \texttt{ML\_URL=http://ml\_engine:8002} resolves exactly as documented.
+Entry points are \texttt{app.py}/\texttt{main.py} rather than A.1's \texttt{main.py}/\texttt{api.py}.
+
+% =====================================================================
+\section{Reproducing this}
+% =====================================================================
+
+\begin{lstlisting}
+for svc in gateway ledger monitor ml-engine response; do (cd services/$svc && python -m pytest -q); done
+\end{lstlisting}
+
+Expect \textbf{371 passed, 2 skipped, 0 failed}. The two skips are legitimate:
+\texttt{psutil.terminate()} maps to \texttt{TerminateProcess} on Windows, which no process can
+ignore, so the SIGTERM-escalation tests assert a POSIX guarantee with no Windows
+equivalent; a Windows-specific test covers the same ground.
+
+Benchmarks, with measured values printed:
+
+\begin{lstlisting}
+cd services/monitor && python -m pytest -m benchmark -q -s
+\end{lstlisting}
+
+A plain test run leaves \texttt{reports/} untouched. To refresh the committed evidence
+deliberately:
+
+\begin{lstlisting}
+URDS_WRITE_REPORTS=1 python -m pytest -m benchmark -q -s
+\end{lstlisting}
+
+% =====================================================================
+\section{Commits}
+% =====================================================================
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}P{2.3cm}L@{}}
+\toprule
+\textbf{Commit} & \textbf{Task} \\
+\midrule
+\texttt{c4b9ed1} & \texttt{fix(monitor)}: let the Monitor's verdict set a floor on threat level (F-1) \\
+\texttt{3707b22} & \texttt{fix(dashboard)}: score the file that was actually detected (F-2) \\
+\texttt{b3642d7} & \texttt{fix(monitor)}: apply \texttt{file\_patterns} instead of only echoing it (F-3) \\
+\texttt{4a3fdbb} & \texttt{test}: record benchmark numbers only when asked (F-4) \\
+\texttt{173c5c0} & \texttt{feat(monitor)}: implement differential entropy analysis (F-5) \\
+\texttt{9db64a1} & \texttt{fix}: three spec-exactness corrections (V-2, V-3, D-1) \\
+\texttt{7368cc3} & \texttt{feat(ml)}: retrain on the 50,000 samples the specification calls for (V-8) \\
+\texttt{9b9c11c} & \texttt{docs}: correct the numbers, state the deviations, mark the dead code \\
+\texttt{d3aeda3} & \texttt{fix}: close the gaps a full re-audit against the reference PDF found \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\end{document}
