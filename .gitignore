@@ -19,3 +19,6 @@ data/
 docs/_plan_ch9.txt
 docs/_ref.txt
 .sf/
+
+# Working directory for scripts/phase5_baseline.py - regenerated, never committed
+.baseline_work/
