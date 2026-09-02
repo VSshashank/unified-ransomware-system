@@ -1,0 +1,93 @@
+# The governing method document is missing — what Phase 5 does instead
+
+**Item P0. Recorded 2 September 2026, before any Phase 5 measurement was taken.**
+
+Chapter 9 §9.1 names `NOVELTY_PROOF_PLAN.md` as the governing method document:
+
+> The governing method document is `NOVELTY_PROOF_PLAN.md`. This chapter is its
+> schedule, ownership and acceptance layer: where the two disagree, the proof plan
+> governs the method and this chapter governs the calendar.
+
+It is also cited by §9.4.2, which makes the Week 24 exit gate *"every row of the
+acceptance table in `NOVELTY_PROOF_PLAN.md` is measured and reported"*.
+
+**The file does not exist and never has.**
+
+## What was searched
+
+| Where | Command | Result |
+|---|---|---|
+| Working tree | `ls`, `grep -ril NOVELTY_PROOF_PLAN .` | Only `docs/PHASE5-8_MASTER_PROMPT.md`, which is the prompt citing it |
+| Every commit on every branch | `git log --all --diff-filter=A --name-only \| grep -i -E "novelty\|proof"` | No match — the file was never added in any commit |
+| All 9 local and 11 remote branches | `git branch -a` enumerated, search above covers all of them | Absent |
+
+`git log --all --diff-filter=A` lists every path ever *added* anywhere in history.
+A file that was written and later deleted would still appear. Nothing does. This is
+not a deleted file to recover; it is a document that was never written.
+
+## What was considered as a substitute, and rejected
+
+`docs/CAPABILITY_GOVERNED_EXCEPTIONS.md` is the nearest thing in the repository. It
+is a 1,180-line design document covering the architecture (§3), the algorithm (§4),
+the data contracts (§5), an implementation plan (§6), the container-exception
+integration (§7) and a test plan (§8) whose §8.3 already sketches the three-arm
+A/B/C comparison Phase 6 needs.
+
+It is not the method document, for one decisive reason. Its own closing section says:
+
+> The scale is a modelling choice, not a measurement, and a different analyst could
+> defend different numbers.
+
+Converting that modelling choice into a measurement is exactly what Phase 5 exists
+to do. A document that declares the cost scale unmeasured cannot also be the
+document that says what a measured level has to satisfy to be accepted. It seeds the
+work; it cannot govern it.
+
+## The decision taken
+
+The user was asked, before any measurement ran, and directed that Phase 5 proceed
+without the method document rather than have it authored in this session.
+
+**Chapter 9's Table 9.8 acceptance benchmarks are therefore the operative acceptance
+layer for Phase 5**, and Chapter 9's §9.7 decision rules D1–D6 are the operative
+decision layer. Nothing in Phase 5 is measured against a criterion invented during
+Phase 5.
+
+## What this costs, stated rather than hidden
+
+1. **The Week 24 gate is under-defined.** §9.4.2 makes it "every row of the
+   acceptance table in `NOVELTY_PROOF_PLAN.md`". With no such table, Phase 6 would
+   have to define its own pass condition — which is the failure mode §9.7 exists to
+   prevent. *This session stops at the Week 20 gate, so the cost is deferred, not
+   incurred.* It must be resolved before Phase 6 opens.
+
+2. **Capability-level acceptance has no external definition.** §9.4.1 requires each
+   level to have "a reproducible source trail confirmed by a second reviewer", and
+   Table 9.8 requires 100% reproduction, but what *counts* as a level is defined only
+   by `services/monitor/admissibility.py`'s four-point ordinal scale
+   (NEGLIGIBLE / LOW / MODERATE / HIGH). Phase 5 therefore calibrates against that
+   scale, and says so on every record it writes. The scale is the system's own, not
+   an independent yardstick, and no claim in this work should be read as if it were.
+
+3. **The non-inferiority bound (P5.6) has no prior definition to inherit.** It is
+   predeclared in `docs/PHASE5_PREDECLARED_BOUNDS.md` from Table 9.8's stated
+   ≤2-percentage-point figure, with the reasoning written down, and committed before
+   Phase 6 opens — which satisfies §9.7's note on D5 on its own terms. But it is a
+   bound this project chose, not one it was handed.
+
+## What would resolve it
+
+Either the original `NOVELTY_PROOF_PLAN.md` is located outside this repository and
+restored, or it is authored deliberately — **before** Phase 6 opens and with the
+Phase 5 measurements deliberately not consulted while its acceptance table is
+written. Authoring it after the Phase 5 numbers are in hand would produce an
+acceptance table fitted to results already obtained, which is the same defect
+§9.4.1 forbids for the repair and the cost table.
+
+## Claim discipline
+
+Per Table 9.9, no sentence in the thesis, paper or defence may cite
+`NOVELTY_PROOF_PLAN.md` as a source. Where the method needs a citation, the citation
+is Chapter 9 §9.7 (decision rules), Table 9.8 (acceptance benchmarks) and
+`services/monitor/admissibility.py` (the capability scale) — the three documents that
+actually exist.
