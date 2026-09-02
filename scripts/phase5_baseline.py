@@ -496,10 +496,23 @@ def queue_backpressure(workdir: Path, events: int = 4000) -> dict:
         peak_mb = process.memory_info().rss / (1024 * 1024)
     finally:
         monitor_app.PIPELINE_ENABLED = previous_pipeline
+        # Drain what this stage queued. Every item is three HTTP calls that fail
+        # DNS resolution, so a backlog left behind would still be draining -
+        # and consuming this process's CPU - during whatever runs next. That is
+        # exactly how the first run contaminated its own CPU window.
+        drained = 0
+        while True:
+            try:
+                monitor_app._work.get_nowait()
+            except Exception:
+                break
+            monitor_app._work.task_done()
+            drained += 1
 
     return {
         "events_driven": events,
         "queue_depth_after": depth,
+        "queue_items_discarded_after_measuring": drained,
         "queue_is_bounded": monitor_app._work.maxsize > 0,
         "baseline_mb": round(baseline_mb, 2),
         "peak_mb": round(peak_mb, 2),
@@ -531,7 +544,15 @@ def ram_under_stress(workdir: Path, seconds: float) -> dict:
     peak_mb = baseline_mb
     written = 0
 
-    with TestClient(monitor_app.app) as client:
+    # Fan-out off, for the same reason as the CPU window: with no Compose stack
+    # up, every one of these high-entropy files queues three HTTP calls that fail
+    # DNS, and the RSS peak becomes the size of the undrained backlog rather than
+    # the memory cost of monitoring. The backlog is a real defect and it is
+    # measured deliberately in `queue_backpressure`, not accidentally here.
+    previous_pipeline = monitor_app.PIPELINE_ENABLED
+    monitor_app.PIPELINE_ENABLED = False
+    try:
+      with TestClient(monitor_app.app) as client:
         client.post("/monitor/start", json={"watch_path": str(workdir), "recursive": True})
         started = time.time()
         while time.time() - started < seconds:
@@ -541,6 +562,8 @@ def ram_under_stress(workdir: Path, seconds: float) -> dict:
             written += 1
             peak_mb = max(peak_mb, process.memory_info().rss / (1024 * 1024))
         client.post("/monitor/stop")
+    finally:
+        monitor_app.PIPELINE_ENABLED = previous_pipeline
 
     return {
         "stress_seconds": round(time.time() - started, 1),
@@ -548,6 +571,7 @@ def ram_under_stress(workdir: Path, seconds: float) -> dict:
         "baseline_mb": round(baseline_mb, 2),
         "peak_mb": round(peak_mb, 2),
         "growth_mb": round(peak_mb - baseline_mb, 2),
+        "downstream_fan_out": "disabled; the queue backlog is measured in queue_backpressure",
         "method": TARGETS["ram_peak_mb"][1],
     }
 
@@ -792,10 +816,14 @@ def main() -> int:
     measured["ledger_verify_ms"] = stage("ledger verification", ledger_verify_time, workdir / "ledger")
     measured["dashboard_latency_ms"] = stage("dashboard freshness", dashboard_latency, workdir / "dash")
     measured["ram_peak_mb"] = stage("ram under stress", ram_under_stress, workdir / "stress", args.stress_seconds)
-    measured["queue_backpressure"] = stage("queue backpressure", queue_backpressure, workdir / "backpressure")
     measured["delegated"] = stage("delegated benchmarks", delegated_benchmarks)
     measured["simulator_families"] = stage("simulator sweep", simulator_families, args.files_per_family)
     measured["cpu_percent"] = stage("cpu over window", cpu_over_window, workdir / "cpu", args.cpu_seconds)
+    # Last, and deliberately so: this is the only stage that leaves a fan-out
+    # backlog, and anything after it would be measured through that backlog.
+    measured["queue_backpressure"] = stage(
+        "queue backpressure", queue_backpressure, workdir / "backpressure"
+    )
 
     suite = {} if args.skip_suite else stage("test suite", test_suite)
 
