@@ -1,0 +1,660 @@
+{
+  "schema": "urds.capability_calibration/1",
+  "generated_at": "2026-09-02T07:05:16.012328Z",
+  "commit": "2c242d6ef610afc7aa13f3384f980810de192e09",
+  "branch": "feat/admissibility-governance-novelty-v2",
+  "ladder": {
+    "0": "negligible",
+    "1": "low",
+    "2": "moderate",
+    "3": "high"
+  },
+  "ladder_source": "services/monitor/admissibility.py:68-71",
+  "second_reviewer_statement": "\u00a79.15 requires the AS\u2194NI ring. Every level here was derived twice, in opposite decision orders, over the same recorded operational facts and without reference to the first conclusion - which is the reproduction protocol. Both derivations were written in one session by one author. No record claims an independent human reviewer, and every record carries reproduction.independent_human_reviewer = false.",
+  "summary": {
+    "levels_measured": 10,
+    "with_reproducible_source_trail": 10,
+    "reproduced": 10,
+    "unresolved_under_d2": 0,
+    "disagree_with_the_declared_cost_table": [
+      {
+        "strategy": "container_exemption / standard-library valid container",
+        "declared": "moderate",
+        "measured": "negligible"
+      },
+      {
+        "strategy": "container_exemption / ZIP_STORED valid container",
+        "declared": "moderate",
+        "measured": "negligible"
+      },
+      {
+        "strategy": "entropy_rise / write to an unobserved path",
+        "declared": "moderate",
+        "measured": "low"
+      },
+      {
+        "strategy": "Cforge(ml_confidence_gate) / hold ransomware confidence under 0.7",
+        "declared": "high",
+        "measured": "negligible"
+      }
+    ]
+  },
+  "levels": [
+    {
+      "strategy": "container_exemption / standard-library valid container",
+      "kind": "avoidance",
+      "cost_table_key": "structural_mismatch",
+      "cost_table_file": "services/monitor/admissibility.py",
+      "declared_level": 2,
+      "declared_name": "moderate",
+      "attack": {
+        "description": "Wrap the ciphertext in a genuine gzip member.",
+        "construction": "gzip.compress(ciphertext)",
+        "why_it_works": "containers._validate_gzip inflates a bounded prefix and the stream really does inflate, so container_status is VALID and classify returns benign_compressed on the exemption at detection.py:702."
+      },
+      "operational_facts": {
+        "third_party_dependencies": [],
+        "ships_an_encoder": false,
+        "format_specific_knowledge": false,
+        "attacker_statements": 1,
+        "requires_secret_or_preimage": false,
+        "write_location_only": false
+      },
+      "measurement": {
+        "container_status": "valid",
+        "verdict": "benign_compressed",
+        "suspicious": false,
+        "entropy": 8.0,
+        "attack_succeeded": true
+      },
+      "measured_level": 0,
+      "measured_name": "negligible",
+      "matches_declared": false,
+      "source_trail": {
+        "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
+        "artefact_sha256": "53ee3d4ac49afc7656d5ae3417cde63a27f70c088be5c260c3420d8556a626a4",
+        "scored_by": "detection.classify via scripts/capability_calibration.py::score"
+      },
+      "reproduction": {
+        "status": "reproduced",
+        "primary_derivation": "negligible",
+        "second_derivation": "negligible",
+        "agrees": true,
+        "method": "Both derivations map the recorded operational_facts to the ladder in admissibility.py:68-71, in opposite decision orders, without reference to the other's conclusion.",
+        "independent_human_reviewer": false,
+        "note": "\u00a79.15 asks for AS\u2194NI reproduction. This record was produced in one session by one author and is labelled as such rather than presented as a second member's confirmation."
+      }
+    },
+    {
+      "strategy": "container_exemption / ZIP_STORED valid container",
+      "kind": "avoidance",
+      "cost_table_key": "structural_mismatch",
+      "cost_table_file": "services/monitor/admissibility.py",
+      "declared_level": 2,
+      "declared_name": "moderate",
+      "attack": {
+        "description": "Store the ciphertext verbatim in a genuine ZIP member.",
+        "construction": "ZipFile(..., ZIP_STORED).writestr(name, ciphertext)",
+        "why_it_works": "A real local header, a real central directory and a real EOCD. ZIP_STORED means the payload is carried byte for byte, so the attacker gives up nothing to get the exemption."
+      },
+      "operational_facts": {
+        "third_party_dependencies": [],
+        "ships_an_encoder": false,
+        "format_specific_knowledge": false,
+        "attacker_statements": 2,
+        "requires_secret_or_preimage": false,
+        "write_location_only": false
+      },
+      "measurement": {
+        "container_status": "valid",
+        "verdict": "benign_compressed",
+        "suspicious": false,
+        "entropy": 8.0,
+        "attack_succeeded": true
+      },
+      "measured_level": 0,
+      "measured_name": "negligible",
+      "matches_declared": false,
+      "source_trail": {
+        "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
+        "artefact_sha256": "390e43f3f1a2e1891b2b935249e79420f43be053372a325bd2bd02f45da06303",
+        "scored_by": "detection.classify via scripts/capability_calibration.py::score"
+      },
+      "reproduction": {
+        "status": "reproduced",
+        "primary_derivation": "negligible",
+        "second_derivation": "negligible",
+        "agrees": true,
+        "method": "Both derivations map the recorded operational_facts to the ladder in admissibility.py:68-71, in opposite decision orders, without reference to the other's conclusion.",
+        "independent_human_reviewer": false,
+        "note": "\u00a79.15 asks for AS\u2194NI reproduction. This record was produced in one session by one author and is labelled as such rather than presented as a second member's confirmation."
+      }
+    },
+    {
+      "strategy": "static_entropy / magic bytes over ciphertext",
+      "kind": "avoidance",
+      "cost_table_key": "static_entropy",
+      "cost_table_file": "services/monitor/admissibility.py",
+      "declared_level": 0,
+      "declared_name": "negligible",
+      "attack": {
+        "description": "Write a recognised container magic over the payload.",
+        "construction": "b\"Rar!\\x1a\\x07\" + ciphertext",
+        "why_it_works": "rar is one of the 11 formats with no validator, so validate_container returns None and the exemption at detection.py:702 admits it. Against a validated format the same attack now fails - the zip control below returns suspected_encryption on the structural_mismatch signal.",
+        "validated_format_control": {
+          "construction": "b\"PK\\x03\\x04\" + ciphertext",
+          "container_status": "forged",
+          "verdict": "suspected_encryption",
+          "signal": "structural_mismatch",
+          "suspicious": true
+        }
+      },
+      "operational_facts": {
+        "third_party_dependencies": [],
+        "ships_an_encoder": false,
+        "format_specific_knowledge": false,
+        "attacker_statements": 1,
+        "requires_secret_or_preimage": false,
+        "write_location_only": false
+      },
+      "measurement": {
+        "container_status": "unvalidated",
+        "verdict": "benign_compressed",
+        "suspicious": false,
+        "entropy": 8.0,
+        "attack_succeeded": true
+      },
+      "measured_level": 0,
+      "measured_name": "negligible",
+      "matches_declared": true,
+      "source_trail": {
+        "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
+        "artefact_sha256": "053944be14d8e03c9e7d27652266dca707441a228ce92fc9396fdc2d068180bd",
+        "scored_by": "detection.classify via scripts/capability_calibration.py::score"
+      },
+      "reproduction": {
+        "status": "reproduced",
+        "primary_derivation": "negligible",
+        "second_derivation": "negligible",
+        "agrees": true,
+        "method": "Both derivations map the recorded operational_facts to the ladder in admissibility.py:68-71, in opposite decision orders, without reference to the other's conclusion.",
+        "independent_human_reviewer": false,
+        "note": "\u00a79.15 asks for AS\u2194NI reproduction. This record was produced in one session by one author and is labelled as such rather than presented as a second member's confirmation."
+      }
+    },
+    {
+      "strategy": "entropy_rise / write to an unobserved path",
+      "kind": "avoidance",
+      "cost_table_key": "entropy_rise",
+      "cost_table_file": "services/monitor/admissibility.py",
+      "declared_level": 2,
+      "declared_name": "moderate",
+      "attack": {
+        "description": "Do not overwrite a file the Monitor has measured. Write the ciphertext to a path with no history - or delete the original first, which clears the history at app.py:349 - and the differential signal has nothing to rise from.",
+        "construction": "open(new_path, 'wb').write(ciphertext)",
+        "why_it_works": "EntropyHistory.observe returns None on a first sighting (detection.py:563), so entropy_delta is None and the rise branch at detection.py:661 is unreachable.",
+        "observed_path_control": {
+          "entropy_delta": 3.35,
+          "verdict": "suspected_encryption",
+          "signal": "entropy_rise",
+          "suspicious": true
+        }
+      },
+      "operational_facts": {
+        "third_party_dependencies": [],
+        "ships_an_encoder": false,
+        "format_specific_knowledge": false,
+        "attacker_statements": 1,
+        "requires_secret_or_preimage": false,
+        "write_location_only": true
+      },
+      "measurement": {
+        "fresh_path_verdict": "suspected_encryption",
+        "fresh_path_signal": "static_entropy",
+        "fresh_path_suspicious": true,
+        "observed_path_verdict": "suspected_encryption",
+        "observed_path_signal": "entropy_rise",
+        "attack_succeeded": true,
+        "note": "The fresh write is still caught, by static_entropy rather than entropy_rise - it has no container header. What the attack buys is the removal of the one signal a valid container cannot cancel, which is why it is measured here and not in isolation."
+      },
+      "measured_level": 1,
+      "measured_name": "low",
+      "matches_declared": false,
+      "source_trail": {
+        "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
+        "artefact_sha256": "03252324608c5201ea11dd838cf3a48d621ce3dba9804d8e3bc36cf383025cb8",
+        "scored_by": "detection.classify via scripts/capability_calibration.py::score"
+      },
+      "reproduction": {
+        "status": "reproduced",
+        "primary_derivation": "low",
+        "second_derivation": "low",
+        "agrees": true,
+        "method": "Both derivations map the recorded operational_facts to the ladder in admissibility.py:68-71, in opposite decision orders, without reference to the other's conclusion.",
+        "independent_human_reviewer": false,
+        "note": "\u00a79.15 asks for AS\u2194NI reproduction. This record was produced in one session by one author and is labelled as such rather than presented as a second member's confirmation."
+      }
+    },
+    {
+      "strategy": "partial_entropy / never reach ciphertext entropy in any block",
+      "kind": "avoidance",
+      "cost_table_key": "partial_entropy",
+      "cost_table_file": "services/monitor/admissibility.py",
+      "declared_level": 2,
+      "declared_name": "moderate",
+      "attack": {
+        "description": "Encrypt so that no 4KB block reaches the block threshold. That rules out applying a stream cipher to any contiguous region, which is the whole point of intermittent encryption.",
+        "construction": "not built: the attack is a constraint on the encryptor's output distribution, not a wrapper around it",
+        "why_it_is_not_run_here": "Producing ciphertext whose every block sits below the threshold means either encrypting less of the file or post-processing the output to flatten it - both of which are the attacker writing format-aware, distribution-aware code. The level is derived from that fact, and the fact is not in dispute; building a partial encryptor to confirm it would add no evidence the source does not already give."
+      },
+      "operational_facts": {
+        "third_party_dependencies": [],
+        "ships_an_encoder": true,
+        "format_specific_knowledge": true,
+        "attacker_statements": null,
+        "requires_secret_or_preimage": false,
+        "write_location_only": false
+      },
+      "measurement": {
+        "attack_built": false,
+        "basis": "source analysis of detection.py:690 and the block statistics in measure()",
+        "attack_succeeded": null
+      },
+      "measured_level": 2,
+      "measured_name": "moderate",
+      "matches_declared": true,
+      "source_trail": {
+        "command": "(not empirically run - see why_it_is_not_run_here)",
+        "artefact_sha256": null,
+        "scored_by": "detection.classify via scripts/capability_calibration.py::score"
+      },
+      "reproduction": {
+        "status": "reproduced",
+        "primary_derivation": "moderate",
+        "second_derivation": "moderate",
+        "agrees": true,
+        "method": "Both derivations map the recorded operational_facts to the ladder in admissibility.py:68-71, in opposite decision orders, without reference to the other's conclusion.",
+        "independent_human_reviewer": false,
+        "note": "\u00a79.15 asks for AS\u2194NI reproduction. This record was produced in one session by one author and is labelled as such rather than presented as a second member's confirmation."
+      }
+    },
+    {
+      "strategy": "ransom_extension / do not rename the file",
+      "kind": "avoidance",
+      "cost_table_key": "ransom_extension",
+      "cost_table_file": "services/monitor/admissibility.py",
+      "declared_level": 0,
+      "declared_name": "negligible",
+      "attack": {
+        "description": "Leave the original extension in place.",
+        "construction": "do nothing",
+        "why_it_works": "The signal reads the filename and nothing else."
+      },
+      "operational_facts": {
+        "third_party_dependencies": [],
+        "ships_an_encoder": false,
+        "format_specific_knowledge": false,
+        "attacker_statements": 0,
+        "requires_secret_or_preimage": false,
+        "write_location_only": false
+      },
+      "measurement": {
+        "with_extension_signal": "static_entropy",
+        "without_extension_signal": "static_entropy",
+        "attack_succeeded": true
+      },
+      "measured_level": 0,
+      "measured_name": "negligible",
+      "matches_declared": true,
+      "source_trail": {
+        "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
+        "artefact_sha256": "b87b7893081cc1965228fc41e4730b047c5bf10f8a489076da76c2bc8f5f57b3",
+        "scored_by": "detection.classify via scripts/capability_calibration.py::score"
+      },
+      "reproduction": {
+        "status": "reproduced",
+        "primary_derivation": "negligible",
+        "second_derivation": "negligible",
+        "agrees": true,
+        "method": "Both derivations map the recorded operational_facts to the ladder in admissibility.py:68-71, in opposite decision orders, without reference to the other's conclusion.",
+        "independent_human_reviewer": false,
+        "note": "\u00a79.15 asks for AS\u2194NI reproduction. This record was produced in one session by one author and is labelled as such rather than presented as a second member's confirmation."
+      }
+    },
+    {
+      "strategy": "whitelist path rule / write into an approved directory",
+      "kind": "forgery",
+      "cost_table_key": "path",
+      "cost_table_file": "services/monitor/admissibility.py",
+      "declared_level": 1,
+      "declared_name": "low",
+      "attack": {
+        "description": "Drop the payload into a directory the operator approved.",
+        "construction": "open(approved_dir / name, 'wb').write(ciphertext)",
+        "why_it_works": "Whitelist.match fnmatches the path (suppression.py:166) and returns a rule with no reference to the content."
+      },
+      "operational_facts": {
+        "third_party_dependencies": [],
+        "ships_an_encoder": false,
+        "format_specific_knowledge": false,
+        "attacker_statements": 1,
+        "requires_secret_or_preimage": false,
+        "write_location_only": true
+      },
+      "measurement": {
+        "rule_matched": {
+          "rule": "path",
+          "value": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\capability_h8raqln9\\approved\\*"
+        },
+        "adjudication_outcome": "cancelled",
+        "admitted": true,
+        "forgery_cost": "low",
+        "avoidance_cost": "negligible",
+        "attack_succeeded": true
+      },
+      "measured_level": 1,
+      "measured_name": "low",
+      "matches_declared": true,
+      "source_trail": {
+        "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
+        "artefact_sha256": "43fa1f94da3601cfc321540f41073b2051c2ca39dffa976197caf1a47bc7f625",
+        "scored_by": "detection.classify via scripts/capability_calibration.py::score"
+      },
+      "reproduction": {
+        "status": "reproduced",
+        "primary_derivation": "low",
+        "second_derivation": "low",
+        "agrees": true,
+        "method": "Both derivations map the recorded operational_facts to the ladder in admissibility.py:68-71, in opposite decision orders, without reference to the other's conclusion.",
+        "independent_human_reviewer": false,
+        "note": "\u00a79.15 asks for AS\u2194NI reproduction. This record was produced in one session by one author and is labelled as such rather than presented as a second member's confirmation."
+      }
+    },
+    {
+      "strategy": "whitelist hash rule / produce a file with an approved SHA-256",
+      "kind": "forgery",
+      "cost_table_key": "hash",
+      "cost_table_file": "services/monitor/admissibility.py",
+      "declared_level": 3,
+      "declared_name": "high",
+      "attack": {
+        "description": "Make the ciphertext hash to a value already in the operator's approved set.",
+        "construction": "not available: this is a SHA-256 preimage",
+        "why_it_is_not_run_here": "A second-preimage attack on SHA-256 has no known method better than brute force at 2^256. The attempt below is the negative control - an attacker-controlled file is offered against a populated hash whitelist and does not match."
+      },
+      "operational_facts": {
+        "third_party_dependencies": [],
+        "ships_an_encoder": false,
+        "format_specific_knowledge": false,
+        "attacker_statements": null,
+        "requires_secret_or_preimage": true,
+        "write_location_only": false
+      },
+      "measurement": {
+        "negative_control_matched": null,
+        "attack_succeeded": false,
+        "basis": "SHA-256 second preimage; infeasible, not merely expensive"
+      },
+      "measured_level": 3,
+      "measured_name": "high",
+      "matches_declared": true,
+      "source_trail": {
+        "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
+        "artefact_sha256": null,
+        "scored_by": "detection.classify via scripts/capability_calibration.py::score"
+      },
+      "reproduction": {
+        "status": "reproduced",
+        "primary_derivation": "high",
+        "second_derivation": "high",
+        "agrees": true,
+        "method": "Both derivations map the recorded operational_facts to the ladder in admissibility.py:68-71, in opposite decision orders, without reference to the other's conclusion.",
+        "independent_human_reviewer": false,
+        "note": "\u00a79.15 asks for AS\u2194NI reproduction. This record was produced in one session by one author and is labelled as such rather than presented as a second member's confirmation."
+      }
+    },
+    {
+      "strategy": "training_mode / poison the learned ceiling during the window",
+      "kind": "forgery",
+      "cost_table_key": "training_mode",
+      "cost_table_file": "services/monitor/admissibility.py",
+      "declared_level": 1,
+      "declared_name": "low",
+      "attack": {
+        "description": "Write high-entropy files into the watched tree while the operator's training window is open, so the learned ceiling for that extension and structural class is set by the attacker's own files.",
+        "construction": "write 6 files during training, then write the payload",
+        "why_it_works": "TrainingMode learns from writes (suppression.py:365) and the attacker can write. The dwell and structural-class requirements raise the price but do not change who supplies the samples."
+      },
+      "operational_facts": {
+        "third_party_dependencies": [],
+        "ships_an_encoder": false,
+        "format_specific_knowledge": false,
+        "attacker_statements": 6,
+        "requires_secret_or_preimage": false,
+        "write_location_only": true
+      },
+      "measurement": {
+        "training_state_after_finish": {
+          "state": "active",
+          "observed_events": 6,
+          "learned_extensions": {
+            ".zip": {
+              "entropy_ceiling": 8.0,
+              "directories": [
+                "c:/users/nikhi/appdata/local/temp/capability_h8raqln9/watched"
+              ],
+              "profiles": [
+                {
+                  "structure": "container:zip",
+                  "entropy_ceiling": 8.0,
+                  "directories": [
+                    "c:/users/nikhi/appdata/local/temp/capability_h8raqln9/watched"
+                  ]
+                }
+              ]
+            }
+          },
+          "dwell_seconds": 0.0,
+          "seconds_remaining": null
+        },
+        "poison_files": 6,
+        "attack_verdict": "benign_compressed",
+        "attack_signal": null,
+        "rule_matched": {
+          "rule": "training_mode",
+          "value": ".zip (container:zip) in c:/users/nikhi/appdata/local/temp/capability_h8raqln9/watched at or below 8.0 bits/byte"
+        },
+        "adjudication_outcome": "cancelled",
+        "admitted": true,
+        "forgery_cost": "low",
+        "avoidance_cost": "negligible",
+        "attack_succeeded": true
+      },
+      "measured_level": 1,
+      "measured_name": "low",
+      "matches_declared": true,
+      "source_trail": {
+        "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
+        "artefact_sha256": "5d1036a2d89174ad6d22e32f7ee4b104a580d846b3041be117f066d01409dd15",
+        "scored_by": "detection.classify via scripts/capability_calibration.py::score"
+      },
+      "reproduction": {
+        "status": "reproduced",
+        "primary_derivation": "low",
+        "second_derivation": "low",
+        "agrees": true,
+        "method": "Both derivations map the recorded operational_facts to the ladder in admissibility.py:68-71, in opposite decision orders, without reference to the other's conclusion.",
+        "independent_human_reviewer": false,
+        "note": "\u00a79.15 asks for AS\u2194NI reproduction. This record was produced in one session by one author and is labelled as such rather than presented as a second member's confirmation."
+      }
+    },
+    {
+      "strategy": "Cforge(ml_confidence_gate) / hold ransomware confidence under 0.7",
+      "kind": "avoidance",
+      "cost_table_key": "(not in the cost table - the ML gate is ungoverned)",
+      "cost_table_file": "services/monitor/admissibility.py",
+      "declared_level": 3,
+      "declared_name": "high",
+      "attack": {
+        "description": "Keep the behavioural model's ransomware confidence below the 0.7 threshold in ml-engine/app.py:157 while the file is still ciphertext, so the threat level lands at medium or low.",
+        "construction": "vary the declared container, its validity and the block statistics around unchanged high-entropy content",
+        "trials": [
+          {
+            "variation": "naked ciphertext, ransom extension",
+            "overrides": {},
+            "prediction": "ransomware",
+            "confidence": 0.9971,
+            "ransomware_confidence": 0.9971,
+            "under_0_7_gate": false,
+            "whole_file_entropy": 7.997,
+            "encrypted_block_fraction": 1.0,
+            "attacker_objective_met": true
+          },
+          {
+            "variation": "drop the ransom extension",
+            "overrides": {
+              "ransom_extension": 0
+            },
+            "prediction": "ransomware",
+            "confidence": 0.9777,
+            "ransomware_confidence": 0.9777,
+            "under_0_7_gate": false,
+            "whole_file_entropy": 7.997,
+            "encrypted_block_fraction": 1.0,
+            "attacker_objective_met": true
+          },
+          {
+            "variation": "declare a container header",
+            "overrides": {
+              "ransom_extension": 0,
+              "has_container_header": 1
+            },
+            "prediction": "ransomware",
+            "confidence": 0.9777,
+            "ransomware_confidence": 0.9777,
+            "under_0_7_gate": false,
+            "whole_file_entropy": 7.997,
+            "encrypted_block_fraction": 1.0,
+            "attacker_objective_met": true
+          },
+          {
+            "variation": "declare a structurally valid container",
+            "overrides": {
+              "ransom_extension": 0,
+              "has_container_header": 1,
+              "container_structurally_valid": 1
+            },
+            "prediction": "ransomware",
+            "confidence": 0.9777,
+            "ransomware_confidence": 0.9777,
+            "under_0_7_gate": false,
+            "whole_file_entropy": 7.997,
+            "encrypted_block_fraction": 1.0,
+            "attacker_objective_met": true
+          },
+          {
+            "variation": "valid container, softened block statistics",
+            "overrides": {
+              "ransom_extension": 0,
+              "has_container_header": 1,
+              "container_structurally_valid": 1,
+              "high_entropy_block_fraction": 0.55,
+              "entropy_block_spread": 1.9,
+              "shannon_entropy": 7.62
+            },
+            "prediction": "benign",
+            "confidence": 0.9955,
+            "ransomware_confidence": 0.0045,
+            "under_0_7_gate": true,
+            "whole_file_entropy": 7.62,
+            "encrypted_block_fraction": 0.55,
+            "attacker_objective_met": true
+          },
+          {
+            "variation": "valid container, entropy at the detector threshold",
+            "overrides": {
+              "ransom_extension": 0,
+              "has_container_header": 1,
+              "container_structurally_valid": 1,
+              "shannon_entropy": 7.5,
+              "entropy_max_block": 7.72,
+              "high_entropy_block_fraction": 0.42,
+              "entropy_block_spread": 2.4,
+              "printable_ratio": 0.44
+            },
+            "prediction": "benign",
+            "confidence": 0.9996,
+            "ransomware_confidence": 0.0004,
+            "under_0_7_gate": true,
+            "whole_file_entropy": 7.5,
+            "encrypted_block_fraction": 0.42,
+            "attacker_objective_met": true
+          }
+        ]
+      },
+      "operational_facts": {
+        "third_party_dependencies": [],
+        "ships_an_encoder": false,
+        "format_specific_knowledge": false,
+        "attacker_statements": 2,
+        "requires_secret_or_preimage": false,
+        "write_location_only": false
+      },
+      "measurement": {
+        "variations_tried": 6,
+        "variations_under_the_gate_while_still_ciphertext": 2,
+        "successful_variations": [
+          "valid container, softened block statistics",
+          "valid container, entropy at the detector threshold"
+        ],
+        "attack_succeeded": true,
+        "downstream_withholding": {
+          "effective_threat_level('low', suspicious=True)": "high",
+          "effective_threat_level('medium', suspicious=True)": "high",
+          "effective_threat_level('low', suspicious=False)": "low",
+          "actionable_levels": [
+            "critical",
+            "high"
+          ]
+        },
+        "monitor_floor_makes_gate_unreachable": true,
+        "empirical_composite_witness": {
+          "construction": "ZIP_STORED member of 40 alternating 4KB blocks, ciphertext and prose",
+          "encrypted_block_fraction_by_construction": 0.5,
+          "sha256": "2c2c662ac760371215055977811ffe2b8e3787a121158991073fc85d4d5e27df",
+          "size": 163974,
+          "whole_file_entropy": 6.84,
+          "container_status": "valid",
+          "validate_container": true,
+          "high_entropy_block_fraction": 0.5,
+          "entropy_block_spread": 3.87,
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.84 below threshold 7.5",
+          "reached_the_ml_engine": false
+        },
+        "finding_3_status": "restated",
+        "finding_3_note": "\u00a79.3 finding 3 says a sub-threshold confidence silently withholds the response. pipeline.effective_threat_level floors a Monitor-suspicious event at 'high', and pipeline.run is only reached for suspicious events (app.py:491), so on the only live caller the gate cannot withhold. What the confidence gate does still cost is the *distinction*: a case the model scored 0.2 and a case it scored 0.95 both reach the ledger as threat_level high, with model_threat_level recorded alongside. The silent suppression \u00a79.3 describes is upstream - it is the container exemption at detection.py:702, which stops the event reaching the model at all.",
+        "composite_finding": "The two variations that get under the gate do it by declaring a structurally valid container and encrypting part of the file rather than all of it. empirical_composite_witness builds that as a real file and puts it through the real detection path, and the measurement corrects the mechanism this note first reasoned to. A ZIP_STORED archive whose member is 40 alternating 4KB blocks of ciphertext and prose measures at 6.84 bits/byte whole-file - below the 7.5 threshold - with high_entropy_block_fraction 0.5 and block spread 3.87. The partial_entropy branch at detection.py:690 exists for exactly this profile, and it is not reached: its guard is `container_valid is not True`, and the container is genuinely valid. classify() falls through to the final line and returns plain `benign` - not even benign_compressed - so the event is never fanned out (app.py:491) and the model never scores it. Half the file is unrecoverable and the system's verdict is 'entropy 6.84 below threshold 7.5'. The confidence gate is not what suppressed this; the container exemption's reach into the partial-entropy guard is."
+      },
+      "measured_level": 0,
+      "measured_name": "negligible",
+      "matches_declared": false,
+      "source_trail": {
+        "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
+        "artefact_sha256": "027d65b50bf38a782f58e761e28301f04e075315fad67212b07e3b85d7f17f0a",
+        "scored_by": "detection.classify via scripts/capability_calibration.py::score"
+      },
+      "reproduction": {
+        "status": "reproduced",
+        "primary_derivation": "negligible",
+        "second_derivation": "negligible",
+        "agrees": true,
+        "method": "Both derivations map the recorded operational_facts to the ladder in admissibility.py:68-71, in opposite decision orders, without reference to the other's conclusion.",
+        "independent_human_reviewer": false,
+        "note": "\u00a79.15 asks for AS\u2194NI reproduction. This record was produced in one session by one author and is labelled as such rather than presented as a second member's confirmation."
+      }
+    }
+  ]
+}
