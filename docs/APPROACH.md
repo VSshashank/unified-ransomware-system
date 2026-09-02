@@ -617,7 +617,7 @@ timeline (Tables 5.4–5.6, Weeks 17–32).
 
 | Item | Why deferred |
 |---|---|
-| Polygon anchoring / TC-12 | Table 5.5 puts the smart contract in Weeks 17–24. Table 5.8 writes TC-12 as "(if implemented)". |
+| Polygon anchoring / TC-12 | **Dropped from the core plan** by Chapter 9 §9.2 and retained as future work. The hash chain already provides tamper evidence and TC-05 tests it; anchoring adds an external dependency and no new evidence. The Excellence bullet it occupied is traded for the documented original contribution, per §9.12.3. |
 | CI/CD pipeline | Table 5.6, Weeks 17–24. |
 | 95% coverage target | §5.6.3, Distinction tier. |
 | SHAP served per-prediction | Table 5.4 puts SHAP analysis in Weeks 17–24. `src/shap_analysis.py` exists and produces real evidence offline; `/predict` returns XGBoost gain-based importances, which are global rather than per-alert. |
@@ -627,7 +627,125 @@ timeline (Tables 5.4–5.6, Weeks 17–32).
 
 ---
 
-## 10. Summary of measured results
+## 10. Calibrating the cost table (Semester 2, Phase 5)
+
+`admissibility.py` decides whether a suppression may cancel a detection by
+comparing two numbers. Those numbers were assigned by hand and defended in prose,
+and §10 of `CAPABILITY_GOVERNED_EXCEPTIONS.md` says so plainly — *"The scale is a
+modelling choice, not a measurement."*
+
+Phase 5 (Chapter 9 §9.4.1) is the measurement. Its rule is that no repair is
+written until the cost table is frozen, because a repair chosen before
+calibration is a repair the cost table was fitted to justify. Nothing in
+`services/` changed during Phase 5; the five harnesses in `scripts/` measure, and
+the four documents record.
+
+### 10.1 Why the exemption is measured rather than argued about
+
+The container exemption is the Monitor's most-used evidence-cancelling path and
+the one that predates the governance layer. `detection.py:702` reads
+`container_valid is not False`, and `None` — which `containers.py` returns for
+*no validator*, *still being written* and *unreadable* alike — satisfies it. So
+"I could not check" produces the same `benign_compressed` as "I checked and it
+passed".
+
+`reports/recf_exemption_evidence.json` reproduces that over all 20 signature
+entries: 11 of the 16 registry formats have no validator, 13 of the 20 entries
+return `benign_compressed`, and none return suspicious. The argument that this is
+acceptable because an attacker "has to ship an encoder" is answered by
+`gzip.compress(ciphertext)` — one standard-library call, a structurally perfect
+gzip member, `container_status` VALID, verdict `benign_compressed`.
+
+### 10.2 What the calibration found, including the parts that are inconvenient
+
+`reports/capability_calibration.json` builds and runs the cheapest attack against
+each strategy and derives its ladder level from the attack's operational facts.
+Three levels differ from the table:
+
+| Signal | Declared | Measured | The attack |
+|---|---|---|---|
+| `structural_mismatch` | moderate | negligible | `gzip.compress(ciphertext)`, or a `ZIP_STORED` member |
+| `entropy_rise` | moderate | low | write to a path the Monitor has not measured |
+| ML confidence gate | *(absent from the table)* | negligible | a valid container plus intermittent encryption |
+
+Two results run against what the project expected of itself.
+
+**The confidence-gate finding was overstated.** §9.3 says a sub-threshold
+confidence silently withholds the response. `pipeline.effective_threat_level`
+floors a Monitor-suspicious event at `high`, and `pipeline.run` is only reached
+for suspicious events, so on the only live caller that gate cannot withhold. The
+finding is restated narrower rather than repeated.
+
+**The real gap is worse and sits elsewhere.** A ZIP_STORED archive whose member
+is 40 alternating 4 KB blocks — half ciphertext, half prose — measures 6.84
+bits/byte with half its blocks at ciphertext entropy. `partial_entropy` exists
+for exactly this and is not reached, because its guard is `container_valid is not
+True` and the container is genuinely valid. `classify` returns plain `benign`,
+reason *"entropy 6.84 below threshold 7.5"*. Half the file is unrecoverable and
+nothing fires, nothing is fanned out, nothing is scored. This was found by
+building the file, not by reading the branches — the reading got the mechanism
+wrong first.
+
+### 10.3 The calibration exposed a defect in the cost model itself
+
+`docs/ADMISSION_RECOMPUTE.md` recomputes all 20 suppression × signal cells under
+four policies. §9.7's D1 anticipated that the path whitelist and training mode
+would flip from *cancelled* to *attenuated* — two deployed mitigations turning
+out not to be cost-justified. **Zero cells flip that way. Four flip the other
+way.**
+
+The forgery side of the table was right: both rules measured LOW, as declared.
+What moved is the avoidance side, and under this comparison a signal that is
+cheaper to avoid is *easier to cancel*. Applying the measured costs would let a
+path whitelist cancel a structural-mismatch alert, which the deployed policy
+correctly refuses.
+
+That is a defect, and it is in the model rather than in the measurement. One
+number is doing two jobs:
+
+- **avoidance cost** — what an attacker who *wants* to evade the signal spends;
+- **evidential weight** — what the signal is worth *when it fires*.
+
+For `structural_mismatch` they point opposite ways. A file that trips it is one
+whose author did **not** spend the single standard-library call that would have
+avoided it. The signal is cheap to evade and, precisely because of that, strong
+evidence when it does fire.
+
+Per D1 nothing is retro-fitted to make this go away. `admissibility.py` is
+untouched and every cost in it is unchanged. The refinement is *proposed* as
+`cost-policy-v2` in `docs/PHASE5_PREDECLARED_BOUNDS.md` and argued in Phase 6.
+
+### 10.4 Where the audit trail stops
+
+`app.py:491` gates the downstream fan-out on `suppression is None`, and the
+ledger is only reachable through that fan-out. So an **attenuated** suppression
+is chained with both costs, and a **cancelled** one is not chained at all. The
+audit trail holds the decisions that changed nothing and omits the decisions that
+removed an alert.
+
+The module docstring's own principle — *"A suppression that vanishes without
+saying so is indistinguishable from a detector that never fired"* — is satisfied
+in `GET /monitor/events`, which is a bounded in-memory buffer, and not in the
+tamper-evident chain. `docs/MITIGATION_INVENTORY.md` records this as M-16; it is
+the gap TC-23 is written against, and it is a Phase 6/7 repair.
+
+### 10.5 What predeclaring the bounds caught early
+
+`docs/PHASE5_PREDECLARED_BOUNDS.md` fixes the Phase 6 tolerances before any
+repair exists. Writing it surfaced a problem that would otherwise have appeared
+in Week 23: Table 9.8 asks for a ≤2 pp non-inferiority bound on validated
+formats at one-sided 95%, and the frozen corpus holds 85 validated files. With a
+paired design and Arm A at zero, the upper limit for a **perfect** result — zero
+new false positives — is 3.46 pp. 149 files are needed.
+
+At the current sample size the bound cannot be met by any repair, however good.
+The remedy is predeclared: grow the stratum before Arm C is measured, or report
+the criterion as not evaluable — never as met, never as failed, and never
+relaxed after the numbers are in.
+
+---
+
+## 11. Summary of measured results
 
 | Metric (Table 5.9) | Target | Measured |
 |---|---|---|

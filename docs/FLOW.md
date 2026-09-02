@@ -21,9 +21,12 @@ handle_event(path, event_type)       services/monitor/app.py
    │  ── timer starts here ──────────────────── detection latency measured over
    │                                            exactly this function
    ├─► read_magic(path)              detection.py  first 16 bytes
-   ├─► calculate_entropy(path)       detection.py  Shannon over first 1 MB
+   ├─► measure(head)                 detection.py  Shannon + block statistics,
+   │                                               both from one read
+   ├─► validate_container(...)       containers.py True / False / None
    ├─► sha256_file(path)             detection.py  full-file hash
    └─► classify(...)                 detection.py  entropy + magic + extension
+   │                                               + container_valid → verdict, signal
    │  ── timer stops: verdict exists ──
    ▼
 verdict.suspicious is False
@@ -52,11 +55,23 @@ attacker encrypts file
 handle_event()                       verdict.suspicious is True
    │                                 (entropy ≥ 7.5, magic bytes explain nothing)
    ▼
+Whitelist.match / TrainingMode.match           suppression.py
+   │  the rule that describes this file, or None
+   ▼
+admissibility.adjudicate(verdict, rule)        admissibility.py
+   │  forgery cost of the rule  vs  avoidance cost of the signal
+   │
+   ├── admitted  → outcome "cancelled"   → alert removed, NO fan-out,
+   │                                        NO ledger record of the decision
+   └── outranked → outcome "attenuated"  → alert stands, both costs travel
+   │                                        with it into the chain
+   ▼
 _record(event) → EVENTS              detection path ENDS here (<100 ms)
    │
    ▼
 _QUEUE.put(...)                      handed to a worker thread so the watchdog
    │                                 thread returns immediately
+   │                                 reached only when nothing cancelled it
    ▼
 pipeline.run(event, features, verdict)          services/monitor/pipeline.py
    │
@@ -143,7 +158,7 @@ The only authenticated entry point. Everything else binds to loopback.
 
 ## 3. Monitor — `services/monitor/` (AS)
 
-### `app.py` (570 lines)
+### `app.py` (769 lines)
 
 The service and the detection loop.
 
@@ -160,9 +175,18 @@ The service and the detection loop.
 - `handle_event(path, event_type)` — **the detection path.** Times itself from
   entry to verdict. Skips anything outside `file_patterns`, reads magic bytes
   once, decides readability, takes entropy and the byte statistics from a single
-  read, records the entropy against the path's history, then `classify()`.
-  Records the event and, if suspicious, hands the downstream fan-out to a worker
-  thread.
+  read, validates the declared container, records the entropy against the path's
+  history, then `classify()`. If the verdict is suspicious it asks
+  `Whitelist.match` and `TrainingMode.match` for a rule and hands the result to
+  `admissibility.adjudicate`, which decides whether that rule is expensive enough
+  to fake to be allowed to cancel this detection. Records the event and, if
+  suspicious **and nothing cancelled it**, hands the downstream fan-out to a
+  worker thread.
+
+  That last conjunction is load-bearing and is where the audit trail stops: the
+  ledger is only reachable through the fan-out, so an *attenuated* suppression is
+  chained with both costs and a **cancelled** one is not chained at all. See
+  M-16 in [MITIGATION_INVENTORY.md](MITIGATION_INVENTORY.md).
 - `matches_patterns(path, patterns)` — the `file_patterns` filter from
   `/monitor/start`. Matches the file name and the whole path; an empty list means
   everything.
@@ -172,7 +196,7 @@ The service and the detection loop.
 - `_record(event)` — appends under `_LOCK` to the bounded `EVENTS` deque and the
   `_SEEN_FILES` set.
 
-### `detection.py` (478 lines)
+### `detection.py` (726 lines)
 
 Pure functions, no I/O beyond reading the file under inspection.
 
@@ -190,16 +214,87 @@ Pure functions, no I/O beyond reading the file under inspection.
   the lowest substantive reading in the window, or `None` for a file seen once.
   Readings under 1 KB never become a baseline, so a file created empty does not
   look like one that was encrypted.
-- `classify(path, entropy, magic, threshold, readable, entropy_delta)` — the
-  verdict. A rise of ≥2.0 bits/byte landing at ≥7.0 → `suspected_encryption`,
-  checked **before** the container exemption because it is the one signal a
-  spoofed header cannot defeat. Otherwise: high entropy **explained** by a
-  container → benign; high entropy **unexplained** → `suspected_encryption`;
-  unreadable → `unreadable`, not benign.
+- `classify(path, entropy, magic, threshold, readable, entropy_delta, container_valid, statistics)`
+  — the verdict, plus a `signal` naming which of the five detections fired.
+  `signal` is what `admissibility` prices against a suppression. Order: a rise of
+  ≥2.0 bits/byte landing at ≥7.0 → `entropy_rise`, checked **before** everything
+  else because it is the one signal neither a spoofed header nor a real container
+  can defeat; a declared container whose structure is absent → `structural_mismatch`;
+  block-level ciphertext under a sub-threshold average → `partial_entropy`; high
+  entropy **explained** by a container → `benign_compressed`; high entropy
+  **unexplained** → `static_entropy`; unreadable → `unreadable`, not benign.
+
+  Two guards in that order are measured findings rather than incidental detail.
+  `container_valid is not False` (`:702`) means "no validator for this format"
+  and "I checked and it passed" produce the same benign verdict — 11 of the 16
+  registry formats take that branch. And the `partial_entropy` branch (`:690`) is
+  guarded by `container_valid is not True`, so a structurally valid container
+  disables the intermittent-encryption check entirely.
 - `byte_statistics(path)` / `statistics_of(data)` — printable ratio, byte-value
   std, chi-square uniformity. Fed straight to the behavioural model.
 - `sha256_file(path)` — full-file SHA-256, the field SI's recovery integrity
   check reads back.
+
+### `containers.py` (436 lines)
+
+Structural validation of a declared container format. Asks the question a magic
+byte cannot: is the rest of the file shaped like the format it claims to be?
+
+- `container_status(head, tail, container, size)` — five outcomes by name:
+  `VALID`, `FORGED`, `INCOMPLETE` (the format, still being written),
+  `UNVALIDATED` (no validator for this format), `UNREADABLE`.
+- `validate_container(...)` — the same answer projected to the tri-state
+  `classify` consumes: `True` for VALID, `False` for FORGED, **`None` for
+  everything else**. That `None` is three different situations collapsed into
+  one value, and `classify` cannot tell them apart.
+- `_VALIDATORS` — six entries: `zip`, `gzip`, `png`, `jpeg`, `pdf`, `iso-bmff`.
+  Five of them correspond to a name in `detection._CONTAINER_SIGNATURES`, which
+  holds 16 unique formats. **The other 11 have no validator**: `rar`, `7z`,
+  `xz`, `bzip2`, `lz4`, `zstd`, `gif`, `mp3`, `ogg`, `flac`, `riff`.
+  `VALIDATED_FORMATS` exposes the set so a caller can state which containers are
+  decided and which are taken on trust.
+- Each validator separates *does the leading structure parse* from *is the
+  terminal structure present*, which is what keeps a large archive mid-write out
+  of the forged class. Every walk is bounded — `MAX_WALK_RECORDS`,
+  `MAX_WALK_BYTES` — because this runs inside the sub-100ms budget.
+
+### `suppression.py` (455 lines)
+
+Table 5.7's two false-positive mitigations. Neither decides whether it is
+*allowed* to cancel anything — that is `admissibility`'s job.
+
+- `Whitelist.match(path, hash, verdict)` — returns the matching rule
+  (`{"rule": "hash"|"path", "value": …}`) or `None`. Hash is reported ahead of
+  path: the bytes are an approved file's bytes, so nothing weaker should shadow
+  it.
+- `TrainingMode.observe(path, entropy, verdict)` — learns a per-`(extension,
+  structural class)` entropy ceiling during an operator's training window. A
+  forged container never contributes.
+- `TrainingMode.match(...)` — returns the learned rule when the file sits at or
+  below the ceiling for its extension, structural class and directory. Refuses
+  outright for a ransom extension or a FORGED container.
+
+### `admissibility.py` (165 lines)
+
+One comparison, applied uniformly: **a suppression may cancel a detection only
+when forging the suppression costs at least as much as avoiding the detection.**
+
+- `AVOIDANCE_COST` — per `signal`: what an attacker must spend *not to trigger*
+  it.
+- `FORGERY_COST` — per suppression `rule`: what an attacker must spend to make
+  it fire on a file they control.
+- Both on a four-point ordinal ladder — `NEGLIGIBLE`, `LOW`, `MODERATE`, `HIGH`
+  — whose rungs are kinds of work, not a currency.
+- `adjudicate(verdict, suppression)` — returns the record that goes on the event
+  and into the ledger: `admitted` (the only field the detector acts on),
+  `outcome` (`cancelled` or `attenuated`), both costs, the signal and a reason.
+  A suppression that is outranked is **attenuated, not discarded** — the alert
+  stands and the operator can see their rule was consulted and lost.
+- Unknown defaults fail closed: a new signal with no cost entry is treated as
+  the most expensive thing to avoid, a new suppression as the cheapest to forge.
+- The comparison is `>=` (`:147`), so an equal-cost tie goes to the suppression.
+  Phase 5 recomputed the whole matrix under `>` as well; see
+  [ADMISSION_RECOMPUTE.md](ADMISSION_RECOMPUTE.md).
 
 ### `pe_features.py` (325 lines)
 
@@ -212,7 +307,7 @@ Pure functions, no I/O beyond reading the file under inspection.
   W+X detection, import grouping by behaviour class, exports, resources,
   directory presence.
 
-### `pipeline.py` (192 lines)
+### `pipeline.py` (233 lines)
 
 - `run(event, features, verdict, client)` — orchestrates ML → ledger → response
   and returns `{prediction, ledger_block, response, stages}`.
@@ -373,6 +468,21 @@ chain verification, ML metrics.
 | `si_demo.py` | TC-04 recovery and TC-05 tamper detection. Restores the tampered row in a `finally` so consecutive runs both pass. | Ledger :8003, response :8004 **directly** |
 | `verify_vss.py` | TC-04 / VSS acceptance. Requires an elevated shell. | Ledger :8003 |
 | `ransomware_simulator.py` | TC-01 stand-in. Manifest-guarded, reversible. | Filesystem only |
+| `simulator_sweep.py` | Every simulated family past a live Monitor. Writes `reports/simulator_families.json`. | Filesystem only |
+| `start_monitor.py` | Starts a Monitor against a watch path outside Compose. | Monitor, in-process |
+
+### Phase 5 measurement harnesses
+
+Added for the Semester 2 governance calibration (Chapter 9 §9.4.1). All five
+write to `reports/` only when `URDS_WRITE_REPORTS=1`.
+
+| File | Item | Produces |
+|---|---|---|
+| `phase5_baseline.py` | P5.0 | `reports/phase5_baseline.json` — the measured starting state. Runs the **1-hour** CPU window and the stress-test RSS peak Table 5.9 actually specifies, rather than the 5-second samples `test_benchmarks.py` takes. `--quick` refuses to write, so a short run cannot stand in for the hour. |
+| `recf_exemption_evidence.py` | P5.2 | `reports/recf_exemption_evidence.json` — all 20 signature entries, the `gzip.compress` and `ZIP_STORED` witnesses, the `INCOMPLETE` witnesses, and fresh-versus-observed paths. |
+| `build_benign_corpus.py` | P5.3 | `reports/benign_corpus_manifest.json` — 149 files by real encoders, stratified {validated, unvalidated} × {compressible, incompressible}, rebuildable byte-identically from a seed. `--verify` proves it. |
+| `capability_calibration.py` | P5.4 | `reports/capability_calibration.json` — the attack that defeats each strategy, built and run, with the ladder level derived twice from its operational facts. |
+| `admission_recompute.py` | P5.5 | `reports/admission_recompute.json` **and** `docs/ADMISSION_RECOMPUTE.md` — the doc is generated, not written beside the computation. |
 
 ---
 
@@ -380,14 +490,19 @@ chain verification, ML metrics.
 
 | Suite | Count | Notable |
 |---|---|---|
-| `services/gateway/tests/` | 70 | `test_gateway.py` (contract + OpenAPI parity, both directions), `test_authz.py` (roles, token issuance, TC-10 auditing, secret hygiene), `test_benchmarks.py` (API p95) |
+| `services/gateway/tests/` | 78 | `test_gateway.py` (contract + OpenAPI parity, both directions), `test_authz.py` (roles, token issuance, TC-10 auditing, secret hygiene), `test_benchmarks.py` (API p95) |
 | `services/ledger/tests/` | 42 | `test_hash_chain.py` (tamper detection, verification benchmark), `test_api.py` |
-| `services/monitor/tests/` | 90 | `test_detection.py` (35), `test_api.py`, `test_benchmarks.py` (latency, FP rate, CPU, RAM), `test_pe_features.py`, `test_tc01_simulator.py`, `test_tc11_concurrent.py` |
-| `services/ml-engine/tests/` | 19 | `test_ml_api.py` — both model paths |
-| `services/response/tests/` + `recovery/tests/` | 84 + 2 skipped | `test_actions.py` (TC-07), `test_tc11_concurrent.py`, `test_recovery.py` (54), `test_vss_manager.py` |
+| `services/monitor/tests/` | 222 | `test_detection.py`, `test_api.py`, `test_benchmarks.py` (latency, FP rate, CPU, RAM), `test_suppression.py`, `test_baseline.py`, `test_pe_features.py`, `test_pipeline.py`, `test_tc01_simulator.py`, `test_tc11_concurrent.py`, `test_tc13_simulator_families.py`, `test_tc13_suppression_e2e.py` |
+| `services/ml-engine/tests/` | 37 | `test_ml_api.py` — both model paths, `test_feature_contract.py`, `test_unscored_features.py` |
+| `services/response/tests/` + `recovery/tests/` | 86 + 2 skipped | `test_actions.py` (TC-07), `test_tc11_concurrent.py`, `test_recovery.py`, `test_vss_manager.py`, `test_integration.py` |
 
-**371 passed, 2 skipped.** The skips assert a POSIX SIGTERM guarantee with no
-Windows equivalent; a Windows-specific test covers the same ground.
+**465 passed, 2 skipped**, re-measured on `feat/admissibility-governance-novelty-v2`
+at the Week 20 gate. The skips assert a POSIX SIGTERM guarantee with no Windows
+equivalent; a Windows-specific test covers the same ground.
+
+> **Test-ID collision to resolve before Phase 7.** `test_tc13_suppression_e2e.py`
+> already labels its training-mode cases **TC-14**. Chapter 9 Table 9.7 assigns
+> TC-14 to the unvalidated-format witness. The two must not both be TC-14.
 
 Run everything:
 
@@ -412,6 +527,7 @@ foreach ($s in "gateway","ledger","monitor","ml-engine","response") { Push-Locat
 | `RESPONSE_ISOLATION_ENABLED` | *(unset)* | **Do not enable casually** — applies real firewall rules to this host. |
 | `RECOVERY_SNAPSHOT_ROOT` | `/app/snapshots` | Directory-backed snapshot stand-in. Leave unset on Windows for real VSS. |
 | `PIPELINE_ENABLED` | `true` | Off in unit tests and where downstream services are absent. |
+| `URDS_WRITE_REPORTS` | *(unset)* | Benchmarks and harnesses always measure and always assert; this gates whether they **write** to `reports/`. Committed evidence is refreshed deliberately, never as a test side effect. |
 
 Ports: gateway `8000` and dashboard `8501` publish on all interfaces; monitor
 `8001`, ml-engine `8002`, ledger `8003` and response `8004` bind `127.0.0.1`.
