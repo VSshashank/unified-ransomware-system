@@ -36,7 +36,7 @@ from watchdog.observers.polling import PollingObserver
 
 import pipeline
 from admissibility import adjudicate
-from containers import validate_container
+from containers import compression_evidence, validate_container
 from detection import (
     DEFAULT_ENTROPY_THRESHOLD,
     EntropyHistory,
@@ -287,6 +287,7 @@ def extract_features(path: str) -> dict:
     head, tail = sample_file(path, size, retry=readable)
     entropy, statistics = measure(head)
     container_valid = validate_container(head, tail, identify_container(magic), size)
+    compression = compression_evidence(head, tail, identify_container(magic), size)
 
     verdict = classify(
         path,
@@ -296,6 +297,7 @@ def extract_features(path: str) -> dict:
         readable=readable,
         container_valid=container_valid,
         statistics=statistics,
+        compression=compression,
     )
     return {
         "shannon_entropy": entropy,
@@ -390,6 +392,11 @@ def handle_event(path: str, event_type: str) -> dict | None:
     # Tri-state - None means no validator, or a file still being written, and
     # keeps the behaviour that existed before this check.
     container_valid = validate_container(head, tail, identify_container(magic), size)
+    # Did the container actually compress what it carries? Read from the same two
+    # samples the validator just used, and consumed only by the `+ratio` policy -
+    # under `legacy` it is measured and ignored, which is what lets the Phase 6
+    # experiment attribute a flip to the clause that caused it.
+    compression = compression_evidence(head, tail, identify_container(magic), size)
     # Differential entropy: how far this reading sits above the lowest one ever
     # taken on this path. None the first time a file is seen.
     entropy_delta = ENTROPY_HISTORY.observe(path, entropy, size) if readable else None
@@ -403,6 +410,7 @@ def handle_event(path: str, event_type: str) -> dict | None:
         entropy_delta=entropy_delta,
         container_valid=container_valid,
         statistics=statistics,
+        compression=compression,
     )
     # Hashing a file we could not read only pays the retry cost again to reach
     # the same None, and it is on the sub-100ms detection path.

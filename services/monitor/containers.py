@@ -434,3 +434,150 @@ def validate_container(
     if status == FORGED:
         return False
     return None
+
+
+# --------------------------------------------------- declared compression yield
+
+# The high-entropy container exemption rests on a premise: the format explains
+# the randomness. For the two general-purpose compressors that have validators
+# here, that premise is checkable against the container's own declarations. If
+# the archive stored its payload verbatim, or ran a compressor over it that
+# achieved nothing, then the container transformed nothing - and whatever made
+# the bytes random was there before the container was.
+#
+# This is deliberately not a new structural validator. Chapter 9 §9.13 rules
+# those out for the eleven unvalidated formats, and nothing here validates
+# anything: it reads sizes a valid archive has already declared about itself.
+
+_ZIP_CENTRAL_SIZE = 46
+_ZIP64_SENTINEL = 0xFFFFFFFF
+_ZIP_STORED = 0
+_ZIP_MAX_MEMBERS = 256
+
+# 0.95 rather than 1.0. Deflate over incompressible input still emits stored
+# blocks with a five-byte header every 65535 bytes, and a small archive pays a
+# fixed central-directory cost - both put a genuinely-uncompressed ratio either
+# side of 1.0. Anything that compressed even five percent is credited.
+COMPRESSION_YIELD_THRESHOLD = 0.95
+
+# Formats this is measured for. Deliberately only the general-purpose
+# compressors: a noisy photograph is genuinely explained by JPEG, and a PNG of
+# noise is a real PNG whose deflate could not help it. Holding those to a
+# compression ratio would call the format a liar for doing its job.
+COMPRESSION_MEASURED_FORMATS = frozenset({"zip", "gzip"})
+
+
+def _zip_declared_sizes(tail: bytes) -> tuple[int, int, bool, int]:
+    """Sum the central directory's declared sizes.
+
+    Returns `(compressed, uncompressed, any_method_declared, members_read)`.
+    The central directory sits at the end of the archive, so `tail` is where it
+    is; a member whose sizes are the ZIP64 sentinel keeps its real sizes in an
+    extra field and is skipped rather than guessed at.
+    """
+    compressed = uncompressed = members = 0
+    declares = False
+    index = tail.find(_ZIP_CENTRAL_HEADER)
+    while index >= 0 and members < _ZIP_MAX_MEMBERS:
+        record = tail[index : index + _ZIP_CENTRAL_SIZE]
+        if len(record) < _ZIP_CENTRAL_SIZE:
+            break
+        (method,) = struct.unpack("<H", record[10:12])
+        csize, usize = struct.unpack("<II", record[20:28])
+        if method != _ZIP_STORED:
+            declares = True
+        if csize != _ZIP64_SENTINEL and usize != _ZIP64_SENTINEL and usize > 0:
+            compressed += csize
+            uncompressed += usize
+            members += 1
+        index = tail.find(_ZIP_CENTRAL_HEADER, index + 1)
+    return compressed, uncompressed, declares, members
+
+
+def _gzip_yield(head: bytes) -> tuple[float | None, str]:
+    """Bytes produced per byte consumed by a bounded inflate of the head.
+
+    `_validate_gzip` already runs this inflate to prove the stream is real; this
+    reads the same operation for a second fact. Deflate over ciphertext emits
+    stored blocks, so it returns very close to one byte out per byte in. Deflate
+    over anything compressible returns several.
+    """
+    consumed_input = head[:_GZIP_PROBE_BYTES]
+    if len(consumed_input) < 18:
+        return None, "member shorter than a gzip header and trailer"
+    decompressor = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    produced = decompressor.decompress(consumed_input, _GZIP_PROBE_OUTPUT)
+    consumed = len(consumed_input) - len(decompressor.unconsumed_tail)
+    if consumed <= 0 or not produced:
+        return None, "inflate produced nothing measurable"
+    return len(produced) / consumed, (
+        f"bounded inflate: {len(produced)} bytes out of {consumed} in"
+    )
+
+
+def compression_evidence(
+    head: bytes, tail: bytes, container: str | None, size: int | None = None
+) -> dict | None:
+    """Did this container actually compress what it carries?
+
+    Returns None for every format outside COMPRESSION_MEASURED_FORMATS - the
+    question is not asked there, and an absent answer must never read as a
+    negative one. Otherwise:
+
+        ratio       compressed bytes per uncompressed byte, or None when the
+                    archive did not declare enough to say
+        compressed  ratio <= COMPRESSION_YIELD_THRESHOLD, or None when unknown
+        declares_compression
+                    whether any member declares a compression method at all
+
+    `compressed is None` means the measurement could not be taken, and callers
+    must treat that as "no finding" rather than as "did not compress". A policy
+    that flags on missing evidence flags on ZIP64 archives and truncated reads.
+    """
+    if container not in COMPRESSION_MEASURED_FORMATS:
+        return None
+    if not head:
+        return None
+
+    evidence = {
+        "format": container,
+        "declares_compression": None,
+        "ratio": None,
+        "compressed": None,
+        "basis": "",
+    }
+
+    try:
+        if container == "zip":
+            csize, usize, declares, members = _zip_declared_sizes(tail or head)
+            evidence["declares_compression"] = declares
+            evidence["members_read"] = members
+            if members and usize > 0:
+                ratio = csize / usize
+                evidence["ratio"] = round(ratio, 4)
+                evidence["compressed"] = ratio <= COMPRESSION_YIELD_THRESHOLD
+                evidence["basis"] = (
+                    f"central directory: {csize} compressed / {usize} uncompressed "
+                    f"over {members} member(s)"
+                )
+            else:
+                evidence["basis"] = (
+                    "no member declared usable sizes (empty, ZIP64, or the central "
+                    "directory was past the tail sample)"
+                )
+        else:  # gzip
+            expansion, basis = _gzip_yield(head)
+            evidence["declares_compression"] = True  # deflate is gzip's only method
+            evidence["basis"] = basis
+            if expansion:
+                ratio = 1.0 / expansion
+                evidence["ratio"] = round(ratio, 4)
+                evidence["compressed"] = ratio <= COMPRESSION_YIELD_THRESHOLD
+    except (struct.error, ValueError, IndexError, zlib.error) as error:
+        # Same posture as container_status: nothing escapes onto the detection
+        # path. Unlike there, the answer is "unknown", not "failed" - a parse
+        # error here is a measurement that did not happen, and D5's tolerance is
+        # spent on files that were measured.
+        evidence["basis"] = f"unreadable declaration ({type(error).__name__})"
+
+    return evidence
