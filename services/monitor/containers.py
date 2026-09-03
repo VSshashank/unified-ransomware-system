@@ -581,3 +581,118 @@ def compression_evidence(
         evidence["basis"] = f"unreadable declaration ({type(error).__name__})"
 
     return evidence
+
+
+# ------------------------------------------------------------- inner content
+
+# The compression-yield check above cannot separate a backup of an
+# already-compressed file from an encryption of a plaintext one: a gzip of a
+# JPEG and a gzip of ciphertext both compressed nothing, and on that evidence
+# they are the same file. One level further in, they are not. The JPEG is still
+# a JPEG.
+#
+# Chapter 9's D4 names inner-content validation as one of the three admissible
+# responses when a repair proves insufficient, and this is that. It identifies
+# what the container carries and asks the existing validators for a head-level
+# opinion on it. No validator is written for any of the eleven unvalidated
+# formats, so section 9.13 is untouched.
+#
+# What this raises the attacker's price to, stated rather than implied: they
+# must produce inner content whose *head* survives a real structural check - a
+# genuine marker chain, not four magic bytes. That is more than the single
+# standard-library call P5.4 measured, and it is not out of reach. The
+# three-arm harness measures the attack that does it rather than leaving the
+# limit to be discovered later.
+
+# The signature registry lives in detection.py, which imports this module - so
+# the import is taken at call time to keep the cycle from closing at import time.
+def _identify(payload: bytes) -> str | None:
+    import detection
+
+    return detection.identify_container(payload[:32])
+
+
+_INNER_PROBE_BYTES = 64 * 1024
+_ZIP_DEFLATED = 8
+
+
+def _zip_first_member_payload(head: bytes) -> tuple[bytes | None, str]:
+    """A bounded prefix of the first member's *uncompressed* content."""
+    body = head[4:] if head.startswith(_ZIP_SPANNED) else head
+    if not body.startswith(_ZIP_LOCAL_HEADER) or len(body) < _ZIP_LOCAL_HEADER_SIZE:
+        return None, "no parseable local file header"
+    (
+        _version, _flags, method, _time, _date, _crc, _csize, _usize,
+        name_length, extra_length,
+    ) = struct.unpack("<HHHHHIIIHH", body[4:_ZIP_LOCAL_HEADER_SIZE])
+    start = _ZIP_LOCAL_HEADER_SIZE + name_length + extra_length
+    payload = body[start : start + _INNER_PROBE_BYTES]
+    if not payload:
+        return None, "the member's content starts past the leading sample"
+    if method == _ZIP_STORED:
+        return payload, f"{len(payload)} stored bytes read directly"
+    if method == _ZIP_DEFLATED:
+        decompressor = zlib.decompressobj(-zlib.MAX_WBITS)
+        produced = decompressor.decompress(payload, _INNER_PROBE_BYTES)
+        if not produced:
+            return None, "the deflate stream produced nothing"
+        return produced, f"{len(produced)} bytes from a bounded raw inflate"
+    return None, f"compression method {method} is not one this reads"
+
+
+def _gzip_member_payload(head: bytes) -> tuple[bytes | None, str]:
+    decompressor = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    produced = decompressor.decompress(head[:_GZIP_PROBE_BYTES], _INNER_PROBE_BYTES)
+    if not produced:
+        return None, "the deflate stream produced nothing"
+    return produced, f"{len(produced)} bytes from a bounded inflate"
+
+
+def inner_content_evidence(
+    head: bytes, tail: bytes, container: str | None, size: int | None = None
+) -> dict | None:
+    """What is inside this container, and does it survive a head-level check?
+
+    Returns None where the question is not asked. Otherwise `explains` is:
+
+        True   the content identifies as a recognised container and does not
+               fail structural validation
+        False  there is content, and it is neither
+        None   the content could not be reached - a ZIP64 member, an unusual
+               compression method, a payload past the leading sample
+
+    `explains is None` must be read as "not measured", never as "failed". The
+    caller keeps whatever it decided without this evidence.
+    """
+    if container not in COMPRESSION_MEASURED_FORMATS or not head:
+        return None
+
+    evidence = {"format": container, "inner_format": None, "inner_status": None,
+                "explains": None, "basis": ""}
+    try:
+        payload, basis = (
+            _zip_first_member_payload(head)
+            if container == "zip"
+            else _gzip_member_payload(head)
+        )
+        evidence["basis"] = basis
+        if payload is None:
+            return evidence
+
+        inner = _identify(payload)
+        evidence["inner_format"] = inner
+        if inner is None:
+            evidence["explains"] = False
+            evidence["basis"] = f"{basis}; they carry no recognised container header"
+            return evidence
+
+        # Head-level only. The probe is a prefix, so a real JPEG has no EOI in it
+        # and a real ZIP no central directory - both come back INCOMPLETE, which
+        # is not a failure. FORGED is: it means the marker chain itself is wrong.
+        status = container_status(payload, payload, inner, len(payload))
+        evidence["inner_status"] = status
+        evidence["explains"] = status != FORGED
+        evidence["basis"] = f"{basis}; they declare {inner} and validate as {status}"
+    except (struct.error, ValueError, IndexError, zlib.error) as error:
+        evidence["basis"] = f"unreadable inner content ({type(error).__name__})"
+    return evidence

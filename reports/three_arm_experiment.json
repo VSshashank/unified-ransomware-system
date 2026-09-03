@@ -1,7 +1,7 @@
 {
   "schema": "urds.three_arm_experiment/1",
-  "generated_at": "2026-09-03T05:43:15.593859Z",
-  "commit": "9a40bc66f83f7507c130c62c86566b6580b8a7f9",
+  "generated_at": "2026-09-03T05:47:29.885468Z",
+  "commit": "5e6d635d8a665aa744cdb48c7e5e70422012c5c3",
   "branch": "feat/admissibility-governance-novelty-v2",
   "entropy_threshold": 7.5,
   "arms": {
@@ -20,18 +20,23 @@
     "C": {
       "policy": "strict-unvalidated+ratio",
       "label": "the selected repair"
+    },
+    "D": {
+      "policy": "strict-unvalidated+ratio+inner",
+      "label": "post-hoc refinement: ratio with an inner-content appeal"
     }
   },
   "attack_cases": {
     "seed": 20260903,
-    "count": 31,
+    "count": 34,
     "families": {
       "A1_header_over_ciphertext": 21,
       "A2_standard_library_container": 3,
       "A3_incomplete_container": 2,
       "A4_intermittent_in_valid_container": 3,
       "A5_control_naked_ciphertext": 1,
-      "A6_control_forged_header": 1
+      "A6_control_forged_header": 1,
+      "A7_forged_inner_content": 3
     },
     "root": "corpus/attack_cases"
   },
@@ -48,9 +53,9 @@
       "policy": "legacy",
       "label": "current behaviour",
       "attack": {
-        "cases": 31,
+        "cases": 34,
         "flagged": 10,
-        "rate": 0.3226,
+        "rate": 0.2941,
         "by_family": {
           "A1_header_over_ciphertext": {
             "cases": 21,
@@ -112,6 +117,16 @@
             "flagged": 1,
             "rate": 1.0,
             "missed": []
+          },
+          "A7_forged_inner_content": {
+            "cases": 3,
+            "flagged": 0,
+            "rate": 0.0,
+            "missed": [
+              "a7_gzip_naive_magic.gz",
+              "a7_gzip_real_jpeg_head.gz",
+              "a7_zip_real_jpeg_head.zip"
+            ]
           }
         }
       },
@@ -151,8 +166,8 @@
       "policy": "off",
       "label": "exemption removed entirely (null control)",
       "attack": {
-        "cases": 31,
-        "flagged": 31,
+        "cases": 34,
+        "flagged": 34,
         "rate": 1.0,
         "by_family": {
           "A1_header_over_ciphertext": {
@@ -188,6 +203,12 @@
           "A6_control_forged_header": {
             "cases": 1,
             "flagged": 1,
+            "rate": 1.0,
+            "missed": []
+          },
+          "A7_forged_inner_content": {
+            "cases": 3,
+            "flagged": 3,
             "rate": 1.0,
             "missed": []
           }
@@ -271,9 +292,9 @@
       "policy": "strict-unvalidated",
       "label": "core repair alone",
       "attack": {
-        "cases": 31,
+        "cases": 34,
         "flagged": 25,
-        "rate": 0.8065,
+        "rate": 0.7353,
         "by_family": {
           "A1_header_over_ciphertext": {
             "cases": 21,
@@ -318,6 +339,16 @@
             "flagged": 1,
             "rate": 1.0,
             "missed": []
+          },
+          "A7_forged_inner_content": {
+            "cases": 3,
+            "flagged": 0,
+            "rate": 0.0,
+            "missed": [
+              "a7_gzip_naive_magic.gz",
+              "a7_gzip_real_jpeg_head.gz",
+              "a7_zip_real_jpeg_head.zip"
+            ]
           }
         }
       },
@@ -378,8 +409,8 @@
       "policy": "strict-unvalidated+ratio",
       "label": "the selected repair",
       "attack": {
-        "cases": 31,
-        "flagged": 31,
+        "cases": 34,
+        "flagged": 34,
         "rate": 1.0,
         "by_family": {
           "A1_header_over_ciphertext": {
@@ -415,6 +446,12 @@
           "A6_control_forged_header": {
             "cases": 1,
             "flagged": 1,
+            "rate": 1.0,
+            "missed": []
+          },
+          "A7_forged_inner_content": {
+            "cases": 3,
+            "flagged": 3,
             "rate": 1.0,
             "missed": []
           }
@@ -493,6 +530,114 @@
           }
         }
       }
+    },
+    "D": {
+      "policy": "strict-unvalidated+ratio+inner",
+      "label": "post-hoc refinement: ratio with an inner-content appeal",
+      "attack": {
+        "cases": 34,
+        "flagged": 32,
+        "rate": 0.9412,
+        "by_family": {
+          "A1_header_over_ciphertext": {
+            "cases": 21,
+            "flagged": 21,
+            "rate": 1.0,
+            "missed": []
+          },
+          "A2_standard_library_container": {
+            "cases": 3,
+            "flagged": 3,
+            "rate": 1.0,
+            "missed": []
+          },
+          "A3_incomplete_container": {
+            "cases": 2,
+            "flagged": 2,
+            "rate": 1.0,
+            "missed": []
+          },
+          "A4_intermittent_in_valid_container": {
+            "cases": 3,
+            "flagged": 3,
+            "rate": 1.0,
+            "missed": []
+          },
+          "A5_control_naked_ciphertext": {
+            "cases": 1,
+            "flagged": 1,
+            "rate": 1.0,
+            "missed": []
+          },
+          "A6_control_forged_header": {
+            "cases": 1,
+            "flagged": 1,
+            "rate": 1.0,
+            "missed": []
+          },
+          "A7_forged_inner_content": {
+            "cases": 3,
+            "flagged": 1,
+            "rate": 0.3333,
+            "missed": [
+              "a7_gzip_real_jpeg_head.gz",
+              "a7_zip_real_jpeg_head.zip"
+            ]
+          }
+        }
+      },
+      "benign": {
+        "files": 275,
+        "false_positives": 90,
+        "rate": 0.3273,
+        "by_stratum": {
+          "unvalidated_x_compressible": {
+            "files": 30,
+            "false_positives": 0,
+            "rate": 0.0,
+            "offenders": []
+          },
+          "unvalidated_x_incompressible": {
+            "files": 90,
+            "false_positives": 90,
+            "rate": 1.0,
+            "offenders": [
+              "bzip2_text_00.bz2",
+              "bzip2_text_01.bz2",
+              "bzip2_text_02.bz2",
+              "bzip2_text_03.bz2",
+              "bzip2_text_04.bz2",
+              "bzip2_text_05.bz2",
+              "bzip2_text_06.bz2",
+              "bzip2_text_07.bz2",
+              "bzip2_text_08.bz2",
+              "bzip2_text_09.bz2",
+              "bzip2_text_10.bz2",
+              "bzip2_text_11.bz2",
+              "bzip2_text_12.bz2",
+              "bzip2_text_13.bz2",
+              "bzip2_text_14.bz2",
+              "bzip2_photo_00.bz2",
+              "bzip2_photo_01.bz2",
+              "bzip2_photo_02.bz2",
+              "bzip2_photo_03.bz2",
+              "bzip2_photo_04.bz2"
+            ]
+          },
+          "validated_x_compressible": {
+            "files": 60,
+            "false_positives": 0,
+            "rate": 0.0,
+            "offenders": []
+          },
+          "validated_x_incompressible": {
+            "files": 95,
+            "false_positives": 0,
+            "rate": 0.0,
+            "offenders": []
+          }
+        }
+      }
     }
   },
   "d3": {
@@ -549,58 +694,116 @@
         "A2_flagged": 3,
         "A2_cases": 3,
         "A2_still_benign_compressed": []
+      },
+      "D": {
+        "A1_flagged": 21,
+        "A1_cases": 21,
+        "A2_flagged": 3,
+        "A2_cases": 3,
+        "A2_still_benign_compressed": []
       }
     },
+    "a7_by_arm": {
+      "A": {
+        "flagged": 0,
+        "cases": 3,
+        "missed": [
+          "a7_gzip_naive_magic.gz",
+          "a7_gzip_real_jpeg_head.gz",
+          "a7_zip_real_jpeg_head.zip"
+        ]
+      },
+      "B": {
+        "flagged": 3,
+        "cases": 3,
+        "missed": []
+      },
+      "C1": {
+        "flagged": 0,
+        "cases": 3,
+        "missed": [
+          "a7_gzip_naive_magic.gz",
+          "a7_gzip_real_jpeg_head.gz",
+          "a7_zip_real_jpeg_head.zip"
+        ]
+      },
+      "C": {
+        "flagged": 3,
+        "cases": 3,
+        "missed": []
+      },
+      "D": {
+        "flagged": 1,
+        "cases": 3,
+        "missed": [
+          "a7_gzip_real_jpeg_head.gz",
+          "a7_zip_real_jpeg_head.zip"
+        ]
+      }
+    },
+    "a7_note": "A7 is the attack against Arm D's inner-content appeal. Arm D is a post-hoc refinement and A7 exists to price it: whatever A7 costs Arm D is the limit of the refinement, recorded here rather than left to be found later.",
     "arm_c_sufficient": true,
     "finding": "Arm C flags every standard-library valid container. The repair is not certified on A1 alone: A2 is measured separately and passes on its own. The clause that does it is the compression-yield check - C1, which is the core repair without it, leaves every A2 case benign_compressed."
   },
   "latency_ms": {
     "A": {
       "repetitions": 20,
-      "files_per_repetition": 6,
-      "samples": 120,
-      "median_ms": 3.345,
-      "q1_ms": 3.04,
-      "q3_ms": 3.667,
-      "iqr_ms": 0.627,
-      "p95_ms": 4.283,
-      "max_ms": 4.975,
+      "files_per_repetition": 7,
+      "samples": 140,
+      "median_ms": 4.409,
+      "q1_ms": 3.838,
+      "q3_ms": 11.179,
+      "iqr_ms": 7.341,
+      "p95_ms": 13.303,
+      "max_ms": 14.264,
       "order": "interleaved with the other arms, rotating per repetition"
     },
     "B": {
       "repetitions": 20,
-      "files_per_repetition": 6,
-      "samples": 120,
-      "median_ms": 3.347,
-      "q1_ms": 3.042,
-      "q3_ms": 3.623,
-      "iqr_ms": 0.581,
-      "p95_ms": 4.952,
-      "max_ms": 6.238,
+      "files_per_repetition": 7,
+      "samples": 140,
+      "median_ms": 4.382,
+      "q1_ms": 3.775,
+      "q3_ms": 10.885,
+      "iqr_ms": 7.11,
+      "p95_ms": 13.174,
+      "max_ms": 15.456,
       "order": "interleaved with the other arms, rotating per repetition"
     },
     "C1": {
       "repetitions": 20,
-      "files_per_repetition": 6,
-      "samples": 120,
-      "median_ms": 3.294,
-      "q1_ms": 3.034,
-      "q3_ms": 3.652,
-      "iqr_ms": 0.618,
-      "p95_ms": 4.295,
-      "max_ms": 5.237,
+      "files_per_repetition": 7,
+      "samples": 140,
+      "median_ms": 4.239,
+      "q1_ms": 3.77,
+      "q3_ms": 10.372,
+      "iqr_ms": 6.601,
+      "p95_ms": 13.222,
+      "max_ms": 15.65,
       "order": "interleaved with the other arms, rotating per repetition"
     },
     "C": {
       "repetitions": 20,
-      "files_per_repetition": 6,
-      "samples": 120,
-      "median_ms": 3.355,
-      "q1_ms": 3.031,
-      "q3_ms": 3.665,
-      "iqr_ms": 0.634,
-      "p95_ms": 4.369,
-      "max_ms": 5.7,
+      "files_per_repetition": 7,
+      "samples": 140,
+      "median_ms": 4.192,
+      "q1_ms": 3.701,
+      "q3_ms": 10.187,
+      "iqr_ms": 6.486,
+      "p95_ms": 13.661,
+      "max_ms": 14.948,
+      "order": "interleaved with the other arms, rotating per repetition"
+    },
+    "D": {
+      "repetitions": 20,
+      "files_per_repetition": 7,
+      "samples": 140,
+      "median_ms": 4.257,
+      "q1_ms": 3.771,
+      "q3_ms": 10.536,
+      "iqr_ms": 6.765,
+      "p95_ms": 13.392,
+      "max_ms": 15.239,
       "order": "interleaved with the other arms, rotating per repetition"
     }
   },
@@ -624,6 +827,13 @@
         "basis": "no member declared usable sizes (empty, ZIP64, or the central directory was past the tail sample)",
         "members_read": 0
       },
+      "inner_content": {
+        "format": "zip",
+        "inner_format": null,
+        "inner_status": null,
+        "explains": null,
+        "basis": "compression method 12573 is not one this reads"
+      },
       "arms": {
         "A": {
           "verdict": "suspected_encryption",
@@ -644,6 +854,12 @@
           "reason": "the file declares a zip container but the zip structure is not there behind it, and the content is high entropy (8.0)"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "structural_mismatch",
+          "reason": "the file declares a zip container but the zip structure is not there behind it, and the content is high entropy (8.0)"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "structural_mismatch",
@@ -670,6 +886,13 @@
         "basis": "no member declared usable sizes (empty, ZIP64, or the central directory was past the tail sample)",
         "members_read": 0
       },
+      "inner_content": {
+        "format": "zip",
+        "inner_format": null,
+        "inner_status": null,
+        "explains": null,
+        "basis": "no parseable local file header"
+      },
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -690,6 +913,12 @@
           "reason": "entropy 8.0 >= 7.5; a zip header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a zip header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -716,6 +945,13 @@
         "basis": "no member declared usable sizes (empty, ZIP64, or the central directory was past the tail sample)",
         "members_read": 0
       },
+      "inner_content": {
+        "format": "zip",
+        "inner_format": null,
+        "inner_status": null,
+        "explains": null,
+        "basis": "no parseable local file header"
+      },
       "arms": {
         "A": {
           "verdict": "suspected_encryption",
@@ -736,6 +972,12 @@
           "reason": "the file declares a zip container but the zip structure is not there behind it, and the content is high entropy (8.0)"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "structural_mismatch",
+          "reason": "the file declares a zip container but the zip structure is not there behind it, and the content is high entropy (8.0)"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "structural_mismatch",
@@ -761,6 +1003,13 @@
         "compressed": null,
         "basis": "unreadable declaration (error)"
       },
+      "inner_content": {
+        "format": "gzip",
+        "inner_format": null,
+        "inner_status": null,
+        "explains": null,
+        "basis": "unreadable inner content (error)"
+      },
       "arms": {
         "A": {
           "verdict": "suspected_encryption",
@@ -785,6 +1034,12 @@
           "suspicious": true,
           "signal": "structural_mismatch",
           "reason": "the file declares a gzip container but the gzip structure is not there behind it, and the content is high entropy (8.0)"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "structural_mismatch",
+          "reason": "the file declares a gzip container but the gzip structure is not there behind it, and the content is high entropy (8.0)"
         }
       }
     },
@@ -800,6 +1055,7 @@
       "container_status": "unvalidated",
       "container_valid": null,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -824,6 +1080,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 8.0 >= 7.5; a rar header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a rar header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -839,6 +1101,7 @@
       "container_status": "unvalidated",
       "container_valid": null,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -863,6 +1126,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 8.0 >= 7.5; a 7z header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a 7z header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -878,6 +1147,7 @@
       "container_status": "unvalidated",
       "container_valid": null,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -902,6 +1172,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 8.0 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -917,6 +1193,7 @@
       "container_status": "unvalidated",
       "container_valid": null,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -941,6 +1218,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 8.0 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -956,6 +1239,7 @@
       "container_status": "unvalidated",
       "container_valid": null,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -980,6 +1264,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 8.0 >= 7.5; a lz4 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a lz4 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -995,6 +1285,7 @@
       "container_status": "unvalidated",
       "container_valid": null,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -1019,6 +1310,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 8.0 >= 7.5; a zstd header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a zstd header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -1034,6 +1331,7 @@
       "container_status": "forged",
       "container_valid": false,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "suspected_encryption",
@@ -1054,6 +1352,12 @@
           "reason": "the file declares a png container but the png structure is not there behind it, and the content is high entropy (8.0)"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "structural_mismatch",
+          "reason": "the file declares a png container but the png structure is not there behind it, and the content is high entropy (8.0)"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "structural_mismatch",
@@ -1073,6 +1377,7 @@
       "container_status": "forged",
       "container_valid": false,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "suspected_encryption",
@@ -1093,6 +1398,12 @@
           "reason": "the file declares a jpeg container but the jpeg structure is not there behind it, and the content is high entropy (8.0)"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "structural_mismatch",
+          "reason": "the file declares a jpeg container but the jpeg structure is not there behind it, and the content is high entropy (8.0)"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "structural_mismatch",
@@ -1112,6 +1423,7 @@
       "container_status": "unvalidated",
       "container_valid": null,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -1132,6 +1444,12 @@
           "reason": "entropy 8.0 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -1151,6 +1469,7 @@
       "container_status": "unvalidated",
       "container_valid": null,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -1175,6 +1494,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 8.0 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -1190,6 +1515,7 @@
       "container_status": "forged",
       "container_valid": false,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "suspected_encryption",
@@ -1210,6 +1536,12 @@
           "reason": "the file declares a pdf container but the pdf structure is not there behind it, and the content is high entropy (8.0)"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "structural_mismatch",
+          "reason": "the file declares a pdf container but the pdf structure is not there behind it, and the content is high entropy (8.0)"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "structural_mismatch",
@@ -1229,6 +1561,7 @@
       "container_status": "unvalidated",
       "container_valid": null,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -1249,6 +1582,12 @@
           "reason": "entropy 8.0 >= 7.5; a mp3 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a mp3 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -1268,6 +1607,7 @@
       "container_status": "unvalidated",
       "container_valid": null,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -1292,6 +1632,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 8.0 >= 7.5; a mp3 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a mp3 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -1307,6 +1653,7 @@
       "container_status": "unvalidated",
       "container_valid": null,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -1331,6 +1678,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 8.0 >= 7.5; a ogg header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a ogg header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -1346,6 +1699,7 @@
       "container_status": "unvalidated",
       "container_valid": null,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -1370,6 +1724,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 8.0 >= 7.5; a flac header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a flac header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -1385,6 +1745,7 @@
       "container_status": "unvalidated",
       "container_valid": null,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -1409,6 +1770,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 8.0 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -1424,6 +1791,7 @@
       "container_status": "forged",
       "container_valid": false,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "suspected_encryption",
@@ -1448,13 +1816,19 @@
           "suspicious": true,
           "signal": "structural_mismatch",
           "reason": "the file declares a iso-bmff container but the iso-bmff structure is not there behind it, and the content is high entropy (8.0)"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "structural_mismatch",
+          "reason": "the file declares a iso-bmff container but the iso-bmff structure is not there behind it, and the content is high entropy (8.0)"
         }
       }
     },
     {
       "family": "A2_standard_library_container",
       "file": "a2_gzip_compress.gz",
-      "sha256": "78362165acbfff3a8f3dfd934d90dad3d773ba7c341330847b30f4b77cf11a94",
+      "sha256": "821a17444825c52419f12e7a9ad56b29b239928b6df82a67144d3f2c3b7f64f8",
       "size": 120058,
       "construction": "gzip.compress(ciphertext) - a real deflate stream with a real CRC-32",
       "entropy": 8.0,
@@ -1468,6 +1842,13 @@
         "ratio": 1.0005,
         "compressed": false,
         "basis": "bounded inflate: 65506 bytes out of 65536 in"
+      },
+      "inner_content": {
+        "format": "gzip",
+        "inner_format": null,
+        "inner_status": null,
+        "explains": false,
+        "basis": "65506 bytes from a bounded inflate; they carry no recognised container header"
       },
       "arms": {
         "A": {
@@ -1489,6 +1870,12 @@
           "reason": "entropy 8.0 explained by a structurally valid gzip container"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 65506 bytes out of 65536 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -1515,6 +1902,13 @@
         "basis": "central directory: 120000 compressed / 120000 uncompressed over 1 member(s)",
         "members_read": 1
       },
+      "inner_content": {
+        "format": "zip",
+        "inner_format": null,
+        "inner_status": null,
+        "explains": false,
+        "basis": "65536 stored bytes read directly; they carry no recognised container header"
+      },
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -1535,6 +1929,12 @@
           "reason": "entropy 8.0 explained by a structurally valid zip container"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a structurally valid zip container, but it stored its payload uncompressed (central directory: 120000 compressed / 120000 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -1561,6 +1961,13 @@
         "basis": "central directory: 120040 compressed / 120000 uncompressed over 1 member(s)",
         "members_read": 1
       },
+      "inner_content": {
+        "format": "zip",
+        "inner_format": null,
+        "inner_status": null,
+        "explains": false,
+        "basis": "65516 bytes from a bounded raw inflate; they carry no recognised container header"
+      },
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -1585,6 +1992,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 8.0 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 120040 compressed / 120000 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 120040 compressed / 120000 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
         }
       }
     },
@@ -1600,6 +2013,7 @@
       "container_status": "forged",
       "container_valid": false,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "suspected_encryption",
@@ -1620,6 +2034,12 @@
           "reason": "the file declares a png container but the png structure is not there behind it, and the content is high entropy (8.0)"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "structural_mismatch",
+          "reason": "the file declares a png container but the png structure is not there behind it, and the content is high entropy (8.0)"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "structural_mismatch",
@@ -1646,6 +2066,13 @@
         "basis": "no member declared usable sizes (empty, ZIP64, or the central directory was past the tail sample)",
         "members_read": 0
       },
+      "inner_content": {
+        "format": "zip",
+        "inner_format": null,
+        "inner_status": null,
+        "explains": false,
+        "basis": "59959 stored bytes read directly; they carry no recognised container header"
+      },
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -1666,6 +2093,12 @@
           "reason": "entropy 8.0 >= 7.5; a zip header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a zip header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -1692,6 +2125,13 @@
         "basis": "central directory: 163840 compressed / 163840 uncompressed over 1 member(s)",
         "members_read": 1
       },
+      "inner_content": {
+        "format": "zip",
+        "inner_format": null,
+        "inner_status": null,
+        "explains": false,
+        "basis": "65536 stored bytes read directly; they carry no recognised container header"
+      },
       "arms": {
         "A": {
           "verdict": "benign",
@@ -1712,6 +2152,12 @@
           "reason": "entropy 5.7 below threshold 7.5"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "partial_entropy",
+          "reason": "whole-file entropy 5.7 is below 7.5, but 25% of its 40 blocks are at or above 7.9 with a spread of 3.93 - part of this file was replaced with ciphertext and the rest was left alone"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "partial_entropy",
@@ -1738,6 +2184,13 @@
         "basis": "central directory: 163840 compressed / 163840 uncompressed over 1 member(s)",
         "members_read": 1
       },
+      "inner_content": {
+        "format": "zip",
+        "inner_format": null,
+        "inner_status": null,
+        "explains": false,
+        "basis": "65536 stored bytes read directly; they carry no recognised container header"
+      },
       "arms": {
         "A": {
           "verdict": "benign",
@@ -1758,6 +2211,12 @@
           "reason": "entropy 6.81 below threshold 7.5"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "partial_entropy",
+          "reason": "whole-file entropy 6.81 is below 7.5, but 50% of its 40 blocks are at or above 7.9 with a spread of 3.94 - part of this file was replaced with ciphertext and the rest was left alone"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "partial_entropy",
@@ -1784,6 +2243,13 @@
         "basis": "central directory: 163840 compressed / 163840 uncompressed over 1 member(s)",
         "members_read": 1
       },
+      "inner_content": {
+        "format": "zip",
+        "inner_format": null,
+        "inner_status": null,
+        "explains": false,
+        "basis": "65536 stored bytes read directly; they carry no recognised container header"
+      },
       "arms": {
         "A": {
           "verdict": "benign_compressed",
@@ -1808,13 +2274,194 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.61 >= 7.5; a structurally valid zip container, but it stored its payload uncompressed (central directory: 163840 compressed / 163840 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.61 >= 7.5; a structurally valid zip container, but it stored its payload uncompressed (central directory: 163840 compressed / 163840 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        }
+      }
+    },
+    {
+      "family": "A7_forged_inner_content",
+      "file": "a7_gzip_naive_magic.gz",
+      "sha256": "4ea576ef82d2dc05645143d1c0066f5f23e13fe385057e64616f42cfac281521",
+      "size": 120062,
+      "construction": "gzip of four JPEG magic bytes and ciphertext - no real marker chain",
+      "entropy": 8.0,
+      "detected_format": "gzip",
+      "validator_present": true,
+      "container_status": "valid",
+      "container_valid": true,
+      "compression": {
+        "format": "gzip",
+        "declares_compression": true,
+        "ratio": 1.0005,
+        "compressed": false,
+        "basis": "bounded inflate: 65506 bytes out of 65536 in"
+      },
+      "inner_content": {
+        "format": "gzip",
+        "inner_format": "jpeg",
+        "inner_status": "forged",
+        "explains": false,
+        "basis": "65506 bytes from a bounded inflate; they declare jpeg and validate as forged"
+      },
+      "arms": {
+        "A": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid gzip container"
+        },
+        "B": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; the container exemption is disabled"
+        },
+        "C1": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid gzip container"
+        },
+        "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 65506 bytes out of 65536 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 65506 bytes out of 65536 in) - the format transformed nothing, so it does not explain the entropy"
+        }
+      }
+    },
+    {
+      "family": "A7_forged_inner_content",
+      "file": "a7_gzip_real_jpeg_head.gz",
+      "sha256": "a18fcd8b37ed5fa9e5518327e3b79275897060833e4495a990fe0335d65f843b",
+      "size": 120527,
+      "construction": "gzip of a genuine JPEG through SOS, ciphertext where the scan data goes",
+      "entropy": 8.0,
+      "detected_format": "gzip",
+      "validator_present": true,
+      "container_status": "valid",
+      "container_valid": true,
+      "compression": {
+        "format": "gzip",
+        "declares_compression": true,
+        "ratio": 0.9981,
+        "compressed": false,
+        "basis": "bounded inflate: 65536 bytes out of 65414 in"
+      },
+      "inner_content": {
+        "format": "gzip",
+        "inner_format": "jpeg",
+        "inner_status": "incomplete",
+        "explains": true,
+        "basis": "65536 bytes from a bounded inflate; they declare jpeg and validate as incomplete"
+      },
+      "arms": {
+        "A": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid gzip container"
+        },
+        "B": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; the container exemption is disabled"
+        },
+        "C1": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid gzip container"
+        },
+        "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 65536 bytes out of 65414 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as incomplete - a backup of an already-compressed file, not an encryption of a plain one"
+        }
+      }
+    },
+    {
+      "family": "A7_forged_inner_content",
+      "file": "a7_zip_real_jpeg_head.zip",
+      "sha256": "5dbd7ebd1652ae157ce1892b257733457c4b868ce1591d79ef4058650bf6eb4a",
+      "size": 120625,
+      "construction": "ZIP_DEFLATED of a genuine JPEG head, ciphertext, and a genuine EOI",
+      "entropy": 8.0,
+      "detected_format": "zip",
+      "validator_present": true,
+      "container_status": "valid",
+      "container_valid": true,
+      "compression": {
+        "format": "zip",
+        "declares_compression": true,
+        "ratio": 0.9991,
+        "compressed": false,
+        "basis": "central directory: 120509 compressed / 120623 uncompressed over 1 member(s)",
+        "members_read": 1
+      },
+      "inner_content": {
+        "format": "zip",
+        "inner_format": "jpeg",
+        "inner_status": "incomplete",
+        "explains": true,
+        "basis": "65536 bytes from a bounded raw inflate; they declare jpeg and validate as incomplete"
+      },
+      "arms": {
+        "A": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid zip container"
+        },
+        "B": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; the container exemption is disabled"
+        },
+        "C1": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid zip container"
+        },
+        "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 120509 compressed / 120623 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as incomplete - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
     {
       "family": "A5_control_naked_ciphertext",
       "file": "a5_naked.bin",
-      "sha256": "64445423a103226401ec5c8cce2061dc27668c1b691818c21513f8872c41b1fb",
+      "sha256": "4287f7be9e72ba878c999c696122e4910a746eb1ea3260378f0568b792de868b",
       "size": 120000,
       "construction": "ciphertext with no header at all",
       "entropy": 8.0,
@@ -1823,6 +2470,7 @@
       "container_status": "unvalidated",
       "container_valid": null,
       "compression": null,
+      "inner_content": null,
       "arms": {
         "A": {
           "verdict": "suspected_encryption",
@@ -1847,13 +2495,19 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 8.0 >= 7.5; no recognised container header"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; no recognised container header"
         }
       }
     },
     {
       "family": "A6_control_forged_header",
       "file": "a6_forged_zip.zip",
-      "sha256": "7186de3a0a21a8ab12d0a9180a03ff8b73177b93bcc7f722d0ea54301ac5e6bd",
+      "sha256": "08a09b9ad7a4dbc10c73ad73043c6e3584a8f5300aff6a1ea0554eda31760cbb",
       "size": 120004,
       "construction": "a ZIP local-header signature with no ZIP structure behind it",
       "entropy": 8.0,
@@ -1868,6 +2522,13 @@
         "compressed": null,
         "basis": "no member declared usable sizes (empty, ZIP64, or the central directory was past the tail sample)",
         "members_read": 0
+      },
+      "inner_content": {
+        "format": "zip",
+        "inner_format": null,
+        "inner_status": null,
+        "explains": null,
+        "basis": "compression method 43754 is not one this reads"
       },
       "arms": {
         "A": {
@@ -1889,6 +2550,12 @@
           "reason": "the file declares a zip container but the zip structure is not there behind it, and the content is high entropy (8.0)"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "structural_mismatch",
+          "reason": "the file declares a zip container but the zip structure is not there behind it, and the content is high entropy (8.0)"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "structural_mismatch",
@@ -1928,6 +2595,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 4.14 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 4.14 below threshold 7.5"
         }
       }
     },
@@ -1957,6 +2630,12 @@
           "reason": "entropy 4.14 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 4.14 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -1994,6 +2673,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 4.14 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 4.14 below threshold 7.5"
         }
       }
     },
@@ -2023,6 +2708,12 @@
           "reason": "entropy 4.14 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 4.14 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -2060,6 +2751,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 4.14 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 4.14 below threshold 7.5"
         }
       }
     },
@@ -2089,6 +2786,12 @@
           "reason": "entropy 4.14 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 4.14 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -2126,6 +2829,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 4.14 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 4.14 below threshold 7.5"
         }
       }
     },
@@ -2155,6 +2864,12 @@
           "reason": "entropy 4.13 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 4.13 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -2192,6 +2907,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 4.14 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 4.14 below threshold 7.5"
         }
       }
     },
@@ -2221,6 +2942,12 @@
           "reason": "entropy 4.14 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 4.14 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -2258,6 +2985,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 4.14 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 4.14 below threshold 7.5"
         }
       }
     },
@@ -2287,6 +3020,12 @@
           "reason": "entropy 4.13 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 4.13 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -2324,6 +3063,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 4.14 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 4.14 below threshold 7.5"
         }
       }
     },
@@ -2353,6 +3098,12 @@
           "reason": "entropy 4.13 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 4.13 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -2390,6 +3141,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 4.13 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 4.13 below threshold 7.5"
         }
       }
     },
@@ -2419,6 +3176,12 @@
           "reason": "entropy 7.99 explained by a structurally valid zip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -2456,6 +3219,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.99 explained by a structurally valid zip container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container"
         }
       }
     },
@@ -2485,6 +3254,12 @@
           "reason": "entropy 7.99 explained by a structurally valid zip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -2522,6 +3297,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.99 explained by a structurally valid zip container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container"
         }
       }
     },
@@ -2551,6 +3332,12 @@
           "reason": "entropy 7.99 explained by a structurally valid zip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -2588,6 +3375,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.99 explained by a structurally valid zip container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container"
         }
       }
     },
@@ -2617,6 +3410,12 @@
           "reason": "entropy 7.99 explained by a structurally valid zip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -2654,6 +3453,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.99 explained by a structurally valid zip container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container"
         }
       }
     },
@@ -2683,6 +3488,12 @@
           "reason": "entropy 7.99 explained by a structurally valid zip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -2720,6 +3531,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.99 explained by a structurally valid zip container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container"
         }
       }
     },
@@ -2749,6 +3566,12 @@
           "reason": "entropy 7.99 explained by a structurally valid zip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -2786,6 +3609,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.98 explained by a structurally valid zip container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.98 explained by a structurally valid zip container"
         }
       }
     },
@@ -2815,6 +3644,12 @@
           "reason": "entropy 7.99 explained by a structurally valid zip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -2852,6 +3687,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.99 explained by a structurally valid zip container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container"
         }
       }
     },
@@ -2881,6 +3722,12 @@
           "reason": "entropy 7.99 explained by a structurally valid zip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -2918,6 +3765,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.98 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 26177 compressed / 26366 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.98 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -2951,6 +3804,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.98 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 26214 compressed / 26407 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.98 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -2984,6 +3843,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 26191 compressed / 26404 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -3017,6 +3882,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.98 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 26186 compressed / 26378 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.98 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -3050,6 +3921,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.98 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 26154 compressed / 26359 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.98 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -3083,6 +3960,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 26227 compressed / 26430 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -3116,6 +3999,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 26158 compressed / 26351 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -3149,6 +4038,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.98 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 26185 compressed / 26376 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.98 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -3182,6 +4077,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 26189 compressed / 26398 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -3215,6 +4116,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 26178 compressed / 26378 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -3248,6 +4155,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.98 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 26249 compressed / 26455 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.98 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -3281,6 +4194,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 26223 compressed / 26432 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -3314,6 +4233,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.98 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 26294 compressed / 26489 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.98 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -3347,6 +4272,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 26203 compressed / 26402 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -3380,6 +4311,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid zip container, but it declared compression that achieved nothing (central directory: 26138 compressed / 26345 uncompressed over 1 member(s)) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid zip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -3409,6 +4346,12 @@
           "reason": "entropy 7.99 explained by a structurally valid gzip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -3446,6 +4389,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.99 explained by a structurally valid gzip container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container"
         }
       }
     },
@@ -3475,6 +4424,12 @@
           "reason": "entropy 7.99 explained by a structurally valid gzip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -3512,6 +4467,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.99 explained by a structurally valid gzip container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container"
         }
       }
     },
@@ -3541,6 +4502,12 @@
           "reason": "entropy 7.99 explained by a structurally valid gzip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -3578,6 +4545,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.99 explained by a structurally valid gzip container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container"
         }
       }
     },
@@ -3607,6 +4580,12 @@
           "reason": "entropy 7.99 explained by a structurally valid gzip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -3644,6 +4623,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.99 explained by a structurally valid gzip container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container"
         }
       }
     },
@@ -3673,6 +4658,12 @@
           "reason": "entropy 7.99 explained by a structurally valid gzip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -3710,6 +4701,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.99 explained by a structurally valid gzip container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container"
         }
       }
     },
@@ -3739,6 +4736,12 @@
           "reason": "entropy 7.99 explained by a structurally valid gzip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -3776,6 +4779,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.99 explained by a structurally valid gzip container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container"
         }
       }
     },
@@ -3805,6 +4814,12 @@
           "reason": "entropy 7.99 explained by a structurally valid gzip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -3842,6 +4857,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.99 explained by a structurally valid gzip container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container"
         }
       }
     },
@@ -3871,6 +4892,12 @@
           "reason": "entropy 7.99 explained by a structurally valid gzip container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -3908,6 +4935,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 32279 bytes out of 32058 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -3941,6 +4974,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 32164 bytes out of 31965 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -3974,6 +5013,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 32192 bytes out of 32017 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -4007,6 +5052,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 32302 bytes out of 32116 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -4040,6 +5091,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 32201 bytes out of 32017 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -4073,6 +5130,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 32191 bytes out of 32011 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -4106,6 +5169,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 32227 bytes out of 32045 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -4139,6 +5208,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 32211 bytes out of 32038 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -4172,6 +5247,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 32153 bytes out of 31964 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -4205,6 +5286,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 32214 bytes out of 32018 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -4238,6 +5325,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 32225 bytes out of 32047 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -4271,6 +5364,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 32311 bytes out of 32103 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -4304,6 +5403,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 32201 bytes out of 32016 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -4337,6 +5442,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 32212 bytes out of 32014 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -4370,6 +5481,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a structurally valid gzip container, but it declared compression that achieved nothing (bounded inflate: 32194 bytes out of 32002 in) - the format transformed nothing, so it does not explain the entropy"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.99 explained by a structurally valid gzip container that declared compression that achieved nothing, but it carries jpeg content that validates as valid - a backup of an already-compressed file, not an encryption of a plain one"
         }
       }
     },
@@ -4399,6 +5516,12 @@
           "reason": "entropy 5.42 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.42 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -4436,6 +5559,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 5.42 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.42 below threshold 7.5"
         }
       }
     },
@@ -4465,6 +5594,12 @@
           "reason": "entropy 5.42 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.42 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -4502,6 +5637,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 5.43 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.43 below threshold 7.5"
         }
       }
     },
@@ -4531,6 +5672,12 @@
           "reason": "entropy 5.42 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.42 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -4568,6 +5715,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 5.42 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.42 below threshold 7.5"
         }
       }
     },
@@ -4597,6 +5750,12 @@
           "reason": "entropy 5.42 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.42 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -4634,6 +5793,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 5.42 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.42 below threshold 7.5"
         }
       }
     },
@@ -4663,6 +5828,12 @@
           "reason": "entropy 5.41 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.41 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -4700,6 +5871,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 5.41 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.41 below threshold 7.5"
         }
       }
     },
@@ -4729,6 +5906,12 @@
           "reason": "entropy 5.41 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.41 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -4766,6 +5949,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 5.42 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.42 below threshold 7.5"
         }
       }
     },
@@ -4795,6 +5984,12 @@
           "reason": "entropy 5.41 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.41 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -4832,6 +6027,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 5.42 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.42 below threshold 7.5"
         }
       }
     },
@@ -4861,6 +6062,12 @@
           "reason": "entropy 5.43 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.43 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -4898,6 +6105,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 8.0 explained by a structurally valid png container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid png container"
         }
       }
     },
@@ -4927,6 +6140,12 @@
           "reason": "entropy 8.0 explained by a structurally valid png container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid png container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -4964,6 +6183,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 8.0 explained by a structurally valid png container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid png container"
         }
       }
     },
@@ -4993,6 +6218,12 @@
           "reason": "entropy 8.0 explained by a structurally valid png container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid png container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -5030,6 +6261,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 8.0 explained by a structurally valid png container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid png container"
         }
       }
     },
@@ -5059,6 +6296,12 @@
           "reason": "entropy 8.0 explained by a structurally valid png container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid png container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -5096,6 +6339,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 8.0 explained by a structurally valid png container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid png container"
         }
       }
     },
@@ -5125,6 +6374,12 @@
           "reason": "entropy 8.0 explained by a structurally valid png container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid png container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -5162,6 +6417,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 8.0 explained by a structurally valid png container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid png container"
         }
       }
     },
@@ -5191,6 +6452,12 @@
           "reason": "entropy 8.0 explained by a structurally valid png container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid png container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -5228,6 +6495,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 8.0 explained by a structurally valid png container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid png container"
         }
       }
     },
@@ -5257,6 +6530,12 @@
           "reason": "entropy 8.0 explained by a structurally valid png container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid png container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -5294,6 +6573,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 8.0 explained by a structurally valid png container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid png container"
         }
       }
     },
@@ -5323,6 +6608,12 @@
           "reason": "entropy 8.0 explained by a structurally valid png container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid png container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -5360,6 +6651,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 8.0 explained by a structurally valid png container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 8.0 explained by a structurally valid png container"
         }
       }
     },
@@ -5389,6 +6686,12 @@
           "reason": "entropy 7.93 explained by a structurally valid jpeg container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.93 explained by a structurally valid jpeg container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -5426,6 +6729,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.93 explained by a structurally valid jpeg container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.93 explained by a structurally valid jpeg container"
         }
       }
     },
@@ -5455,6 +6764,12 @@
           "reason": "entropy 7.93 explained by a structurally valid jpeg container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.93 explained by a structurally valid jpeg container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -5492,6 +6807,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.93 explained by a structurally valid jpeg container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.93 explained by a structurally valid jpeg container"
         }
       }
     },
@@ -5521,6 +6842,12 @@
           "reason": "entropy 7.93 explained by a structurally valid jpeg container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.93 explained by a structurally valid jpeg container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -5558,6 +6885,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.93 explained by a structurally valid jpeg container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.93 explained by a structurally valid jpeg container"
         }
       }
     },
@@ -5587,6 +6920,12 @@
           "reason": "entropy 7.93 explained by a structurally valid jpeg container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.93 explained by a structurally valid jpeg container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -5624,6 +6963,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.93 explained by a structurally valid jpeg container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.93 explained by a structurally valid jpeg container"
         }
       }
     },
@@ -5653,6 +6998,12 @@
           "reason": "entropy 7.93 explained by a structurally valid jpeg container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.93 explained by a structurally valid jpeg container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -5690,6 +7041,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.93 explained by a structurally valid jpeg container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.93 explained by a structurally valid jpeg container"
         }
       }
     },
@@ -5719,6 +7076,12 @@
           "reason": "entropy 7.94 explained by a structurally valid jpeg container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.94 explained by a structurally valid jpeg container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -5756,6 +7119,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.93 explained by a structurally valid jpeg container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.93 explained by a structurally valid jpeg container"
         }
       }
     },
@@ -5785,6 +7154,12 @@
           "reason": "entropy 7.93 explained by a structurally valid jpeg container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.93 explained by a structurally valid jpeg container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -5822,6 +7197,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.94 explained by a structurally valid jpeg container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.94 explained by a structurally valid jpeg container"
         }
       }
     },
@@ -5851,6 +7232,12 @@
           "reason": "entropy 7.93 explained by a structurally valid jpeg container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.93 explained by a structurally valid jpeg container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -5888,6 +7275,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.09 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.09 below threshold 7.5"
         }
       }
     },
@@ -5917,6 +7310,12 @@
           "reason": "entropy 7.12 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.12 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -5954,6 +7353,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.11 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.11 below threshold 7.5"
         }
       }
     },
@@ -5983,6 +7388,12 @@
           "reason": "entropy 7.1 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.1 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -6020,6 +7431,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.09 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.09 below threshold 7.5"
         }
       }
     },
@@ -6049,6 +7466,12 @@
           "reason": "entropy 6.88 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.88 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -6086,6 +7509,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 6.99 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.99 below threshold 7.5"
         }
       }
     },
@@ -6115,6 +7544,12 @@
           "reason": "entropy 7.11 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.11 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -6152,6 +7587,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.1 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.1 below threshold 7.5"
         }
       }
     },
@@ -6181,6 +7622,12 @@
           "reason": "entropy 7.01 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.01 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -6218,6 +7665,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.1 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.1 below threshold 7.5"
         }
       }
     },
@@ -6247,6 +7700,12 @@
           "reason": "entropy 7.1 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.1 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -6284,6 +7743,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.04 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.04 below threshold 7.5"
         }
       }
     },
@@ -6313,6 +7778,12 @@
           "reason": "entropy 7.14 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.14 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -6350,6 +7821,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.11 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.11 below threshold 7.5"
         }
       }
     },
@@ -6379,6 +7856,12 @@
           "reason": "entropy 7.14 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.14 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -6416,6 +7899,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.14 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.14 below threshold 7.5"
         }
       }
     },
@@ -6445,6 +7934,12 @@
           "reason": "entropy 7.15 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.15 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -6482,6 +7977,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.13 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.13 below threshold 7.5"
         }
       }
     },
@@ -6511,6 +8012,12 @@
           "reason": "entropy 7.15 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.15 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -6548,6 +8055,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.15 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.15 below threshold 7.5"
         }
       }
     },
@@ -6577,6 +8090,12 @@
           "reason": "entropy 6.98 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.98 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -6614,6 +8133,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.06 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.06 below threshold 7.5"
         }
       }
     },
@@ -6643,6 +8168,12 @@
           "reason": "entropy 7.15 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.15 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -6680,6 +8211,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.03 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.03 below threshold 7.5"
         }
       }
     },
@@ -6709,6 +8246,12 @@
           "reason": "entropy 7.0 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.0 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -6746,6 +8289,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 6.96 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.96 below threshold 7.5"
         }
       }
     },
@@ -6775,6 +8324,12 @@
           "reason": "entropy 7.11 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.11 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -6812,6 +8367,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.12 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.12 below threshold 7.5"
         }
       }
     },
@@ -6841,6 +8402,12 @@
           "reason": "entropy 7.15 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.15 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -6878,6 +8445,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.87 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.87 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -6907,6 +8480,12 @@
           "reason": "entropy 7.87 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.87 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -6944,6 +8523,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.86 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.86 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -6973,6 +8558,12 @@
           "reason": "entropy 7.84 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.84 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -7010,6 +8601,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.86 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.86 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -7039,6 +8636,12 @@
           "reason": "entropy 7.86 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.86 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -7076,6 +8679,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.86 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.86 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -7105,6 +8714,12 @@
           "reason": "entropy 7.86 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.86 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -7142,6 +8757,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.87 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.87 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -7171,6 +8792,12 @@
           "reason": "entropy 7.84 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.84 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -7208,6 +8835,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.87 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.87 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -7237,6 +8870,12 @@
           "reason": "entropy 7.87 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.87 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -7274,6 +8913,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.87 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.87 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -7303,6 +8948,12 @@
           "reason": "entropy 7.86 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.86 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -7340,6 +8991,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.85 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.85 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -7369,6 +9026,12 @@
           "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -7406,6 +9069,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -7435,6 +9104,12 @@
           "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -7472,6 +9147,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -7501,6 +9182,12 @@
           "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -7538,6 +9225,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -7567,6 +9260,12 @@
           "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -7604,6 +9303,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -7633,6 +9338,12 @@
           "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -7670,6 +9381,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -7699,6 +9416,12 @@
           "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -7736,6 +9459,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -7765,6 +9494,12 @@
           "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -7802,6 +9537,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -7831,6 +9572,12 @@
           "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a bzip2 header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -7868,6 +9615,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -7897,6 +9650,12 @@
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -7934,6 +9693,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 8.0 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 8.0 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -7963,6 +9728,12 @@
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8000,6 +9771,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -8029,6 +9806,12 @@
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8066,6 +9849,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -8095,6 +9884,12 @@
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8132,6 +9927,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -8161,6 +9962,12 @@
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8198,6 +10005,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -8227,6 +10040,12 @@
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8264,6 +10083,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -8293,6 +10118,12 @@
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8330,6 +10161,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -8359,6 +10196,12 @@
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8396,6 +10239,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -8425,6 +10274,12 @@
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8462,6 +10317,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -8491,6 +10352,12 @@
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8528,6 +10395,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -8557,6 +10430,12 @@
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8594,6 +10473,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -8623,6 +10508,12 @@
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8660,6 +10551,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -8689,6 +10586,12 @@
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8726,6 +10629,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -8755,6 +10664,12 @@
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8792,6 +10707,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -8821,6 +10742,12 @@
           "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.99 >= 7.5; a xz header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8858,6 +10785,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.94 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.94 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -8887,6 +10820,12 @@
           "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8924,6 +10863,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -8953,6 +10898,12 @@
           "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -8990,6 +10941,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.94 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.94 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -9019,6 +10976,12 @@
           "reason": "entropy 7.94 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.94 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -9056,6 +11019,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.97 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.97 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -9085,6 +11054,12 @@
           "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -9122,6 +11097,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.93 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.93 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -9151,6 +11132,12 @@
           "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -9188,6 +11175,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.96 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.96 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -9217,6 +11210,12 @@
           "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -9254,6 +11253,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -9283,6 +11288,12 @@
           "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.95 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -9320,6 +11331,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.93 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.93 >= 7.5; a gif header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -9349,6 +11366,12 @@
           "reason": "entropy 7.33 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.33 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -9386,6 +11409,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.33 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.33 below threshold 7.5"
         }
       }
     },
@@ -9415,6 +11444,12 @@
           "reason": "entropy 7.33 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.33 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -9452,6 +11487,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.33 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.33 below threshold 7.5"
         }
       }
     },
@@ -9481,6 +11522,12 @@
           "reason": "entropy 7.33 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.33 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -9518,6 +11565,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.33 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.33 below threshold 7.5"
         }
       }
     },
@@ -9547,6 +11600,12 @@
           "reason": "entropy 7.33 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.33 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -9584,6 +11643,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.33 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.33 below threshold 7.5"
         }
       }
     },
@@ -9613,6 +11678,12 @@
           "reason": "entropy 7.32 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.32 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -9650,6 +11721,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.33 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.33 below threshold 7.5"
         }
       }
     },
@@ -9679,6 +11756,12 @@
           "reason": "entropy 7.33 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.33 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -9716,6 +11799,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.32 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.32 below threshold 7.5"
         }
       }
     },
@@ -9745,6 +11834,12 @@
           "reason": "entropy 7.33 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.33 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -9782,6 +11877,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.33 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.33 below threshold 7.5"
         }
       }
     },
@@ -9811,6 +11912,12 @@
           "reason": "entropy 7.33 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.33 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -9848,6 +11955,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 6.5 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.5 below threshold 7.5"
         }
       }
     },
@@ -9877,6 +11990,12 @@
           "reason": "entropy 6.17 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.17 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -9914,6 +12033,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 6.21 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.21 below threshold 7.5"
         }
       }
     },
@@ -9943,6 +12068,12 @@
           "reason": "entropy 6.88 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.88 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -9980,6 +12111,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 5.95 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.95 below threshold 7.5"
         }
       }
     },
@@ -10009,6 +12146,12 @@
           "reason": "entropy 6.7 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.7 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -10046,6 +12189,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 6.33 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.33 below threshold 7.5"
         }
       }
     },
@@ -10075,6 +12224,12 @@
           "reason": "entropy 6.62 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.62 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -10112,6 +12267,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 6.85 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.85 below threshold 7.5"
         }
       }
     },
@@ -10141,6 +12302,12 @@
           "reason": "entropy 6.09 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.09 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -10178,6 +12345,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 6.5 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.5 below threshold 7.5"
         }
       }
     },
@@ -10207,6 +12380,12 @@
           "reason": "entropy 6.04 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.04 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -10244,6 +12423,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 5.71 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.71 below threshold 7.5"
         }
       }
     },
@@ -10273,6 +12458,12 @@
           "reason": "entropy 5.96 below threshold 7.5"
         },
         "C": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 5.96 below threshold 7.5"
+        },
+        "D": {
           "verdict": "benign",
           "suspicious": false,
           "signal": null,
@@ -10310,6 +12501,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 6.17 below threshold 7.5"
+        },
+        "D": {
+          "verdict": "benign",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 6.17 below threshold 7.5"
         }
       }
     },
@@ -10339,6 +12536,12 @@
           "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -10376,6 +12579,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -10405,6 +12614,12 @@
           "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -10442,6 +12657,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -10471,6 +12692,12 @@
           "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -10508,6 +12735,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -10537,6 +12770,12 @@
           "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -10574,6 +12813,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -10603,6 +12848,12 @@
           "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -10640,6 +12891,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -10669,6 +12926,12 @@
           "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -10706,6 +12969,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -10735,6 +13004,12 @@
           "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -10772,6 +13047,12 @@
           "suspicious": true,
           "signal": "static_entropy",
           "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         }
       }
     },
@@ -10801,6 +13082,12 @@
           "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
         },
         "C": {
+          "verdict": "suspected_encryption",
+          "suspicious": true,
+          "signal": "static_entropy",
+          "reason": "entropy 7.98 >= 7.5; a riff header, but no structural validator ran on it - nothing about this file was verified"
+        },
+        "D": {
           "verdict": "suspected_encryption",
           "suspicious": true,
           "signal": "static_entropy",
@@ -10838,6 +13125,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.85 explained by a structurally valid png container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.85 explained by a structurally valid png container"
         }
       }
     },
@@ -10867,6 +13160,12 @@
           "reason": "entropy 7.74 explained by a structurally valid png container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.74 explained by a structurally valid png container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
@@ -10904,6 +13203,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.98 explained by a structurally valid png container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.98 explained by a structurally valid png container"
         }
       }
     },
@@ -10937,6 +13242,12 @@
           "suspicious": false,
           "signal": null,
           "reason": "entropy 7.71 explained by a structurally valid png container"
+        },
+        "D": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.71 explained by a structurally valid png container"
         }
       }
     },
@@ -10966,6 +13277,12 @@
           "reason": "entropy 7.87 explained by a structurally valid pdf container"
         },
         "C": {
+          "verdict": "benign_compressed",
+          "suspicious": false,
+          "signal": null,
+          "reason": "entropy 7.87 explained by a structurally valid pdf container"
+        },
+        "D": {
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,

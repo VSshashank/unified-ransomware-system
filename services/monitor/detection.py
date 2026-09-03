@@ -604,19 +604,32 @@ class EntropyHistory:
 #             nothing has not explained anything. This is the D4 extension -
 #             without it, gzip.compress(ciphertext) still returns
 #             benign_compressed under strict.
+#   inner     ratio, plus one appeal: an archive that compressed nothing keeps
+#             the exemption if what it carries identifies as a recognised
+#             container and survives a head-level structural check. A gzip of a
+#             JPEG and a gzip of ciphertext are the same file to the ratio
+#             clause and different files one level in. Added after the three-arm
+#             measurement showed the ratio clause costing 30 validated-format
+#             false positives, and reported as the post-hoc refinement it is.
 #   off       no container exemption at all. The null control, Arm B. Not a
 #             candidate for shipping; it exists to price the exemption.
 CONTAINER_POLICY_LEGACY = "legacy"
 CONTAINER_POLICY_STRICT = "strict-unvalidated"
 CONTAINER_POLICY_RATIO = "strict-unvalidated+ratio"
+CONTAINER_POLICY_INNER = "strict-unvalidated+ratio+inner"
 CONTAINER_POLICY_OFF = "off"
 
 CONTAINER_POLICIES = (
     CONTAINER_POLICY_LEGACY,
     CONTAINER_POLICY_STRICT,
     CONTAINER_POLICY_RATIO,
+    CONTAINER_POLICY_INNER,
     CONTAINER_POLICY_OFF,
 )
+
+# The policies that require a validator to have run and passed. `inner` is
+# `ratio` with one appeal added, so anything true of `ratio` is true of it.
+_RATIO_POLICIES = (CONTAINER_POLICY_RATIO, CONTAINER_POLICY_INNER)
 
 # Off by default, per section 9.4.2 and P6.1: the repair does not ship until the
 # measured false-positive cost has been put through D5. An unrecognised value is
@@ -635,6 +648,7 @@ def container_explains_entropy(
     container_valid: bool | None,
     policy: str,
     compression: dict | None = None,
+    inner: dict | None = None,
 ) -> tuple[bool, str]:
     """Does the declared container explain high entropy under `policy`?
 
@@ -666,13 +680,23 @@ def container_explains_entropy(
             f"a {container} header, but no structural validator ran on it - "
             "nothing about this file was verified"
         )
-    if policy == CONTAINER_POLICY_RATIO and compression is not None:
+    if policy in _RATIO_POLICIES and compression is not None:
         if compression.get("compressed") is False:
             declared = (
                 "declared compression that achieved nothing"
                 if compression.get("declares_compression")
                 else "stored its payload uncompressed"
             )
+            # The appeal. Only `inner` hears it, and only a measured yes wins it:
+            # `explains is None` is "could not look", which changes nothing.
+            if policy == CONTAINER_POLICY_INNER and inner is not None:
+                if inner.get("explains") is True:
+                    return True, (
+                        f"a structurally valid {container} container that {declared}, "
+                        f"but it carries {inner.get('inner_format')} content that "
+                        f"validates as {inner.get('inner_status')} - a backup of an "
+                        "already-compressed file, not an encryption of a plain one"
+                    )
             return False, (
                 f"a structurally valid {container} container, but it {declared} "
                 f"({compression.get('basis')}) - the format transformed nothing, so it "
@@ -691,6 +715,7 @@ def classify(
     container_valid: bool | None = None,
     statistics: dict | None = None,
     compression: dict | None = None,
+    inner_content: dict | None = None,
     policy: str | None = None,
 ) -> dict:
     """Decide whether a file event looks like encryption.
@@ -800,8 +825,10 @@ def classify(
     # which is what catches a ZIP_STORED archive of alternating ciphertext and
     # prose - measured at 6.84 bits/byte in P5.4 and returned as plain `benign`.
     partial_explained = container_valid is True and policy != CONTAINER_POLICY_OFF
-    if partial_explained and policy == CONTAINER_POLICY_RATIO and compression is not None:
+    if partial_explained and policy in _RATIO_POLICIES and compression is not None:
         partial_explained = compression.get("compressed") is not False
+        if not partial_explained and policy == CONTAINER_POLICY_INNER:
+            partial_explained = (inner_content or {}).get("explains") is True
     if not high_entropy and partial and not partial_explained:
         return verdict_of(
             True,
@@ -817,7 +844,9 @@ def classify(
     # The false-positive mitigation: high entropy explained by the format. What
     # counts as an explanation is the policy's decision, and the reason string
     # carries whichever clause decided, either way.
-    explains, why = container_explains_entropy(container, container_valid, policy, compression)
+    explains, why = container_explains_entropy(
+        container, container_valid, policy, compression, inner_content
+    )
     if high_entropy and explains and not ransom_ext:
         return verdict_of(
             False, "benign_compressed", f"entropy {entropy} explained by {why}", None

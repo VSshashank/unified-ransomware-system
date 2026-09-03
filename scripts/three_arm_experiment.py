@@ -14,6 +14,12 @@ Three arms, and one more that exists to attribute the difference:
                                    verdict is attributable to a clause rather
                                    than to "the repair".
     C   `strict-unvalidated+ratio` the selected repair
+    D   `strict-unvalidated+ratio+inner`
+                                   a refinement added **after** Arm C's benign
+                                   cost was measured, and reported as the
+                                   post-hoc arm it is. It is not the arm the
+                                   predeclared bounds were written for, and no
+                                   predeclared criterion is claimed for it.
 
 All four score the *same* files. The attack cases are built here from a fixed
 seed and hashed into the report; the benign cases are the frozen corpus at
@@ -81,6 +87,11 @@ ARMS = [
     ("B", detection.CONTAINER_POLICY_OFF, "exemption removed entirely (null control)"),
     ("C1", detection.CONTAINER_POLICY_STRICT, "core repair alone"),
     ("C", detection.CONTAINER_POLICY_RATIO, "the selected repair"),
+    (
+        "D",
+        detection.CONTAINER_POLICY_INNER,
+        "post-hoc refinement: ratio with an inner-content appeal",
+    ),
 ]
 
 LATENCY_REPETITIONS = 20
@@ -121,6 +132,7 @@ def read_inputs(path: Path) -> dict:
         "container_valid": containers.validate_container(head, tail, fmt, size),
         "container_status": containers.container_status(head, tail, fmt, size),
         "compression": containers.compression_evidence(head, tail, fmt, size),
+        "inner_content": containers.inner_content_evidence(head, tail, fmt, size),
         "validator_present": fmt in containers.VALIDATED_FORMATS,
     }
 
@@ -136,6 +148,7 @@ def score(path: Path, inputs: dict, policy: str, entropy_delta: float | None = N
         container_valid=inputs["container_valid"],
         statistics=inputs["statistics"],
         compression=inputs["compression"],
+        inner_content=inputs["inner_content"],
         policy=policy,
     )
     return {
@@ -171,6 +184,22 @@ def _zip_of(payload: bytes, name: str, method: int) -> bytes:
         info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
         info.compress_type = method
         archive.writestr(info, payload)
+    return buffer.getvalue()
+
+
+def _real_jpeg(rng: random.Random) -> bytes:
+    """A genuine JPEG, encoded by Pillow. Used to build A7's inner forgeries."""
+    from PIL import Image
+
+    image = Image.new("RGB", (320, 240))
+    image.putdata(
+        [
+            (rng.randrange(256), rng.randrange(256), rng.randrange(256))
+            for _ in range(320 * 240)
+        ]
+    )
+    buffer = io.BytesIO()
+    image.save(buffer, "JPEG", quality=88)
     return buffer.getvalue()
 
 
@@ -276,6 +305,46 @@ def build_attack_cases() -> list[dict]:
             f"ZIP_STORED archive, {int(fraction * 100)}% of 40 4KB blocks are ciphertext",
         )
 
+    # A7 - the attack that answers Arm D. The inner-content appeal asks whether
+    # what the archive carries identifies as a container and survives a
+    # head-level check. Three levels of attacker effort against exactly that:
+    #
+    #   naive     four JPEG magic bytes in front of the ciphertext. The marker
+    #             chain does not parse, so the inner check calls it FORGED.
+    #   real head a genuine JPEG through its SOS marker, ciphertext after it.
+    #             Every marker is real. Nothing in the leading sample says the
+    #             scan data is not scan data.
+    #   real tail the same, with a genuine EOI appended, so the head-level check
+    #             has a complete-looking JPEG in front of it.
+    #
+    # If Arm D misses these, that is the price of the refinement, and it is
+    # measured here rather than left for a reader to discover.
+    jpeg = _real_jpeg(rng)
+    sos = jpeg.find(b"\xff\xda")
+    head_only = jpeg[: sos + 12] if sos > 0 else jpeg[:2048]
+    emit(
+        "A7_forged_inner_content",
+        "a7_gzip_naive_magic.gz",
+        gzip.compress(b"\xff\xd8\xff\xe0" + noise(rng, PAYLOAD_BYTES)),
+        "gzip of four JPEG magic bytes and ciphertext - no real marker chain",
+    )
+    emit(
+        "A7_forged_inner_content",
+        "a7_gzip_real_jpeg_head.gz",
+        gzip.compress(head_only + noise(rng, PAYLOAD_BYTES)),
+        "gzip of a genuine JPEG through SOS, ciphertext where the scan data goes",
+    )
+    emit(
+        "A7_forged_inner_content",
+        "a7_zip_real_jpeg_head.zip",
+        _zip_of(
+            head_only + noise(rng, PAYLOAD_BYTES) + b"\xff\xd9",
+            "photo.jpg",
+            zipfile.ZIP_DEFLATED,
+        ),
+        "ZIP_DEFLATED of a genuine JPEG head, ciphertext, and a genuine EOI",
+    )
+
     # A5 / A6 - controls. Every arm must catch these; an arm that does not has a
     # defect, not a policy.
     emit(
@@ -326,6 +395,7 @@ def _one_pass(path: Path, policy: str) -> float:
         container_valid=containers.validate_container(head, tail, fmt, size),
         statistics=stats,
         compression=containers.compression_evidence(head, tail, fmt, size),
+        inner_content=containers.inner_content_evidence(head, tail, fmt, size),
         policy=policy,
     )
     return (time.perf_counter() - start) * 1000.0
@@ -403,6 +473,7 @@ def main() -> int:
                 "container_status": inputs["container_status"],
                 "container_valid": inputs["container_valid"],
                 "compression": inputs["compression"],
+                "inner_content": inputs["inner_content"],
                 "arms": {
                     arm: score(case["path"], inputs, policy)
                     for arm, policy, _ in ARMS
@@ -545,6 +616,21 @@ def main() -> int:
             "A2_cases": len(a2_rows),
             "A2_still_benign_compressed": still_benign,
         }
+    a7_rows = [r for r in attack_rows if r["family"] == "A7_forged_inner_content"]
+    d4["a7_by_arm"] = {
+        arm: {
+            "flagged": sum(1 for r in a7_rows if r["arms"][arm]["suspicious"]),
+            "cases": len(a7_rows),
+            "missed": [r["file"] for r in a7_rows if not r["arms"][arm]["suspicious"]],
+        }
+        for arm, _p, _l in ARMS
+    }
+    d4["a7_note"] = (
+        "A7 is the attack against Arm D's inner-content appeal. Arm D is a "
+        "post-hoc refinement and A7 exists to price it: whatever A7 costs Arm D "
+        "is the limit of the refinement, recorded here rather than left to be "
+        "found later."
+    )
     c_residual = d4["by_arm"]["C"]["A2_still_benign_compressed"]
     d4["arm_c_sufficient"] = not c_residual
     d4["finding"] = (

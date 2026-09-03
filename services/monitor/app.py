@@ -36,8 +36,10 @@ from watchdog.observers.polling import PollingObserver
 
 import pipeline
 from admissibility import adjudicate
-from containers import compression_evidence, validate_container
+from containers import compression_evidence, inner_content_evidence, validate_container
 from detection import (
+    CONTAINER_POLICY_INNER,
+    DEFAULT_CONTAINER_POLICY,
     DEFAULT_ENTROPY_THRESHOLD,
     EntropyHistory,
     classify,
@@ -64,6 +66,18 @@ logger = logging.getLogger("monitor")
 app = FastAPI(title="URDS Monitor", version="1.0.0")
 
 ENTROPY_THRESHOLD = float(os.getenv("ENTROPY_THRESHOLD", DEFAULT_ENTROPY_THRESHOLD))
+
+
+def _inner_content(head: bytes, tail: bytes, container: str | None, size: int) -> dict | None:
+    """The inner-content reading, taken only by the policy that consults it.
+
+    It costs a bounded inflate of up to 64KB. Every other policy ignores the
+    result, so taking it unconditionally would put that cost on the sub-100ms
+    detection path for a value nobody reads.
+    """
+    if DEFAULT_CONTAINER_POLICY != CONTAINER_POLICY_INNER:
+        return None
+    return inner_content_evidence(head, tail, container, size)
 # Off in unit tests and anywhere the downstream services are not running.
 PIPELINE_ENABLED = os.getenv("PIPELINE_ENABLED", "true").lower() not in {"false", "0", "no"}
 MAX_EVENTS = int(os.getenv("MAX_EVENTS", "500"))
@@ -288,6 +302,7 @@ def extract_features(path: str) -> dict:
     entropy, statistics = measure(head)
     container_valid = validate_container(head, tail, identify_container(magic), size)
     compression = compression_evidence(head, tail, identify_container(magic), size)
+    inner = _inner_content(head, tail, identify_container(magic), size)
 
     verdict = classify(
         path,
@@ -298,6 +313,7 @@ def extract_features(path: str) -> dict:
         container_valid=container_valid,
         statistics=statistics,
         compression=compression,
+        inner_content=inner,
     )
     return {
         "shannon_entropy": entropy,
@@ -397,6 +413,9 @@ def handle_event(path: str, event_type: str) -> dict | None:
     # under `legacy` it is measured and ignored, which is what lets the Phase 6
     # experiment attribute a flip to the clause that caused it.
     compression = compression_evidence(head, tail, identify_container(magic), size)
+    # One level in: what does the container carry? Only the `+inner` policy asks,
+    # and only that policy pays the bounded inflate it costs.
+    inner = _inner_content(head, tail, identify_container(magic), size)
     # Differential entropy: how far this reading sits above the lowest one ever
     # taken on this path. None the first time a file is seen.
     entropy_delta = ENTROPY_HISTORY.observe(path, entropy, size) if readable else None
@@ -411,6 +430,7 @@ def handle_event(path: str, event_type: str) -> dict | None:
         container_valid=container_valid,
         statistics=statistics,
         compression=compression,
+        inner_content=inner,
     )
     # Hashing a file we could not read only pays the retry cost again to reach
     # the same None, and it is on the sub-100ms detection path.
