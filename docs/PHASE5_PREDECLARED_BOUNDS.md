@@ -200,3 +200,119 @@ is what D1 asks for.
 
 Confidence limits computed with `scipy.stats.beta.ppf(0.95, b+1, n-b)`; the
 required-`n` figure from `ln 0.05 / ln 0.98`.
+
+---
+
+# Addendum — the bounds re-evaluated on the grown corpus (Week 21)
+
+**Nothing above this line has been edited.** The predeclaration as it stood at
+the Week 20 freeze is preserved verbatim, and `git show
+cost-table-frozen-week20:docs/PHASE5_PREDECLARED_BOUNDS.md` returns it. This
+section applies the rules that document fixed to the corpus it anticipated.
+
+Written **before Arm B or Arm C had been measured** — commit order proves it: the
+corpus commit and this addendum precede `reports/three_arm_experiment.json` and
+`reports/benign_tradeoff.json` in the history of this branch.
+
+## What was done, and why it was already decided
+
+Bound 1's predeclared remedy 1 reads:
+
+> **Grow the validated stratum to ≥ 149 files before Arm C is measured.** The
+> builder is seeded and reproducible, so raising `--per-cell` for the validated
+> recipes and re-freezing is a mechanical change. This is the intended route.
+
+Taken. `--per-cell` raised from 8 to 15.
+
+The growth is **purely additive**, which was measured rather than assumed. Each
+file's bytes come from `random.Random(f"{seed}:{stem}:{index}")`, so a new index
+adds a file without disturbing any existing one:
+
+| | Week 19 | Week 21 |
+|---|---|---|
+| Files | 149 | 275 |
+| Retained with an identical SHA-256 | — | **149 of 149** |
+| Hash changed | — | **0** |
+| Stratum or Arm A verdict moved | — | **0** |
+| Added | — | 126 |
+| Rebuilt byte-identically from the seed | 144 / 144 | **270 / 270** |
+
+Every file that was in `corpus-frozen-week19` is in this corpus, byte for byte,
+in the same stratum, with the same Arm A verdict. The frozen corpus was extended,
+not replaced.
+
+| Stratum | Week 19 | Week 21 |
+|---|---|---|
+| `validated × compressible` | 32 | 60 |
+| `validated × incompressible` | 53 | 95 |
+| `unvalidated × compressible` | 16 | 30 |
+| `unvalidated × incompressible` | 48 | 90 |
+| **validated, both cells** | **85** | **155** |
+
+Format coverage is unchanged at nine of the sixteen registry formats. Raising
+`--per-cell` adds files to the recipes that exist; it does not conjure an encoder
+for `rar`, `7z`, `lz4`, `zstd`, `mp3`, `ogg`, `flac` or `iso-bmff`. **No claim of
+broader coverage is made than the Week 19 manifest made.**
+
+## Bound 1 — now evaluable, and tight
+
+`n = 155 ≥ 149`, so a perfect result clears 2.00 pp. Clopper–Pearson, one-sided,
+95%:
+
+| validated `n` | new FPs `b` | upper limit | vs 2.00 pp |
+|---|---|---|---|
+| 85 (Week 19) | 0 | 3.463 pp | could not pass |
+| **155 (Week 21)** | **0** | **1.914 pp** | **passes** |
+| 155 | 1 | 3.024 pp | fails |
+| 155 | 2 | 4.006 pp | fails |
+| 155 | 3 | 4.926 pp | fails |
+
+**Read the second and third rows together.** The bound is now evaluable, but only
+a repair that introduces **zero** new false positives on validated formats can
+meet it. One is enough to fail. That is a property of a ≤2 pp bound at a
+one-sided 95% interval on 155 files, and it is stated here, before the
+measurement, so that a failure at `b = 1` is not later described as a near miss.
+
+Growing the corpus further would loosen this: `b = 1` first clears 2.00 pp at
+`n ≈ 236`. That is **not** being done, because doing it after seeing `b` is
+exactly the manoeuvre the predeclaration exists to prevent. The `n` is fixed here
+at 155.
+
+## Bound 2 — re-evaluated from the rule, unchanged at 15.0 pp
+
+The predeclared rule is composition-independent by construction:
+
+> The `unvalidated × incompressible` false-positive rate may not be so high that
+> this stratum alone would push the corpus-wide false-positive rate above the 5%
+> of Table 5.9.
+
+Applied to each composition, per the instruction to record both:
+
+| Corpus | Stratum share | `0.05 / share` | Tolerance |
+|---|---|---|---|
+| Week 19 (48 / 149) | 32.215% | 15.521% | 15.0 pp |
+| **Week 21 (90 / 275)** | **32.727%** | **15.278%** | **15.0 pp** |
+
+The stratum's share of the corpus barely moved, so the derived tolerance barely
+moved, and both round down to the same figure. **The D5 tolerance is unchanged at
+15.0 percentage points.** The tension recorded in the original section stands
+unaltered: 15 pp is a trigger, not a standard of quality, and one benign archive
+in seven raising an alert is not a system an operator leaves switched on.
+
+## What did not change
+
+- The analysis specified in advance — paired design, per-stratum reporting, exact
+  McNemar on discordant pairs, Clopper–Pearson one-sided 95%, no multiplicity
+  adjustment, Arm C not certified on the unvalidated-format witness alone.
+- The ≤2.00 pp figure itself, and the 15.0 pp figure itself.
+- `cost-policy-v2` — still proposed, still not applied.
+- Everything under *What is deliberately not predeclared*.
+
+## Provenance
+
+| Input | Source |
+|---|---|
+| Grown corpus, 275 files | `reports/benign_corpus_manifest.json`, tag `corpus-frozen-week21` |
+| Additivity check, 149/149 hashes retained | manifest comparison against `git show corpus-frozen-week19:reports/benign_corpus_manifest.json` |
+| Confidence limits | `scipy.stats.beta.ppf(0.95, b+1, n-b)` |
+| Required `n` | `ln 0.05 / ln 0.98 = 148.28` |
