@@ -583,6 +583,104 @@ class EntropyHistory:
             return len(self._readings)
 
 
+# --------------------------------------------------- container exemption policy
+
+# The high-entropy container exemption is the Monitor's most-used
+# evidence-cancelling path (docs/MITIGATION_INVENTORY.md, M-06) and the one
+# Phase 5 measured as costing an attacker nothing to walk through
+# (reports/capability_calibration.json: a standard-library valid container is
+# NEGLIGIBLE). Phase 6's repair is selected from that frozen table, and it is a
+# policy rather than a rewrite so that the three arms of the experiment are
+# three settings of one switch rather than three versions of the code.
+#
+#   legacy    what shipped through Phase 5. A container header exempts high
+#             entropy unless the structure was checked and failed - so "no
+#             validator ran" and "the validator passed" are the same outcome.
+#             This is Arm A, and it stays the default until D5 says otherwise.
+#   strict    the exemption requires a validator to have actually run and
+#             passed. None stops meaning yes. This is the core repair, and it is
+#             what Chapter 9 section 9.3 finding 1 describes.
+#   ratio     strict, plus: a general-purpose compressor that compressed
+#             nothing has not explained anything. This is the D4 extension -
+#             without it, gzip.compress(ciphertext) still returns
+#             benign_compressed under strict.
+#   off       no container exemption at all. The null control, Arm B. Not a
+#             candidate for shipping; it exists to price the exemption.
+CONTAINER_POLICY_LEGACY = "legacy"
+CONTAINER_POLICY_STRICT = "strict-unvalidated"
+CONTAINER_POLICY_RATIO = "strict-unvalidated+ratio"
+CONTAINER_POLICY_OFF = "off"
+
+CONTAINER_POLICIES = (
+    CONTAINER_POLICY_LEGACY,
+    CONTAINER_POLICY_STRICT,
+    CONTAINER_POLICY_RATIO,
+    CONTAINER_POLICY_OFF,
+)
+
+# Off by default, per section 9.4.2 and P6.1: the repair does not ship until the
+# measured false-positive cost has been put through D5. An unrecognised value is
+# not silently coerced - that would turn a typo in a deployment into a policy
+# change nobody chose - so it raises where it is read, at import.
+DEFAULT_CONTAINER_POLICY = os.getenv("CONTAINER_EXEMPTION_POLICY", CONTAINER_POLICY_LEGACY)
+if DEFAULT_CONTAINER_POLICY not in CONTAINER_POLICIES:
+    raise ValueError(
+        "CONTAINER_EXEMPTION_POLICY=%r is not one of %s"
+        % (DEFAULT_CONTAINER_POLICY, ", ".join(CONTAINER_POLICIES))
+    )
+
+
+def container_explains_entropy(
+    container: str | None,
+    container_valid: bool | None,
+    policy: str,
+    compression: dict | None = None,
+) -> tuple[bool, str]:
+    """Does the declared container explain high entropy under `policy`?
+
+    Returns `(explains, why)`. `why` names the rule that decided, so a verdict
+    can say which policy produced it and an experiment can attribute a flip to a
+    specific clause rather than to "the repair".
+
+    The compression clause fails *open*: `compressed is None` means the archive
+    did not declare enough to measure, and a policy that flags on missing
+    evidence flags on ZIP64 and on truncated reads. Only a measured "compressed
+    nothing" withdraws the exemption.
+    """
+    if not container:
+        return False, "no recognised container header"
+    if container_valid is False:
+        return False, f"the {container} structure is not there behind the header"
+    if policy == CONTAINER_POLICY_OFF:
+        return False, "the container exemption is disabled"
+    if policy == CONTAINER_POLICY_LEGACY:
+        return True, (
+            f"a structurally valid {container} container"
+            if container_valid is True
+            else f"a {container} header (this format has no structural validator)"
+        )
+
+    # strict, and ratio on top of it
+    if container_valid is not True:
+        return False, (
+            f"a {container} header, but no structural validator ran on it - "
+            "nothing about this file was verified"
+        )
+    if policy == CONTAINER_POLICY_RATIO and compression is not None:
+        if compression.get("compressed") is False:
+            declared = (
+                "declared compression that achieved nothing"
+                if compression.get("declares_compression")
+                else "stored its payload uncompressed"
+            )
+            return False, (
+                f"a structurally valid {container} container, but it {declared} "
+                f"({compression.get('basis')}) - the format transformed nothing, so it "
+                "does not explain the entropy"
+            )
+    return True, f"a structurally valid {container} container"
+
+
 def classify(
     file_path: str,
     entropy: float,
@@ -592,6 +690,8 @@ def classify(
     entropy_delta: float | None = None,
     container_valid: bool | None = None,
     statistics: dict | None = None,
+    compression: dict | None = None,
+    policy: str | None = None,
 ) -> dict:
     """Decide whether a file event looks like encryption.
 
@@ -618,7 +718,14 @@ def classify(
     `statistics` is `measure`'s second return value; the block-entropy scalars in
     it are what catch intermittent encryption. Omitting it disables that rule
     rather than guessing at it.
+
+    `compression` is `containers.compression_evidence`'s reading, and `policy`
+    one of CONTAINER_POLICIES. Both default to the deployed setting, which is
+    `legacy` unless CONTAINER_EXEMPTION_POLICY says otherwise, so a caller that
+    supplies neither gets exactly the behaviour this function had before the
+    Phase 6 repair existed. The three-arm experiment passes `policy` explicitly.
     """
+    policy = policy or DEFAULT_CONTAINER_POLICY
     container = identify_container(magic)
     ransom_ext = has_ransom_extension(file_path)
     high_entropy = entropy >= threshold
@@ -687,7 +794,15 @@ def classify(
     # is uniformly ordinary. Gated on the container *not* being structurally
     # valid: a real PDF with an embedded JPEG, and every .docx, has this profile
     # by design.
-    if not high_entropy and partial and container_valid is not True:
+    # `container_valid is not True` under legacy: only a validator that ran and
+    # passed cancels this signal, so the "no validator" case never reached it.
+    # Under `ratio` a valid-but-uncompressing container stops cancelling it too,
+    # which is what catches a ZIP_STORED archive of alternating ciphertext and
+    # prose - measured at 6.84 bits/byte in P5.4 and returned as plain `benign`.
+    partial_explained = container_valid is True and policy != CONTAINER_POLICY_OFF
+    if partial_explained and policy == CONTAINER_POLICY_RATIO and compression is not None:
+        partial_explained = compression.get("compressed") is not False
+    if not high_entropy and partial and not partial_explained:
         return verdict_of(
             True,
             "suspected_encryption",
@@ -699,18 +814,17 @@ def classify(
             "partial_entropy",
         )
 
-    if high_entropy and container and container_valid is not False and not ransom_ext:
-        # The false-positive mitigation: high entropy explained by the format.
-        explanation = {
-            True: f"a structurally valid {container} container",
-            None: f"a {container} header (this format has no structural validator)",
-        }[container_valid]
+    # The false-positive mitigation: high entropy explained by the format. What
+    # counts as an explanation is the policy's decision, and the reason string
+    # carries whichever clause decided, either way.
+    explains, why = container_explains_entropy(container, container_valid, policy, compression)
+    if high_entropy and explains and not ransom_ext:
         return verdict_of(
-            False, "benign_compressed", f"entropy {entropy} explained by {explanation}", None
+            False, "benign_compressed", f"entropy {entropy} explained by {why}", None
         )
 
     if high_entropy:
-        reason = f"entropy {entropy} >= {threshold} with no recognised container header"
+        reason = f"entropy {entropy} >= {threshold}; {why}"
         if ransom_ext:
             reason += " and a known ransomware extension"
         return verdict_of(True, "suspected_encryption", reason, "static_entropy")
