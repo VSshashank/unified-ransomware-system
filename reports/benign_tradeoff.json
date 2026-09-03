@@ -1,0 +1,459 @@
+{
+  "schema": "urds.benign_tradeoff/1",
+  "generated_at": "2026-09-03T06:05:20.437675Z",
+  "commit": "d45ddad0838bbb4a6308c734c479aef81bd253d5",
+  "branch": "feat/admissibility-governance-novelty-v2",
+  "source_experiment": {
+    "file": "reports/three_arm_experiment.json",
+    "commit": "5e6d635d8a665aa744cdb48c7e5e70422012c5c3",
+    "benign_corpus_tag": "corpus-frozen-week21",
+    "files": 275
+  },
+  "analysis": {
+    "design": "paired; every arm scores the same file from one reading",
+    "baseline_arm": "A",
+    "unit": "one file, one verdict; a false positive is suspicious: true",
+    "test": "exact McNemar, binomial, one-sided, on discordant pairs",
+    "interval": "Clopper-Pearson, one-sided, 95%; the upper limit is what is judged",
+    "multiplicity": "no adjustment across strata, per the predeclaration",
+    "predeclared_in": "docs/PHASE5_PREDECLARED_BOUNDS.md"
+  },
+  "per_stratum": {
+    "unvalidated_x_compressible": {
+      "B": {
+        "files": 30,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 0,
+        "baseline_rate": 0.0,
+        "arm_rate": 0.0,
+        "discordant_b_arm_only": 0,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 0,
+        "point_difference_pp": 0.0,
+        "mcnemar_exact_one_sided_p": null,
+        "upper_limit_pp": 9.5034,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      },
+      "C1": {
+        "files": 30,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 0,
+        "baseline_rate": 0.0,
+        "arm_rate": 0.0,
+        "discordant_b_arm_only": 0,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 0,
+        "point_difference_pp": 0.0,
+        "mcnemar_exact_one_sided_p": null,
+        "upper_limit_pp": 9.5034,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      },
+      "C": {
+        "files": 30,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 0,
+        "baseline_rate": 0.0,
+        "arm_rate": 0.0,
+        "discordant_b_arm_only": 0,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 0,
+        "point_difference_pp": 0.0,
+        "mcnemar_exact_one_sided_p": null,
+        "upper_limit_pp": 9.5034,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      },
+      "D": {
+        "files": 30,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 0,
+        "baseline_rate": 0.0,
+        "arm_rate": 0.0,
+        "discordant_b_arm_only": 0,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 0,
+        "point_difference_pp": 0.0,
+        "mcnemar_exact_one_sided_p": null,
+        "upper_limit_pp": 9.5034,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      }
+    },
+    "unvalidated_x_incompressible": {
+      "B": {
+        "files": 90,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 90,
+        "baseline_rate": 0.0,
+        "arm_rate": 1.0,
+        "discordant_b_arm_only": 90,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 90,
+        "point_difference_pp": 100.0,
+        "mcnemar_exact_one_sided_p": 8.077935669463161e-28,
+        "upper_limit_pp": 100.0,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      },
+      "C1": {
+        "files": 90,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 90,
+        "baseline_rate": 0.0,
+        "arm_rate": 1.0,
+        "discordant_b_arm_only": 90,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 90,
+        "point_difference_pp": 100.0,
+        "mcnemar_exact_one_sided_p": 8.077935669463161e-28,
+        "upper_limit_pp": 100.0,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      },
+      "C": {
+        "files": 90,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 90,
+        "baseline_rate": 0.0,
+        "arm_rate": 1.0,
+        "discordant_b_arm_only": 90,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 90,
+        "point_difference_pp": 100.0,
+        "mcnemar_exact_one_sided_p": 8.077935669463161e-28,
+        "upper_limit_pp": 100.0,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      },
+      "D": {
+        "files": 90,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 90,
+        "baseline_rate": 0.0,
+        "arm_rate": 1.0,
+        "discordant_b_arm_only": 90,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 90,
+        "point_difference_pp": 100.0,
+        "mcnemar_exact_one_sided_p": 8.077935669463161e-28,
+        "upper_limit_pp": 100.0,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      }
+    },
+    "validated_x_compressible": {
+      "B": {
+        "files": 60,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 0,
+        "baseline_rate": 0.0,
+        "arm_rate": 0.0,
+        "discordant_b_arm_only": 0,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 0,
+        "point_difference_pp": 0.0,
+        "mcnemar_exact_one_sided_p": null,
+        "upper_limit_pp": 4.8703,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      },
+      "C1": {
+        "files": 60,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 0,
+        "baseline_rate": 0.0,
+        "arm_rate": 0.0,
+        "discordant_b_arm_only": 0,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 0,
+        "point_difference_pp": 0.0,
+        "mcnemar_exact_one_sided_p": null,
+        "upper_limit_pp": 4.8703,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      },
+      "C": {
+        "files": 60,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 0,
+        "baseline_rate": 0.0,
+        "arm_rate": 0.0,
+        "discordant_b_arm_only": 0,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 0,
+        "point_difference_pp": 0.0,
+        "mcnemar_exact_one_sided_p": null,
+        "upper_limit_pp": 4.8703,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      },
+      "D": {
+        "files": 60,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 0,
+        "baseline_rate": 0.0,
+        "arm_rate": 0.0,
+        "discordant_b_arm_only": 0,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 0,
+        "point_difference_pp": 0.0,
+        "mcnemar_exact_one_sided_p": null,
+        "upper_limit_pp": 4.8703,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      }
+    },
+    "validated_x_incompressible": {
+      "B": {
+        "files": 95,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 95,
+        "baseline_rate": 0.0,
+        "arm_rate": 1.0,
+        "discordant_b_arm_only": 95,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 95,
+        "point_difference_pp": 100.0,
+        "mcnemar_exact_one_sided_p": 2.524354896707238e-29,
+        "upper_limit_pp": 100.0,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      },
+      "C1": {
+        "files": 95,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 0,
+        "baseline_rate": 0.0,
+        "arm_rate": 0.0,
+        "discordant_b_arm_only": 0,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 0,
+        "point_difference_pp": 0.0,
+        "mcnemar_exact_one_sided_p": null,
+        "upper_limit_pp": 3.1042,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      },
+      "C": {
+        "files": 95,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 30,
+        "baseline_rate": 0.0,
+        "arm_rate": 0.3158,
+        "discordant_b_arm_only": 30,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 30,
+        "point_difference_pp": 31.5789,
+        "mcnemar_exact_one_sided_p": 9.313225746154785e-10,
+        "upper_limit_pp": 40.3118,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      },
+      "D": {
+        "files": 95,
+        "baseline_false_positives": 0,
+        "arm_false_positives": 0,
+        "baseline_rate": 0.0,
+        "arm_rate": 0.0,
+        "discordant_b_arm_only": 0,
+        "discordant_c_baseline_only": 0,
+        "discordant_total": 0,
+        "point_difference_pp": 0.0,
+        "mcnemar_exact_one_sided_p": null,
+        "upper_limit_pp": 3.1042,
+        "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+      }
+    }
+  },
+  "validated_formats_combined": {
+    "B": {
+      "files": 155,
+      "baseline_false_positives": 0,
+      "arm_false_positives": 95,
+      "baseline_rate": 0.0,
+      "arm_rate": 0.6129,
+      "discordant_b_arm_only": 95,
+      "discordant_c_baseline_only": 0,
+      "discordant_total": 95,
+      "point_difference_pp": 61.2903,
+      "mcnemar_exact_one_sided_p": 2.524354896707238e-29,
+      "upper_limit_pp": 67.8424,
+      "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+    },
+    "C1": {
+      "files": 155,
+      "baseline_false_positives": 0,
+      "arm_false_positives": 0,
+      "baseline_rate": 0.0,
+      "arm_rate": 0.0,
+      "discordant_b_arm_only": 0,
+      "discordant_c_baseline_only": 0,
+      "discordant_total": 0,
+      "point_difference_pp": 0.0,
+      "mcnemar_exact_one_sided_p": null,
+      "upper_limit_pp": 1.9142,
+      "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+    },
+    "C": {
+      "files": 155,
+      "baseline_false_positives": 0,
+      "arm_false_positives": 30,
+      "baseline_rate": 0.0,
+      "arm_rate": 0.1935,
+      "discordant_b_arm_only": 30,
+      "discordant_c_baseline_only": 0,
+      "discordant_total": 30,
+      "point_difference_pp": 19.3548,
+      "mcnemar_exact_one_sided_p": 9.313225746154785e-10,
+      "upper_limit_pp": 25.3235,
+      "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+    },
+    "D": {
+      "files": 155,
+      "baseline_false_positives": 0,
+      "arm_false_positives": 0,
+      "baseline_rate": 0.0,
+      "arm_rate": 0.0,
+      "discordant_b_arm_only": 0,
+      "discordant_c_baseline_only": 0,
+      "discordant_total": 0,
+      "point_difference_pp": 0.0,
+      "mcnemar_exact_one_sided_p": null,
+      "upper_limit_pp": 1.9142,
+      "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+    }
+  },
+  "corpus_wide": {
+    "B": {
+      "files": 275,
+      "baseline_false_positives": 0,
+      "arm_false_positives": 185,
+      "baseline_rate": 0.0,
+      "arm_rate": 0.6727,
+      "discordant_b_arm_only": 185,
+      "discordant_c_baseline_only": 0,
+      "discordant_total": 185,
+      "point_difference_pp": 67.2727,
+      "mcnemar_exact_one_sided_p": 2.039157646249539e-56,
+      "upper_limit_pp": 71.9526,
+      "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+    },
+    "C1": {
+      "files": 275,
+      "baseline_false_positives": 0,
+      "arm_false_positives": 90,
+      "baseline_rate": 0.0,
+      "arm_rate": 0.3273,
+      "discordant_b_arm_only": 90,
+      "discordant_c_baseline_only": 0,
+      "discordant_total": 90,
+      "point_difference_pp": 32.7273,
+      "mcnemar_exact_one_sided_p": 8.077935669463161e-28,
+      "upper_limit_pp": 37.6875,
+      "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+    },
+    "C": {
+      "files": 275,
+      "baseline_false_positives": 0,
+      "arm_false_positives": 120,
+      "baseline_rate": 0.0,
+      "arm_rate": 0.4364,
+      "discordant_b_arm_only": 120,
+      "discordant_c_baseline_only": 0,
+      "discordant_total": 120,
+      "point_difference_pp": 43.6364,
+      "mcnemar_exact_one_sided_p": 7.52316384526264e-37,
+      "upper_limit_pp": 48.771,
+      "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+    },
+    "D": {
+      "files": 275,
+      "baseline_false_positives": 0,
+      "arm_false_positives": 90,
+      "baseline_rate": 0.0,
+      "arm_rate": 0.3273,
+      "discordant_b_arm_only": 90,
+      "discordant_c_baseline_only": 0,
+      "discordant_total": 90,
+      "point_difference_pp": 32.7273,
+      "mcnemar_exact_one_sided_p": 8.077935669463161e-28,
+      "upper_limit_pp": 37.6875,
+      "upper_limit_basis": "Clopper-Pearson one-sided 95% on b of n. The baseline has no false positives in this cell, so c = 0 and the paired difference is b/n."
+    }
+  },
+  "bound_1": {
+    "statement": "False-positive difference on validated formats must be within 2.00 percentage points at the upper limit of a one-sided 95% interval.",
+    "source": "Table 9.8; docs/PHASE5_PREDECLARED_BOUNDS.md Bound 1",
+    "tolerance_pp": 2.0,
+    "n_validated": 155,
+    "predeclared_arm": "C",
+    "by_arm": {
+      "B": {
+        "new_false_positives": 95,
+        "point_difference_pp": 61.2903,
+        "upper_limit_pp": 67.8424,
+        "meets_bound": false,
+        "judged_against_the_predeclared_bound": false
+      },
+      "C1": {
+        "new_false_positives": 0,
+        "point_difference_pp": 0.0,
+        "upper_limit_pp": 1.9142,
+        "meets_bound": true,
+        "judged_against_the_predeclared_bound": false
+      },
+      "C": {
+        "new_false_positives": 30,
+        "point_difference_pp": 19.3548,
+        "upper_limit_pp": 25.3235,
+        "meets_bound": false,
+        "judged_against_the_predeclared_bound": true
+      },
+      "D": {
+        "new_false_positives": 0,
+        "point_difference_pp": 0.0,
+        "upper_limit_pp": 1.9142,
+        "meets_bound": true,
+        "judged_against_the_predeclared_bound": false
+      }
+    },
+    "verdict": "Arm C introduces 30 new false positives on 155 validated-format files, an upper limit of 25.3235 pp against a tolerance of 2.0 pp. The bound is NOT met.",
+    "note_on_other_arms": "Every other arm's figure is reported for completeness and none is judged against this bound. Arm D in particular was selected after Arm C's benign cost was measured; presenting its result as meeting a predeclared bound would be choosing the arm after seeing the data."
+  },
+  "bound_2": {
+    "statement": "The unvalidated x incompressible false-positive rate may not be so high that this stratum alone would push the corpus-wide rate above Table 5.9's 5%.",
+    "source": "Table 9.8 (no number given); docs/PHASE5_PREDECLARED_BOUNDS.md Bound 2",
+    "tolerance_pp": 15.0,
+    "stratum_files": 90,
+    "stratum_share_of_corpus": 0.3273,
+    "corpus_wide_budget": 0.05,
+    "by_arm": {
+      "B": {
+        "false_positives": 90,
+        "rate_pp": 100.0,
+        "upper_limit_pp": 100.0,
+        "within_tolerance": false,
+        "contribution_to_corpus_wide_rate": 0.3273,
+        "alone_exceeds_corpus_budget": true
+      },
+      "C1": {
+        "false_positives": 90,
+        "rate_pp": 100.0,
+        "upper_limit_pp": 100.0,
+        "within_tolerance": false,
+        "contribution_to_corpus_wide_rate": 0.3273,
+        "alone_exceeds_corpus_budget": true
+      },
+      "C": {
+        "false_positives": 90,
+        "rate_pp": 100.0,
+        "upper_limit_pp": 100.0,
+        "within_tolerance": false,
+        "contribution_to_corpus_wide_rate": 0.3273,
+        "alone_exceeds_corpus_budget": true
+      },
+      "D": {
+        "false_positives": 90,
+        "rate_pp": 100.0,
+        "upper_limit_pp": 100.0,
+        "within_tolerance": false,
+        "contribution_to_corpus_wide_rate": 0.3273,
+        "alone_exceeds_corpus_budget": true
+      }
+    }
+  },
+  "d5": {
+    "rule": "D5 - if false positives in the unvalidated x incompressible stratum exceed the predeclared tolerance, do not ship the repair by default. Ship behind an operator switch and state that a real validator for that format is the correct long-term fix.",
+    "fires": true,
+    "measured_rate_pp": 100.0,
+    "tolerance_pp": 15.0,
+    "decision": "D5 fires. Arm C raises 90 false positives on 90 files in this stratum - 100.0 pp against a tolerance of 15.0 pp, which it exceeds by a factor of 6.7. The repair does NOT ship by default. It stays behind CONTAINER_EXEMPTION_POLICY, whose default is `legacy`, and the correct long-term fix is a real structural validator for bzip2, xz, GIF and RIFF - which Chapter 9 \u00a79.13 places outside this project's scope."
+  }
+}
