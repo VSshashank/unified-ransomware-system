@@ -521,6 +521,19 @@ Now asserts `termination_time_ms` per result and uses `process.wait()`, which
 reaps the child and is authoritative. Verified with five consecutive full-suite
 runs.
 
+**Two tests still have this defect, found in Phase 6.**
+`test_benchmarks.py::test_detection_latency_under_100ms` and
+`test_tc11_concurrent.py::test_tc11_detection_stays_within_budget_under_load`
+each failed once across seven full monitor runs and each passes 6 of 6 alone.
+Confirmed pre-existing by stashing the Phase 6 changes and reproducing it on the
+code at `5e6d635`. Both assert a wall-clock threshold, so an unrelated test
+holding the CPU fails them — which is exactly the defect this section describes,
+in two places it was not fixed. It matters because every "no regression" claim in
+this project rests on that suite being deterministic. The fix is the one
+`scripts/phase5_baseline.py` already uses: count the window in samples, not
+seconds, and record host load beside the measurement. Raising the threshold is
+not a fix — 100 ms is a Table 5.9 commitment.
+
 ---
 
 ## 8. Where the implementation departs from the specification
@@ -745,11 +758,174 @@ relaxed after the numbers are in.
 
 ---
 
-## 11. Summary of measured results
+## 11. Repairing the exemption, and finding out what it costs (Phase 6)
+
+Phase 5 measured the container exemption and did not touch it. Phase 6 built the
+repair, ran it against locked cases, and let the predeclared bounds decide. The
+short version: **the repair works and cannot ship.**
+
+### 11.1 The repair is a policy, not a rewrite
+
+`CONTAINER_EXEMPTION_POLICY` has five settings, and the experiment's arms are
+settings of it rather than versions of the code. That is not a convenience — it
+is what makes the comparison honest. Three branches of an `if` maintained in
+parallel drift, and an arm that drifts is an arm that is measuring something
+other than the thing named in the report.
+
+The default is `legacy`: exactly the pre-Phase-6 behaviour, which is what the 224
+monitor tests assert. §9.4.2 forbids shipping the repair before D5 has ruled, and
+D5 ruled against it.
+
+Two clauses, traceable to two rows of the frozen table:
+
+- **strict** — a validator must have actually run and passed. This is §9.3
+  finding 1: `container_valid is not False` was true for `None` as well as
+  `True`, so "I could not check" and "I checked and it passed" produced the same
+  `benign_compressed`.
+- **ratio** — a general-purpose compressor that compressed nothing has explained
+  nothing. This is the D4 extension, and it reads sizes the archive already
+  declares about itself rather than validating anything, so §9.13's bar on new
+  validators for the eleven unvalidated formats stands.
+
+### 11.2 Why `strict` alone is not the repair
+
+This is the clearest single result of the phase and it is the reason §9.7 forbids
+certifying Arm C on the unvalidated-format witness alone.
+
+| Attack family | Arm A | Arm C1 (strict) | Arm C (+ratio) |
+|---|---|---|---|
+| header over ciphertext (21 formats) | 7/21 | **21/21** | 21/21 |
+| `gzip.compress(ciphertext)`, `ZIP_STORED`, `ZIP_DEFLATED` | 0/3 | **0/3** | **3/3** |
+| intermittent encryption in a valid container | 0/3 | **0/3** | **3/3** |
+
+Arm C1 closes the cheap forgery completely and leaves the *cheaper* one wide
+open, because a `gzip.compress(ciphertext)` container really is valid. Pooled,
+C1 would read 21 of 24 — 87.5% — while missing the entire family D4 is about.
+The families are counted separately in the report so that cannot happen.
+
+### 11.3 What the repair costs, and why it is not a tuning problem
+
+| Benign stratum | Arm A | Arm B (off) | Arm C1 | Arm C |
+|---|---|---|---|---|
+| unvalidated × incompressible (90) | 0 | **90** | **90** | **90** |
+| validated × incompressible (95) | 0 | **95** | 0 | **30** |
+| all 275 | **0** | 185 | 90 | **120** |
+
+The first row is identical across every arm that changes anything, and that is
+the finding. Eleven formats have no structural validator, §9.13 forbids writing
+one, and so "no structural validator ran on it" is the only sentence the detector
+can produce about a bzip2, an xz, a GIF or a WAV. The moment it stops treating
+that as a pass, every genuine file in those formats flags. No threshold moves it.
+
+`bzip2_text` — a bzip2 archive of ordinary prose — flags at entropy **7.87**.
+bzip2 compresses text well enough that its output is not distinguishable from
+ciphertext by entropy. These are not edge cases.
+
+The second row is the ratio clause meeting a legitimate `gzip` of a JPEG. On the
+evidence that clause reads, a backup of already-compressed data and an encryption
+of plaintext are the same file: both declared compression and achieved nothing.
+
+### 11.4 The decision rules, and which way each fell
+
+- **D3 did not fire, and that is the one result in the project's favour.**
+  Arm B — the exemption deleted — flags 185 of 275 benign files, 67.3% against a
+  5% budget. It flags every valid PNG of a photograph, because deflate cannot
+  compress noise. Deleting the exemption is not available, so something has to
+  decide when it applies. That is the case for a governance layer.
+- **D4 fired and Arm C answered it**, through the compression-yield clause.
+- **D5 fired at 100 pp against a 15.0 pp tolerance.** The repair does not ship by
+  default, and the write-up says what §9.7 requires it to say: a real structural
+  validator for those formats is the correct long-term fix.
+- **Bound 1 failed at 25.323 pp against 2.00.** Predeclared, measured, failed.
+- **D6 did not fire**; all six pipeline gates pass.
+
+### 11.5 A refinement, and the discipline of not claiming it
+
+Arm C's 30 validated-format false positives raised a fair question: is that cost
+irreducible? `strict-unvalidated+ratio+inner` answers it by asking what the
+archive carries — `gzip(real JPEG)` carries a valid JPEG, `gzip(ciphertext)`
+carries nothing recognisable. It removes all 30 and keeps every attack family.
+
+Two things about it are stated rather than buried.
+
+**It was chosen after the benign numbers were seen.** It therefore clears Bound 1
+and is *not reported as meeting it*. Predeclaring a bound and then selecting the
+arm that clears it is the manoeuvre §9.7 exists to prevent, and the fact that the
+arm is a good idea does not change what claiming it would be.
+
+**Its limit was measured, not assumed.** Attack family A7 was written to defeat
+it: a genuine JPEG through its SOS marker with ciphertext where the scan data
+goes. Every marker is real; nothing in a 64 KB sample says otherwise. Arm D
+catches 1 of 3. The refinement raises the attacker's price from one
+standard-library call to prepending a real marker chain, and that is all it does.
+
+### 11.6 Closing the audit gap
+
+Table 9.8's ledger row measured **50.0%** at Week 20, and it failed by
+construction: the fan-out is gated on `suppression is None`, so a *cancelled*
+suppression — the one decision that makes a detection disappear — reached
+nothing downstream.
+
+The gate is still there and still correct; a cancelled alert must not fire a
+response, or the operator's rule would be pointless. What changed is that the
+decision no longer travels only on that path. It is chained on its own, as a
+`suppression_decision` block with both costs and the verdict it silenced. The row
+now measures **100.0%**.
+
+That number needs one qualification, and it is carried in the report's own
+`what_this_row_does_not_cover` field so it cannot travel without it: **it is 100%
+of the decisions the governance layer makes.** The container exemption still
+never reaches `adjudicate()`, so it makes no decisions, cancels evidence on every
+event it touches, and leaves no record — while the coverage figure reads 100%.
+
+### 11.7 Three measurement bugs, all mine
+
+Recorded because the alternative is a report that reads as if measurement were
+easy.
+
+The latency comparison ran each arm to completion in turn and reported the arm
+doing the *most* work as the fastest. That was the page cache being handed to
+whichever ran last. Arms are now interleaved with the order rotating per
+repetition, and all five sit within 0.2 ms of each other.
+
+The ledger-coverage harness counted only `file_event` blocks, so it reported the
+repair as having changed nothing — the filter was written when that was the only
+block type able to hold an adjudication. Widening it produced **150%**, because
+an attenuated decision is now chained twice. Coverage counts decisions,
+deduplicated by path.
+
+The pipeline harness compared every hop against one reference record and reported
+a working hop as 6 of 6 carrying and 0 intact. A hash-whitelist rule carries the
+hash it matched, so six files produce six different records.
+
+Each was caught because the number was implausible in a specific direction — too
+fast, unchanged, exactly zero — rather than by re-reading the code. That is worth
+more than the individual fixes.
+
+---
+
+## 12. Summary of measured results
 
 Re-measured at the Week 20 gate by the methods Table 5.9 states, in
 `reports/phase5_baseline.json`. Superseded figures are retained below with the
-reason, as §9.9's risk row requires.
+reason, as §9.9's risk row requires. The Table 5.9 figures are unchanged at the
+Week 24 gate: the repair is off by default, so the deployed detection path is the
+one these were measured on.
+
+**Phase 6 additions**, from `reports/three_arm_experiment.json`,
+`reports/benign_tradeoff.json`, `reports/pipeline_governance.json`,
+`reports/failure_injection.json` and `reports/ledger_coverage.json`:
+
+| Measure | Target | Measured (Week 24) | Met |
+|---|---|---|---|
+| Simulator families, default policy **and** Arm C | 13/13 | **13/13**, all within 2 s, all restore round-trips true | yes |
+| Detection-path latency after repair | median <100 ms | **4.192 ms** median, 6.486 ms IQR, 13.661 ms p95 (140 samples) | yes |
+| False-positive difference, validated formats | ≤2 pp | **25.323 pp** (30 of 155) | **no** |
+| False-positive difference, unvalidated × incompressible | reported; D5 applies | **100.0 pp** vs 15.0 pp | D5 fires |
+| Mitigation decisions reaching the ledger | 100% | **100.0%** (was 50.0%) | yes |
+| Pipeline governance gates | all pass | **6 of 6** | yes |
+| Failure injections distinct and none verified | 5 distinct | **5 of 5**, none reported as verified | yes |
+| Test suite | no regression | **467 passed, 2 skipped** (was 465) | yes |
 
 | Metric (Table 5.9) | Target | Measured (Week 20) | Phase 4 figure |
 |---|---|---|---|

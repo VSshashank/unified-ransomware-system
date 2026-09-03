@@ -158,7 +158,7 @@ The only authenticated entry point. Everything else binds to loopback.
 
 ## 3. Monitor — `services/monitor/` (AS)
 
-### `app.py` (769 lines)
+### `app.py` (821 lines)
 
 The service and the detection loop.
 
@@ -196,7 +196,29 @@ The service and the detection loop.
 - `_record(event)` — appends under `_LOCK` to the bounded `EVENTS` deque and the
   `_SEEN_FILES` set.
 
-### `detection.py` (726 lines)
+### `detection.py` (869 lines)
+
+**The container exemption is a policy as of Phase 6 (P6.1).**
+`CONTAINER_EXEMPTION_POLICY` selects one of four, and
+`container_explains_entropy()` is the single place that decides:
+
+| Setting | Arm | The exemption applies when… |
+|---|---|---|
+| `legacy` *(default)* | A | a container is declared and the structure did not fail — so `None` and `True` are the same answer |
+| `strict-unvalidated` | C1 | a validator actually ran and passed |
+| `strict-unvalidated+ratio` | C | …and the container compressed something |
+| `strict-unvalidated+ratio+inner` | D | …or what it carries is itself a recognised, non-forged container |
+| `off` | B | never — the null control |
+
+The default is `legacy`, so a deployment that sets nothing gets exactly the
+behaviour this module had before Phase 6, which is what the 224 monitor tests
+assert. An unrecognised value raises at import rather than being coerced. **D5
+fires against the repair (100 pp on `unvalidated × incompressible` against a
+15.0 pp tolerance), so the default stays `legacy`** — see
+`docs/PHASE6_COMPLETION_REPORT.md` §4.
+
+The reason string names the clause that decided, either way, so a verdict says
+*which* policy produced it rather than only what it concluded.
 
 Pure functions, no I/O beyond reading the file under inspection.
 
@@ -235,7 +257,7 @@ Pure functions, no I/O beyond reading the file under inspection.
 - `sha256_file(path)` — full-file SHA-256, the field SI's recovery integrity
   check reads back.
 
-### `containers.py` (436 lines)
+### `containers.py` (698 lines)
 
 Structural validation of a declared container format. Asks the question a magic
 byte cannot: is the rest of the file shaped like the format it claims to be?
@@ -257,6 +279,28 @@ byte cannot: is the rest of the file shaped like the format it claims to be?
   terminal structure present*, which is what keeps a large archive mid-write out
   of the forged class. Every walk is bounded — `MAX_WALK_RECORDS`,
   `MAX_WALK_BYTES` — because this runs inside the sub-100ms budget.
+
+**Added in Phase 6 (P6.1).** Two readings that validate nothing — they read what
+a container already declares about itself, so §9.13's bar on new structural
+validators for the eleven unvalidated formats is untouched. Both are consumed
+only by a non-default policy.
+
+- `compression_evidence(head, tail, container, size)` — *did this container
+  actually compress what it carries?* For `zip`, the central directory's declared
+  compressed/uncompressed sizes; for `gzip`, the yield of the bounded inflate
+  `_validate_gzip` already runs. Returns `None` for every format outside
+  `COMPRESSION_MEASURED_FORMATS` — deliberately only the general-purpose
+  compressors, because holding a photograph to a compression ratio calls JPEG a
+  liar for doing its job. **`compressed is None` means "not measured", never
+  "did not compress"**: a policy that flags on missing evidence flags on ZIP64
+  and on truncated reads.
+- `inner_content_evidence(...)` — *what is inside, and does it survive a
+  head-level check?* A bounded inflate of the first member, then
+  `container_status` on what came out. `gzip.compress(ciphertext)` carries no
+  recognised header; `gzip(real JPEG)` carries a valid one; `gzip(JPEG magic +
+  ciphertext)` carries a **forged** one. A genuine JPEG marker chain with
+  ciphertext behind it passes, and that limit is measured as attack family A7
+  rather than left to be discovered.
 
 ### `suppression.py` (455 lines)
 
@@ -307,7 +351,18 @@ when forging the suppression costs at least as much as avoiding the detection.**
   W+X detection, import grouping by behaviour class, exports, resources,
   directory presence.
 
-### `pipeline.py` (233 lines)
+### `pipeline.py` (288 lines)
+
+**`log_governance_decision(client, event)` (P6.4)** chains a suppression that
+*cancelled* an alert, as a `suppression_decision` block carrying the
+adjudication, the verdict it silenced and both costs — with no prediction and no
+response, because acting on a cancelled alert would defeat the operator's own
+rule. Before it existed, the one decision an auditor most needs to see was the
+only one the chain never held, and Table 9.8's ledger row measured **50.0%**. It
+now measures **100.0%**.
+
+`trigger_response(...)` carries `admissibility` through to the Response service,
+which writes it into its own `response_action` block.
 
 - `run(event, features, verdict, client)` — orchestrates ML → ledger → response
   and returns `{prediction, ledger_block, response, stages}`.
@@ -410,7 +465,7 @@ loopback.
 - `ensure_com_apartment()` — COM initialisation, with teardown ordered so a
   chained `com_error` does not outlive its pointer.
 
-### `recovery/recovery.py` (370 lines) — SI
+### `recovery/recovery.py` (393 lines) — SI
 
 - `to_relative(file_path)` — strips the volume with `ntpath` then `posixpath`,
   and normalises separators to `/`. Both halves are required (APPROACH §5.3).
@@ -435,7 +490,16 @@ ledger outage must not fail the surrounding operation.
 
 ---
 
-## 7. Dashboard — `services/dashboard/app.py` (323 lines) (SH)
+## 7. Dashboard — `services/dashboard/app.py` (541 lines) (SH)
+
+**Governance surfacing (P6.4).** Before Phase 6 this file held no governance
+vocabulary at all: an alert a whitelist had cancelled and an alert never raised
+looked identical on screen. `GOVERNANCE_OUTCOMES`, `governance_outcome()` and
+`governance_chip()` now surface `cancelled`, `attenuated` and `deferred` as three
+distinct labels — in the banner, in the current-event panel with both costs, and
+as a column on the recent-events table. The outcome is read from the adjudication
+record and **never inferred from `suspicious`**, because a cancelled alert and a
+benign file both report `suspicious: false`.
 
 Streamlit, 1 s auto-refresh. Mints its own `admin` token directly with `jose`
 (lines 18–27) using the shared `JWT_SECRET`, then calls the gateway over HTTP.
@@ -483,6 +547,18 @@ write to `reports/` only when `URDS_WRITE_REPORTS=1`.
 | `build_benign_corpus.py` | P5.3 | `reports/benign_corpus_manifest.json` — 149 files by real encoders, stratified {validated, unvalidated} × {compressible, incompressible}, rebuildable byte-identically from a seed. `--verify` proves it. |
 | `capability_calibration.py` | P5.4 | `reports/capability_calibration.json` — the attack that defeats each strategy, built and run, with the ladder level derived twice from its operational facts. |
 | `admission_recompute.py` | P5.5 | `reports/admission_recompute.json` **and** `docs/ADMISSION_RECOMPUTE.md` — the doc is generated, not written beside the computation. |
+| `ledger_coverage.py` | Table 9.8 row 7 | `reports/ledger_coverage.json` — how many governance decisions reach the chain. Counts *decisions*, deduplicated by path: counting writes reported 150% once the response hop began carrying the record too. |
+
+### Phase 6 measurement harnesses
+
+Chapter 9 §9.4.2. Same `URDS_WRITE_REPORTS=1` gate.
+
+| File | Item | Produces |
+|---|---|---|
+| `three_arm_experiment.py` | P6.2 | `reports/three_arm_experiment.json` — 31 seeded attack cases in 7 families and 275 frozen benign files, scored under all five arms from one reading each. Every benign file is hash-checked against the frozen manifest first; the harness refuses to run against a corpus that is not the corpus that was frozen. |
+| `benign_tradeoff.py` | P6.3 | `reports/benign_tradeoff.json` — the predeclared analysis executed, not chosen: paired, per stratum, exact one-sided McNemar on discordant pairs, Clopper–Pearson one-sided 95% with the upper limit as the thing judged. |
+| `pipeline_governance.py` | P6.4 | `reports/pipeline_governance.json` — six hop gates plus the dashboard. Real `handle_event`, real `pipeline`, real `RecoveryManager`; only the transport is stood in for. The `deferred` population holds a genuine exclusive Win32 handle. |
+| `failure_injection.py` | P6.5 | `reports/failure_injection.json` — five injections against the real components, checked for distinctness, for "none reported as verified", and for every outcome carrying a reason. |
 
 ---
 
@@ -492,12 +568,21 @@ write to `reports/` only when `URDS_WRITE_REPORTS=1`.
 |---|---|---|
 | `services/gateway/tests/` | 78 | `test_gateway.py` (contract + OpenAPI parity, both directions), `test_authz.py` (roles, token issuance, TC-10 auditing, secret hygiene), `test_benchmarks.py` (API p95) |
 | `services/ledger/tests/` | 42 | `test_hash_chain.py` (tamper detection, verification benchmark), `test_api.py` |
-| `services/monitor/tests/` | 222 | `test_detection.py`, `test_api.py`, `test_benchmarks.py` (latency, FP rate, CPU, RAM), `test_suppression.py`, `test_baseline.py`, `test_pe_features.py`, `test_pipeline.py`, `test_tc01_simulator.py`, `test_tc11_concurrent.py`, `test_tc13_simulator_families.py`, `test_tc13_suppression_e2e.py` |
+| `services/monitor/tests/` | 224 | `test_detection.py`, `test_api.py`, `test_benchmarks.py` (latency, FP rate, CPU, RAM), `test_suppression.py`, `test_baseline.py`, `test_pe_features.py`, `test_pipeline.py`, `test_tc01_simulator.py`, `test_tc11_concurrent.py`, `test_tc13_simulator_families.py`, `test_tc13_suppression_e2e.py` |
 | `services/ml-engine/tests/` | 37 | `test_ml_api.py` — both model paths, `test_feature_contract.py`, `test_unscored_features.py` |
 | `services/response/tests/` + `recovery/tests/` | 86 + 2 skipped | `test_actions.py` (TC-07), `test_tc11_concurrent.py`, `test_recovery.py`, `test_vss_manager.py`, `test_integration.py` |
 
-**465 passed, 2 skipped**, re-measured on `feat/admissibility-governance-novelty-v2`
-at the Week 20 gate. The skips assert a POSIX SIGTERM guarantee with no Windows
+**467 passed, 2 skipped**, re-measured on `feat/admissibility-governance-novelty-v2`
+at the Week 24 gate — up two from the Week 20 figure of 465, both in
+`test_baseline.py`: `test_a_cancelled_alert_queues_its_decision_for_the_ledger`
+and `test_an_attenuated_alert_still_fans_out`.
+
+**Two of these are flaky under full-suite load and it is pre-existing.**
+`test_benchmarks.py::test_detection_latency_under_100ms` and
+`test_tc11_concurrent.py::test_tc11_detection_stays_within_budget_under_load`
+each failed once across seven full monitor runs and each passes 6 of 6 in
+isolation; the flake reproduces with the Phase 6 changes stashed. Both assert a
+wall-clock threshold, so an unrelated test holding the CPU fails them. The skips assert a POSIX SIGTERM guarantee with no Windows
 equivalent; a Windows-specific test covers the same ground.
 
 > **Test-ID collision to resolve before Phase 7.** `test_tc13_suppression_e2e.py`
@@ -527,6 +612,7 @@ foreach ($s in "gateway","ledger","monitor","ml-engine","response") { Push-Locat
 | `RESPONSE_ISOLATION_ENABLED` | *(unset)* | **Do not enable casually** — applies real firewall rules to this host. |
 | `RECOVERY_SNAPSHOT_ROOT` | `/app/snapshots` | Directory-backed snapshot stand-in. Leave unset on Windows for real VSS. |
 | `PIPELINE_ENABLED` | `true` | Off in unit tests and where downstream services are absent. |
+| `CONTAINER_EXEMPTION_POLICY` | `legacy` | Which container-exemption policy the detector runs. `legacy`, `strict-unvalidated`, `strict-unvalidated+ratio`, `strict-unvalidated+ratio+inner`, `off`. **The repair is off by default**: D5 fired against it in Phase 6. An unrecognised value raises at import rather than being coerced, so a typo cannot become a silent policy change. |
 | `URDS_WRITE_REPORTS` | *(unset)* | Benchmarks and harnesses always measure and always assert; this gates whether they **write** to `reports/`. Committed evidence is refreshed deliberately, never as a test side effect. |
 
 Ports: gateway `8000` and dashboard `8501` publish on all interfaces; monitor
