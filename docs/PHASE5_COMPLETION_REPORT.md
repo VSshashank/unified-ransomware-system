@@ -22,7 +22,28 @@ claiming otherwise.
 | **P5.5** admission recompute | AS | **Done** | `docs/ADMISSION_RECOMPUTE.md`, `reports/admission_recompute.json` | `URDS_WRITE_REPORTS=1 .venv/Scripts/python.exe scripts/admission_recompute.py` |
 | **P5.6** predeclared bounds | AS + NI | **Done** | `docs/PHASE5_PREDECLARED_BOUNDS.md` | committed before any Arm B/C measurement exists |
 
-### P0 — the governing method document does not exist
+### P0 — the governing method document
+
+> **CORRECTED 3 September 2026. The finding below is wrong.**
+> `docs/NOVELTY_PROOF_PLAN.md` **exists**, on
+> `origin/feat/admissibility-governance-novelty-v2` at commit `4e10adb`, 382
+> lines with a 14-row acceptance table. The search that missed it used
+> `git log --all`, which covers refs in *this clone*; the branch existed on the
+> server and had never been fetched, so no ref pointed at it.
+> `git ls-remote --heads origin` finds it. See `docs/METHOD_DOCUMENT_STATUS.md`
+> for the full account and `docs/PHASE6_COMPLETION_REPORT.md` §15 for every
+> Phase 5 and Phase 6 measurement mapped onto the real acceptance table.
+>
+> **Phase 5's measurements are unaffected** — they were taken against
+> `services/monitor/admissibility.py` and Table 9.8, both of which exist, and the
+> predeclared bounds were committed before any Phase 6 number. What is affected
+> is the *ladder*: §5.2 of the plan is a five-level scale and P5.4 calibrated
+> against the code's four-point one, so no level in
+> `reports/capability_calibration.json` should be quoted as a plan level without
+> re-deriving it.
+>
+> The original paragraph is left below, unedited, because a report that quietly
+> rewrites its own errors is worth less than one that shows them.
 
 `NOVELTY_PROOF_PLAN.md` is cited by §9.1 as governing the method and by §9.4.2 for
 the Week 24 acceptance table. It is not in the working tree, not on any of the 9

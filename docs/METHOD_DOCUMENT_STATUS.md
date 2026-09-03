@@ -1,3 +1,98 @@
+# The governing method document — a wrong finding, and its correction
+
+> ## CORRECTION, 3 September 2026
+>
+> **`docs/NOVELTY_PROOF_PLAN.md` exists.** It is on
+> `origin/feat/admissibility-governance-novelty-v2`, added in commit `4e10adb`
+> ("docs: add evidence-gated novelty proof plan"), and it is 382 lines carrying a
+> 14-row acceptance table.
+>
+> **The finding recorded in this document on 2 September 2026 — that the file
+> "does not exist and never has" — was wrong.** Phase 5 and Phase 6 were both
+> carried out under that wrong finding. What each cost is set out below, and the
+> Phase 6 report now maps every measurement onto the real acceptance table.
+>
+> The original text is preserved from §"What was searched" onward, unedited, so
+> the mistake and its reasoning stay legible. It is wrong. Read this section
+> first.
+
+## How the search missed it
+
+The command was:
+
+```bash
+git log --all --diff-filter=A --name-only | grep -i -E "novelty|proof"
+```
+
+`--all` means *every ref in this clone* — local branches, tags, and
+remote-tracking refs under `refs/remotes/`. It does **not** mean every ref on the
+server. The branch `feat/admissibility-governance-novelty-v2` existed on
+`origin`, but it had never been fetched into this clone, so no ref pointed at it
+and `--all` could not reach it. `git branch -a` had the same blind spot for the
+same reason, and running it was what produced the false confidence that "9 local
+and 11 remote branches" had been covered — eleven remote-tracking refs is not
+eleven remote branches.
+
+The discovery came from `git ls-remote --heads origin`, which asks the *server*
+rather than the clone. It listed twelve branches, one more than `git branch -r`
+knew about, and it was the missing one.
+
+**The lesson, stated so it is not repeated:** a claim that something does not
+exist anywhere must be made against the remote, not against the clone.
+`git ls-remote` and `git fetch --all` come before `git log --all`, and the
+reasoning in the original text below — *"`git log --all --diff-filter=A` lists
+every path ever added anywhere in history"* — is false as written. It lists every
+path ever added anywhere in **the history this clone has fetched**.
+
+## What working under the wrong finding cost
+
+The substitute acceptance layer was Chapter 9's Table 9.8 plus
+`docs/PHASE5_PREDECLARED_BOUNDS.md`. That turned out to be close to the real plan
+rather than at odds with it, so most of Phases 5 and 6 stands. The differences
+that matter:
+
+| # | The plan requires | What was done instead | Cost |
+|---|---|---|---|
+| 1 | §5.2 a **five-level** ladder: 0 direct control, 1 public primitive, 2 format-aware, 3 new engineering, 4 secret/preimage | P5.4 calibrated against `admissibility.py`'s four-point scale (NEGLIGIBLE/LOW/MODERATE/HIGH) | Levels are **not directly comparable**. The code's HIGH conflates the plan's 3 and 4. The plan puts a standard-library container at **Level 1**; P5.4 measured it NEGLIGIBLE, the plan's Level 0 |
+| 2 | §5.3 the strict rule `admit only if C_forge > C_avoid`, because "equal capability does not demonstrate that the mitigation is harder to forge" | The deployed `>=` was left in place and `>` computed as Policies B and D of the recompute matrix | The rule change the plan **mandates** was measured but not adopted. `admissibility.py` is unchanged |
+| 3 | §7.1 lists **inner-content/recursive validation as a predeclared candidate repair variant**, with "the final winner is selected only after calibration" | Arm D was built after Arm C's benign cost was seen and labelled post-hoc, with no predeclared criterion claimed for it | The caution was **stronger than the plan required**. The variant was predeclared; only the choice among variants came after calibration, which is what the plan asks for |
+| 4 | §9 an INCOMPLETE container must yield `deferred` or `unverified` | Under the repair, INCOMPLETE yields `suspected_encryption` / `static_entropy` | The "no silent benign cancellation" half is met; the **named state is not**. §7.1's "explicit deferred state" variant was never built |
+| 5 | §9 the ledger record must carry mitigation ID, validation state, capability levels, **policy version**, and reason | The `suppression_decision` block carries rule, signal, both costs and reason | **Validation state and policy version are missing** from the record |
+
+Items 1, 4 and 5 are open gaps. Item 2 is a decision the plan makes and this work
+deferred. Item 3 is a caution that can now be relaxed, and the Phase 6 report
+says so rather than quietly restating Arm D's status.
+
+## What was *not* affected
+
+- Every measurement stands. Nothing was measured against a criterion invented
+  after the fact, and the substitute bounds were committed at the Week 20 freeze
+  before any Phase 6 number existed.
+- The predeclared ≤2 pp non-inferiority bound is the plan's own figure —
+  §10 gives `FPR(C) − FPR(A) ≤ 2 percentage points` and requires a one-sided 95%
+  bound. That was arrived at independently from Table 9.8 and matches.
+- §8.1's six required attack witnesses are all present in
+  `reports/three_arm_experiment.json` as families A1–A7.
+- §10's statistical design — paired fixtures across arms, discordant pairs,
+  McNemar as a paired test only, ≥10 repetitions with median and IQR for
+  timing — is what `scripts/benign_tradeoff.py` executes.
+
+## Claim discipline, revised
+
+The instruction in the original text — that no sentence may cite
+`NOVELTY_PROOF_PLAN.md` as a source — **no longer applies**. The document exists
+and is the governing method per §9.1. Where it and Chapter 9 disagree, the proof
+plan governs the method and Chapter 9 governs the calendar.
+
+---
+
+---
+
+# ORIGINAL TEXT, 2 SEPTEMBER 2026 — SUPERSEDED AND WRONG
+
+*Preserved unedited below. Its central finding is false; see the correction
+above.*
+
 # The governing method document is missing — what Phase 5 does instead
 
 **Item P0. Recorded 2 September 2026, before any Phase 5 measurement was taken.**

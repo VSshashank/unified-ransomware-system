@@ -17,21 +17,32 @@ Week 20 gate holds, `git diff feat/detection-hardening..cost-table-frozen-week20
 re-run independently of the baseline file: **465 passed, 2 skipped**, exit 0 on
 all five services.
 
-### The method document, again
+### The method document — the P0 finding was wrong
 
-`docs/METHOD_DOCUMENT_STATUS.md` records that `NOVELTY_PROOF_PLAN.md` has never
-existed, and that resolving it means either finding it or authoring it *before
-Phase 6 and without consulting the Phase 5 results*. The Phase 5 results were in
-hand. **It was therefore not authored**, because an acceptance table written
-after the numbers are known is fitted to them, which is the defect §9.4.1 forbids
-for the repair and the cost table alike.
+**`docs/NOVELTY_PROOF_PLAN.md` exists.** It is on
+`origin/feat/admissibility-governance-novelty-v2` at commit `4e10adb`, 382 lines,
+with a 14-row acceptance table. Phases 5 and 6 were both carried out believing it
+did not exist, and the belief was wrong.
 
-**The operative acceptance layer for the Week 24 gate is Table 9.8 together with
-`docs/PHASE5_PREDECLARED_BOUNDS.md`.** That document was committed at the Week 20
-freeze, before any Phase 6 measurement existed, so it functions as the
-predeclared acceptance table the missing document would have supplied. Per
-Table 9.9, no sentence anywhere in this work cites `NOVELTY_PROOF_PLAN.md` as a
-source.
+The P0 search used `git log --all --diff-filter=A`. `--all` covers refs in *this
+clone* — the branch existed on the server and had never been fetched, so no ref
+pointed at it. `git ls-remote --heads origin` found it immediately, listing
+twelve branches where `git branch -r` knew eleven. Full account, including what
+the mistake cost, in `docs/METHOD_DOCUMENT_STATUS.md`.
+
+The substitute acceptance layer — Table 9.8 plus
+`docs/PHASE5_PREDECLARED_BOUNDS.md` — turned out to be close to the real plan
+rather than at odds with it, and §15 below maps every measurement onto the real
+table. **Nothing in this report was measured against a criterion invented after
+the fact**: the substitute bounds were committed at the Week 20 freeze before any
+Phase 6 number existed, and the plan's own §10 gives the same
+`FPR(C) − FPR(A) ≤ 2 percentage points` figure at a one-sided 95% bound that
+Table 9.8 gives.
+
+Where the two disagree, §9.1 says the proof plan governs the method. Five
+differences are recorded in `METHOD_DOCUMENT_STATUS.md`; three are open gaps
+(§15.2), one is a rule change this work deferred, and one is a caution that was
+stricter than the plan required.
 
 ---
 
@@ -64,7 +75,7 @@ M-06 records that `detection.py` tested `container_valid is not False`, so `None
 — no validator, INCOMPLETE, or unreadable — earned the same exemption as a
 structure that was checked and passed.
 
-`CONTAINER_EXEMPTION_POLICY` has four settings and the arms are settings of it,
+`CONTAINER_EXEMPTION_POLICY` has five settings and the arms are settings of it,
 not versions of the code:
 
 | Setting | Arm | What it changes |
@@ -72,6 +83,7 @@ not versions of the code:
 | `legacy` | **A** | nothing — what shipped through Phase 5. **The default.** |
 | `strict-unvalidated` | C1 | the exemption requires a validator to have run and passed |
 | `strict-unvalidated+ratio` | **C** | strict, plus: a general-purpose compressor that compressed nothing has explained nothing |
+| `strict-unvalidated+ratio+inner` | D | …or what it carries is itself a recognised, non-forged container (§8) |
 | `off` | B | no exemption at all — the null control |
 
 An unrecognised value raises at import rather than being coerced, so a typo in a
@@ -401,3 +413,108 @@ reproduced, the independence was not, and every record still carries
 
 Resolve any of them with `git rev-list -n 1 <tag>`. A report cannot carry the
 hash of the commit that carries it.
+
+
+---
+
+## 15. The real acceptance table (`NOVELTY_PROOF_PLAN.md` §9)
+
+Added 3 September 2026, after the plan was found. Every row is answered from an
+artefact already committed; nothing was re-measured to fit it, and nothing that
+came out badly has been softened.
+
+### 15.1 Row by row
+
+| # | Criterion | Required result | Measured | Met |
+|---|---|---|---|---|
+| 1 | Unvalidated-format closure | Arm C produces no silent `benign_compressed` for the 11 unvalidated-format attacker-valid witnesses | Family A1, **21/21 flagged** under Arm C (7/21 under Arm A) | **yes** |
+| 2 | Validated public-primitive witness | Arm C explicitly evaluates it; if it stays benign, add provenance/history/independent evidence or reject the repair | Family A2, **3/3 flagged** under Arm C. C1 flags 0/3, which is why C1 is not the repair | **yes** |
+| 3 | Incomplete validation | No silent benign cancellation; result is `deferred` or `unverified` | Family A3, **2/2 flagged** — no silent cancellation. But the verdict is `suspected_encryption`/`static_entropy`, **not a named `deferred` state** | **partial** |
+| 4 | Current/null comparison | Arm A, B and C all reported; Arm B quantifies the maximum cost of deleting the exemption | A 0/275, **B 185/275 (67.3%)**, C 120/275 | **yes** |
+| 5 | Validated benign controls | Arm C non-inferior to Arm A within the predeclared bound | **25.323 pp** upper limit against 2.00 pp | **NO** |
+| 6 | Unvalidated benign controls | Cost reported separately for compressible and incompressible; no zero-cost assumption | **0/30 compressible, 90/90 incompressible**, reported separately | **yes** |
+| 7 | Admission recomputation | Every mitigation/signal pair recomputed; any flipped admission reported | 20 cells × 4 policies, **6 flips**, each attributed to the change that caused it | **yes** |
+| 8 | Fixed detector baseline | 13-family sweep stays 13/13 within the detection deadline and restores correctly | **13/13** within 2 s with all restore round-trips true, under the default policy **and** under Arm C | **yes** |
+| 9 | ML preservation | Feature/API contract tests pass; no policy metadata silently discarded | 37/37 ml-engine tests. The ML hop does not receive the adjudication **by design** — the model scores bytes, not policy — and that is recorded in the report, so it is not discarded silently | **yes** |
+| 10 | Ledger preservation | Every repaired decision reaches the ledger with mitigation ID, validation state, capability levels, **policy version** and reason | Coverage **100.0%**. The block carries rule (mitigation ID), signal, `forgery_cost` and `avoidance_cost` (capability levels), and reason. **Validation state and policy version are absent** | **partial** |
+| 11 | Response preservation | Suspicious cases still produce the expected response action; no response loss hidden by isolation settings | Attenuated population reaches `/response/trigger` **6/6** with the record intact; isolation reports `enforced: false` explicitly with the rules it would have applied | **yes** |
+| 12 | Recovery preservation | Trusted snapshots achieve 100% verified restoration; missing or mismatched trust never reported as verified | **13/13** local restore round-trips. The second half is fully met — 5/5 injections, none reported as verified. **VSS-backed restore still not measured** (needs an elevated shell) | **partial** |
+| 13 | Tamper handling | Every injected ledger-tamper case fails verification and remains traceable | **1/1** detected, named to the block (`block 4`, walk stopped after 4 of 6), plus 32/32 tamper and chain-verification tests | **yes** |
+| 14 | Safety | All cases restore exactly; no unrelated target content modified | All restore round-trips true across both sweeps | **yes** |
+
+**Ten of fourteen met, three partial, one failed.**
+
+### 15.2 The three partials and the one failure
+
+**Row 5 fails**, and it is the same failure Table 9.8 row 3 records: the ratio
+clause costs 30 false positives on 155 validated-format files. The plan's §9 says
+the repair "is accepted only if all required rows pass", so on the plan's own
+terms **the repair is not accepted** — which agrees with D5's ruling that it does
+not ship. The two documents reach the same conclusion by different routes.
+
+**Row 3 is partial** because §7.1's "explicit deferred state" variant was never
+built. The plan asks for INCOMPLETE to surface as `deferred` or `unverified`; the
+repair surfaces it as suspicious. No evidence is silently cancelled, which is the
+substance, but the named state the plan asks for does not exist in
+`detection.py`. The dashboard already renders a `deferred` outcome
+(`GOVERNANCE_OUTCOMES`), so the surface exists and the verdict to feed it does
+not.
+
+**Row 10 is partial** on two fields. `validation_state` — the `container_status`
+name, VALID/FORGED/INCOMPLETE/UNVALIDATED/UNREADABLE — is computed on every event
+and not carried into the block; it is the field that would let an auditor tell
+"no validator" from "still being written" after the fact, which is precisely the
+distinction §9.3 finding 1 is about. `policy_version` is absent because the
+policy had no version until Phase 6 gave it one; `CONTAINER_EXEMPTION_POLICY`'s
+value is the natural thing to record.
+
+**Row 12 is partial** only on VSS, which needs an elevated shell this session did
+not have. Unchanged from Week 20.
+
+### 15.3 What §9's closing note means for the claim
+
+> "The ML, ledger, response, and recovery rows are required because the project
+> presents itself as a unified system; if any are deferred, the final claim must
+> explicitly say 'Monitor-scoped'."
+
+Rows 9, 11, 13 and 14 pass outright. Rows 10 and 12 are **partial, not deferred**
+— both were measured, and what is missing is named. That is a weaker trigger than
+the note describes, and this report does not claim it clears it.
+
+**The honest position:** the integrated claim is supported for propagation,
+response and tamper handling, and carries two named qualifications — the ledger
+record is missing two of its five required fields, and snapshot-backed recovery
+is verified locally but not through VSS. A reader who takes the strict reading of
+§9's note should treat the claim as Monitor-scoped until those two are closed.
+Both are small, specific pieces of work, and neither is blocked by anything in
+§9.13.
+
+### 15.4 Where the plan's method differs from what was run
+
+Recorded in full in `docs/METHOD_DOCUMENT_STATUS.md`; the two that change how a
+result should be read:
+
+**The ladder.** §5.2 is a five-level scale — 0 direct control, 1 public
+primitive, 2 format-aware, 3 new engineering, 4 secret/preimage. P5.4 calibrated
+against `admissibility.py`'s four-point scale, so the levels are **not directly
+comparable**: the code's HIGH conflates the plan's 3 and 4, and the plan puts a
+standard-library container at **Level 1** where P5.4 measured NEGLIGIBLE, its
+Level 0. The direction of every finding is unaffected — a standard-library
+container is still cheaper than the MODERATE the cost table assumed — but no
+level in `reports/capability_calibration.json` should be quoted as a plan level
+without re-deriving it.
+
+**Arm D was more predeclared than this report claimed.** §7.1 lists
+"inner-content/recursive validation" as one of five candidate repair variants,
+and says "the final winner is selected only after calibration". So the *variant*
+was predeclared and only the choice among variants came after the measurement —
+which is what the plan asks for. §8 of this report describes Arm D as post-hoc
+and declines to claim Bound 1 for it. **That was stricter than the plan
+requires**, and it is left standing rather than quietly relaxed: the arm was
+still chosen after its own benign numbers were visible, and the conservative
+reading costs nothing that matters, because Arm D cannot ship either way.
+
+§5.3's strict rule — `admit only if C_forge > C_avoid` — is a change the plan
+**mandates** and this work measured without adopting. `admissibility.py` is
+unchanged, and Policies B and D of `docs/ADMISSION_RECOMPUTE.md` are what
+adopting it would do.
