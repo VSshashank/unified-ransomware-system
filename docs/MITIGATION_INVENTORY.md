@@ -319,3 +319,81 @@ citations have since drifted — its §4.5 points at `admissibility.py:80` for
 `"structural_mismatch": MODERATE` entry of the `AVOIDANCE_COST` dict — which is why
 this inventory was derived from the source rather than from it. Its §4.6 citation of
 `admissibility.py:128` for `adjudicate` does still resolve.
+
+---
+
+# Addendum — what P6.4 changed, and what it did not (Week 22)
+
+**Nothing above this line has been edited.** The inventory as it stood at the
+Week 20 gate is preserved verbatim; `git show
+cost-table-frozen-week20:docs/MITIGATION_INVENTORY.md` returns it. This section
+records which rows moved and which did not, measured rather than asserted, by
+`scripts/pipeline_governance.py` and `scripts/ledger_coverage.py`.
+
+## Rows that changed
+
+| # | Was | Is now |
+|---|---|---|
+| **M-16** | the fan-out gate — a *cancelled* suppression reached nothing downstream, so the decision that removed an alert was the one decision the chain never held | the fan-out is still gated on `suppression is None`, and still must be — a cancelled alert must not fire a response, or the operator's rule would be pointless. What changed is that the **decision** no longer travels only on that path: `app.handle_event` queues a `governance` work item, and `pipeline.log_governance_decision` chains a `suppression_decision` block carrying the adjudication, the verdict it silenced and both costs, with no prediction and no response |
+| **Dashboard rows** | the dashboard held **no** governance vocabulary at all — an alert a whitelist had cancelled and an alert never raised looked identical on screen | `GOVERNANCE_OUTCOMES`, `governance_outcome()` and `governance_chip()` surface `cancelled`, `attenuated` and `deferred` as three distinct labels, in the banner, in the current-event panel with both costs, and as a column on the recent-events table. The outcome is read from the adjudication record, never inferred from `suspicious` — which is the mistake the old code could not avoid, because a cancelled alert and a benign file both report `suspicious: false` |
+| **Response hop** | `trigger_response` carried `incident_id`, `process_id`, `threat_level` and `action_required`; the adjudication stopped at the Monitor | `TriggerRequest.admissibility` is optional and carried through into the Response service's own `response_action` ledger entry |
+| **Recovery hop** | `RecoverRequest` carried a snapshot id and a file list — no incident linkage of any kind, so a `file_recovered` block could only be joined to the detection that caused it on a timestamp | `incident_id` and `admissibility` are optional fields on the request and are written into the `file_recovered` block |
+
+**Table 9.8 row 7, "mitigation decisions reaching the ledger", moves from 50.0%
+to 100.0%** — `reports/ledger_coverage.json`, re-measured against the same three
+populations.
+
+That re-measurement needed a correction of its own. The harness counted only
+`file_event` blocks, which was right while that was the only block type able to
+hold an adjudication and became an undercount the moment `suppression_decision`
+existed — it reported the repair as having changed nothing. Widening the filter
+then reported **150%**, because an attenuated decision is now chained twice: once
+on the `file_event` block and again on the `response_action` block. Both are
+correct and it is still one decision, so coverage is counted per decision,
+deduplicated by the path it was about.
+
+## Rows that did not change, and must not be read as if they had
+
+**M-05 and M-06 stand exactly as written.** The container exemption still never
+reaches `adjudicate()`: `app.py` only adjudicates a verdict that is already
+suspicious, and `benign_compressed` is not. The exemption therefore produces no
+decision, contributes to neither side of the coverage ratio, and remains
+completely outside the governance layer.
+
+This matters for how row 7's new 100% is read. It is 100% of the decisions the
+governance layer **makes**. In the `ungoverned` population of the coverage
+measurement, twelve events had their evidence cancelled by the container
+exemption and the chain holds no record of any of them — and the coverage figure
+is still 100%, because no decision was made to chain. **Reading that 100% as
+"every evidence-cancelling path is audited" would be wrong.** The report carries
+this qualification in its own `what_this_row_does_not_cover` field so the number
+cannot travel without it.
+
+Closing that gap is what the P6.1 repair is for, and D5 has ruled that the repair
+does not ship by default.
+
+The remaining ungoverned rows — **M-07** through **M-15**, **M-17** through
+**M-21**, and every row under ML Engine, Gateway and Dashboard — are unchanged.
+The summary line at the top of this document still holds: of the 34 call sites,
+29 can cancel, attenuate or defer evidence, and 3 pass through `adjudicate()`.
+
+## How this was measured
+
+`scripts/pipeline_governance.py` drives three populations through the real
+`handle_event`, the real `pipeline`, and the real `RecoveryManager`. Only the
+network transport is replaced, and it records rather than answers. The
+`deferred` population holds a genuine exclusive Win32 handle (`CreateFileW` with
+`dwShareMode` 0), so the Monitor's read fails the way it fails in production
+rather than by a patched reader. The dashboard helpers are lifted out of
+`services/dashboard/app.py` by AST and executed, because importing that module
+would run Streamlit's page setup and parsing it would only prove the text exists.
+
+"Intact" is deep equality against the record the Monitor produced, paired **per
+event**. The first version of this measurement compared every hop against a
+single reference record and reported the cancelled population as 6 of 6 carrying
+and 0 intact — each file has its own hash, so a hash-whitelist rule produces six
+different records, and the hop was working. Hops that carry no file path
+(`/response/trigger` carries an incident id) are matched against the set of
+records instead, which is the strongest claim their payload supports.
+
+All six gates pass, so **D6 does not fire** — `reports/pipeline_governance.json`.

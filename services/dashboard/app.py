@@ -1,6 +1,8 @@
 import os
 from datetime import datetime, timedelta, timezone
 
+from collections import Counter
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -65,6 +67,51 @@ def status_label(raw_status: str | None) -> str:
     if not raw_status:
         return "Unknown"
     return raw_status.replace("_", " ").title()
+
+
+# The three outcomes an operator rule can have, and how each reads on screen.
+# P5.1 found this vocabulary absent from the dashboard entirely: an alert that a
+# whitelist had cancelled and an alert that was never raised looked identical
+# here, which is the one distinction the governance layer exists to make.
+#
+#   cancelled   a rule matched and was expensive enough to fake that it was
+#               allowed to remove the alert. The detection happened.
+#   attenuated  a rule matched and was outranked. The alert stands, and the
+#               operator should see that their rule was consulted and lost.
+#   deferred    no verdict was reached now - an unreadable file, a first
+#               sighting with no entropy history. Not a benign finding.
+GOVERNANCE_OUTCOMES = {
+    "cancelled": ("Cancelled", "#f59e0b", "an operator rule removed this alert"),
+    "attenuated": ("Attenuated", "#38bdf8", "a rule matched and was outranked; the alert stands"),
+    "deferred": ("Deferred", "#a78bfa", "no verdict was reached on this event"),
+}
+
+
+def governance_outcome(event: dict) -> str | None:
+    """`cancelled`, `attenuated`, `deferred`, or None when no rule was involved.
+
+    Read from the adjudication record the Monitor puts on the event, never
+    inferred from `suspicious` - a cancelled alert and a benign file both report
+    `suspicious: false`, and telling them apart from that field is exactly the
+    mistake this function exists to stop.
+    """
+    adjudication = event.get("admissibility")
+    if isinstance(adjudication, dict) and adjudication.get("outcome"):
+        return adjudication["outcome"]
+    if event.get("verdict") in {"unreadable", "deferred"}:
+        return "deferred"
+    return None
+
+
+def governance_chip(outcome: str | None) -> str:
+    if outcome not in GOVERNANCE_OUTCOMES:
+        return ""
+    label, colour, _ = GOVERNANCE_OUTCOMES[outcome]
+    return (
+        f'<span style="background:{colour}22;color:{colour};border:1px solid {colour}66;'
+        f'border-radius:6px;padding:2px 8px;font-size:0.78rem;font-weight:600;">'
+        f"{label}</span>"
+    )
 
 
 def service_status(health: dict, name: str) -> str:
@@ -220,6 +267,10 @@ model_threat_level = (latest_prediction or {}).get("threat_level", "low")
 # small file encrypted in place read "System Secure" on screen while the
 # Monitor had already flagged it and the Response engine had acted on it.
 monitor_flagged = bool(latest_event.get("suspicious"))
+# A cancelled alert reads `suspicious: false`, so the banner would call it
+# "System Secure" and say nothing about the detection an operator rule removed.
+# The outcome is read from the adjudication record instead.
+latest_outcome = governance_outcome(latest_event)
 is_threat = prediction == "ransomware" or monitor_flagged
 threat_level = max(
     model_threat_level,
@@ -242,6 +293,7 @@ st.markdown(
       <div class="status-line">
         Latest event: <strong>{event_type}</strong> on <strong>{latest_path}</strong><br>
         Monitor verdict: <strong>{status_label(latest_event.get("verdict"))}</strong> |
+        Governance: <strong>{GOVERNANCE_OUTCOMES.get(latest_outcome, ("None applied",))[0]}</strong> |
         Model decision: <strong>{prediction}</strong> | Threat level: <strong>{threat_level.upper()}</strong> |
         Confidence: <strong>{pct(confidence)}</strong> | Entropy: <strong>{latest_entropy}</strong>
       </div>
@@ -298,6 +350,34 @@ with summary_left:
             ]
         )
         st.dataframe(event_summary, use_container_width=True, hide_index=True)
+
+        # The adjudication, in full, when a rule was involved. Both costs are
+        # shown because the outcome is a comparison between them and an operator
+        # who can only see the verdict cannot tell whether their rule won on
+        # merit or on a tie.
+        adjudication = latest_event.get("admissibility")
+        if latest_outcome:
+            label, colour, meaning = GOVERNANCE_OUTCOMES[latest_outcome]
+            st.markdown(
+                f"{governance_chip(latest_outcome)} &nbsp;<span style='opacity:0.8'>{meaning}</span>",
+                unsafe_allow_html=True,
+            )
+        if isinstance(adjudication, dict):
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {"Field": "Rule", "Value": adjudication.get("rule")},
+                        {"Field": "Matched value", "Value": adjudication.get("value")},
+                        {"Field": "Signal it would cancel", "Value": adjudication.get("signal")},
+                        {"Field": "Cost to forge the rule", "Value": adjudication.get("forgery_cost")},
+                        {"Field": "Cost to avoid the signal", "Value": adjudication.get("avoidance_cost")},
+                        {"Field": "Outcome", "Value": adjudication.get("outcome")},
+                        {"Field": "Why", "Value": adjudication.get("reason")},
+                    ]
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
     else:
         st.info("Waiting for the monitor service to report a file event.")
 
@@ -418,11 +498,31 @@ with details_left:
                 "user": "User",
             }
         )
+        # One column per row saying which of the three outcomes applied. Without
+        # it a cancelled detection is indistinguishable from a file that was
+        # never suspicious, which is the row an auditor most needs to find.
+        table_df["Governance"] = [
+            GOVERNANCE_OUTCOMES.get(governance_outcome(event), ("-",))[0] for event in events
+        ]
         st.dataframe(
-            table_df[["Timestamp", "Event", "File", "Entropy", "Process ID", "User"]],
+            table_df[
+                ["Timestamp", "Event", "File", "Entropy", "Governance", "Process ID", "User"]
+            ],
             use_container_width=True,
             hide_index=True,
         )
+        counts = Counter(
+            governance_outcome(event) for event in events if governance_outcome(event)
+        )
+        if counts:
+            st.caption(
+                "Governance outcomes in view: "
+                + ", ".join(
+                    f"{GOVERNANCE_OUTCOMES[key][0]} {value}"
+                    for key, value in counts.items()
+                    if key in GOVERNANCE_OUTCOMES
+                )
+            )
     else:
         st.info("No events reported yet.")
 

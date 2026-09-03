@@ -122,12 +122,55 @@ def log_baseline(client: httpx.Client, event: dict) -> dict | None:
     )
 
 
+def log_governance_decision(client: httpx.Client, event: dict) -> dict | None:
+    """Chain a suppression that *cancelled* an alert.
+
+    P5.1 row M-16 and Table 9.8 row 7: an admitted suppression stops the event
+    at `app.handle_event`'s fan-out gate, so the one decision an auditor most
+    needs to see - the one that made a detection disappear - was the only one
+    the chain never held. Coverage measured at 50.0% before this existed.
+
+    This is not the pipeline. There is no prediction and no response, because
+    the alert was cancelled and acting on it would defeat the operator's own
+    rule. What is written is the decision and its two costs, so the chain shows
+    that a detection existed, which rule removed it, and what that rule would
+    have cost to forge against what the signal cost to avoid.
+    """
+    admissibility = event.get("admissibility")
+    if not admissibility:
+        return None
+    return log_to_ledger(
+        client,
+        "suppression_decision",
+        {
+            "file_path": event.get("file_path"),
+            "file_hash": event.get("file_hash"),
+            "event_type": event.get("event_type"),
+            "entropy": event.get("entropy"),
+            # The verdict as the detector reached it, before the rule applied.
+            # Without this the entry says a rule fired and not what it silenced.
+            "verdict": event.get("verdict"),
+            "reason": event.get("reason"),
+            "signal": admissibility.get("signal"),
+            "admissibility": admissibility,
+            "outcome": admissibility.get("outcome"),
+            "suppressed_by": event.get("suppressed_by"),
+            "detection_latency_ms": event.get("detection_latency_ms"),
+            "observed_at": event.get("timestamp") or utc_now(),
+        },
+    )
+
+
 def predict(client: httpx.Client, features: dict) -> dict | None:
     return _post(client, ML_URL, "/predict", {"features": features})
 
 
 def trigger_response(
-    client: httpx.Client, incident_id: str, process_id: int | None, threat_level: str
+    client: httpx.Client,
+    incident_id: str,
+    process_id: int | None,
+    threat_level: str,
+    admissibility: dict | None = None,
 ) -> dict | None:
     """Ask the Response service to act on one incident.
 
@@ -145,6 +188,11 @@ def trigger_response(
             "process_id": process_id or 0,
             "threat_level": threat_level,
             "action_required": "terminate_process" if process_id else "isolate_and_log",
+            # The governance record travels with the incident. An operator rule
+            # that was consulted and outranked is why this response is firing at
+            # all, and the Response service's own ledger entry should say so
+            # rather than making an auditor join two chains on a timestamp.
+            "admissibility": admissibility,
         },
     )
 
@@ -211,7 +259,13 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
 
         if threat_level in ACTIONABLE_THREAT_LEVELS:
             incident_id = f"inc_{(block or {}).get('block_id', 'na')}_{event.get('event_id', 'na')}"
-            response = trigger_response(client, incident_id, event.get("process_id"), threat_level)
+            response = trigger_response(
+                client,
+                incident_id,
+                event.get("process_id"),
+                threat_level,
+                admissibility=event.get("admissibility"),
+            )
             if response:
                 result["response"] = response
                 result["stages"].append("response_triggered")
@@ -224,6 +278,7 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
                         "incident_id": incident_id,
                         "threat_level": threat_level,
                         "actions_taken": response.get("actions_taken", []),
+                        "admissibility": event.get("admissibility"),
                         "timestamp": utc_now(),
                     },
                 )

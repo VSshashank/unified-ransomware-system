@@ -119,7 +119,50 @@ def test_a_whitelisted_file_still_records_no_baseline(tmp_path):
     assert event["suspicious"] is False
     assert event["suppressed_by"]["rule"] == "path"
 
-    assert kinds() == []
+    # No baseline, which is what this test is about. `governance` is the P6.4
+    # work item that chains the cancelled decision; it writes a
+    # suppression_decision block, never a file_baseline one.
+    assert "baseline" not in kinds()
+
+
+def test_a_cancelled_alert_queues_its_decision_for_the_ledger(tmp_path):
+    """The one decision an auditor most needs is the one that removed an alert.
+
+    P5.1 row M-16: the fan-out is gated on `suppression is None`, so before P6.4
+    a cancelled suppression reached nothing downstream and the chain held no
+    record that a detection had ever existed. Table 9.8's "mitigation decisions
+    reaching the ledger" measured 50.0% for exactly this reason.
+
+    The alert must still not fire - no prediction, no response - so the item is
+    `governance` and not `detection`.
+    """
+    target = tmp_path / "vault.bin"
+    target.write_bytes(os.urandom(40000))
+    monitor_app.WHITELIST.replace([str(tmp_path / "*.bin")], [])
+
+    event = monitor_app.handle_event(str(target), "created")
+    assert event["admissibility"]["outcome"] == "cancelled"
+
+    items = queued()
+    assert [item[0] for item in items] == ["governance"]
+    assert items[0][1] is event
+
+
+def test_an_attenuated_alert_still_fans_out(tmp_path):
+    """An outranked rule leaves the alert standing, so the pipeline runs.
+
+    The counterpart to the test above: `governance` must not replace the
+    detection path for a decision that did not cancel anything.
+    """
+    target = tmp_path / "archive.zip"
+    target.write_bytes(b"PK\x03\x04" + os.urandom(40000))
+    monitor_app.WHITELIST.replace([str(tmp_path / "*.zip")], [])
+
+    event = monitor_app.handle_event(str(target), "created")
+    assert event["admissibility"]["outcome"] == "attenuated"
+    assert event["suspicious"] is True
+
+    assert kinds() == ["detection"]
 
 
 def test_a_deleted_file_records_no_baseline(tmp_path):

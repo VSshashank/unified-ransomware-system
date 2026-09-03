@@ -81,13 +81,44 @@ class LedgerStub:
             return {"status": "success", "actions_taken": ["admin_notified"]}
         return {}
 
+    # Any chained block that carries an adjudication counts, whatever its type.
+    # This filter originally accepted `file_event` only, which was correct while
+    # that was the sole block type able to hold one - and became an undercount
+    # the moment `suppression_decision` existed, reporting the M-16 repair as
+    # having changed nothing. The measurement was wrong, not the repair.
+    ADJUDICATION_BLOCK_TYPES = ("file_event", "suppression_decision", "response_action")
+
     def adjudications(self) -> list[dict]:
         return [
             w["event_data"]["admissibility"]
             for w in self.ledger_writes
-            if w.get("event_type") == "file_event"
+            if w.get("event_type") in self.ADJUDICATION_BLOCK_TYPES
             and (w.get("event_data") or {}).get("admissibility")
         ]
+
+    def decisions_chained(self) -> set[str]:
+        """The *files* whose decision reached the chain, not the writes it took.
+
+        Counting writes reported 150% once the response hop began carrying the
+        record too: an attenuated alert chains its adjudication in `file_event`
+        and again in `response_action`. Both are correct and it is still one
+        decision. Coverage is a question about decisions, so this deduplicates
+        by the path the decision was about.
+        """
+        return {
+            w["event_data"].get("file_path")
+            for w in self.ledger_writes
+            if w.get("event_type") in self.ADJUDICATION_BLOCK_TYPES
+            and (w.get("event_data") or {}).get("admissibility")
+            and (w.get("event_data") or {}).get("file_path")
+        }
+
+    def block_types(self) -> dict:
+        counts: dict[str, int] = {}
+        for write in self.ledger_writes:
+            key = write.get("event_type") or "unknown"
+            counts[key] = counts.get(key, 0) + 1
+        return counts
 
 
 def drive(workdir: Path, monkeypatched_stub: LedgerStub, population: str) -> dict:
@@ -173,7 +204,9 @@ def main() -> int:
                     **monitored,
                     "ledger_writes": len(stub.ledger_writes),
                     "ledger_event_types": sorted({w.get("event_type") for w in stub.ledger_writes}),
-                    "adjudications_reaching_ledger": len(stub.adjudications()),
+                    "adjudication_writes": len(stub.adjudications()),
+                    "adjudications_reaching_ledger": len(stub.decisions_chained()),
+                    "ledger_block_types": stub.block_types(),
                 }
     finally:
         monitor_pipeline._post = original_post
@@ -197,14 +230,28 @@ def main() -> int:
         "adjudications_reaching_ledger": total_reaching,
         "by_population": findings,
         "mechanism": (
-            "app.py:491 gates the downstream fan-out on `suppression is None`, and "
-            "the ledger is only reachable through that fan-out (app.py:502, :515). A "
-            "cancelled suppression sets `suppression` non-None, so the fan-out is "
-            "skipped and the adjudication that removed the alert is never chained. An "
-            "attenuated one leaves `suppression` None, so it is chained with both "
-            "costs in event_data.admissibility (pipeline.py:192). The container "
-            "exemption produces no adjudication at all - app.py:424 only adjudicates "
-            "a verdict that is already suspicious, and benign_compressed is not."
+            "The detection fan-out is still gated on `suppression is None`, and it "
+            "still must be: a cancelled alert must not fire a response, or the "
+            "operator's own rule would be pointless. What changed in P6.4 is that "
+            "the *decision* no longer travels only on that path. A cancelled "
+            "suppression now queues a `governance` work item of its own, and "
+            "pipeline.log_governance_decision chains it as a `suppression_decision` "
+            "block carrying the adjudication, the verdict it silenced and both "
+            "costs - with no prediction and no response. An attenuated one is "
+            "chained as before, in event_data.admissibility on the `file_event` "
+            "block, and now a second time on the `response_action` block. The "
+            "container exemption still produces no adjudication at all: app.py only "
+            "adjudicates a verdict that is already suspicious, and benign_compressed "
+            "is not - so it remains outside the governance layer entirely and this "
+            "measurement counts no decision for it, because none was made."
+        ),
+        "what_this_row_does_not_cover": (
+            "100% of the decisions the governance layer *makes*. The ungoverned "
+            "population makes none, so it contributes nothing to either side of "
+            "the ratio. The container exemption cancels evidence on every one of "
+            "those twelve events and the chain holds no record of it. That gap is "
+            "the subject of the P6.1 repair, not of this row, and reading this "
+            "100% as 'every evidence-cancelling path is audited' would be wrong."
         ),
     }
 

@@ -542,6 +542,21 @@ def handle_event(path: str, event_type: str) -> dict | None:
         # contribute a baseline if the detector thought it was encrypted.
         _work.put(("baseline", event))
 
+    if (
+        PIPELINE_ENABLED
+        and decision is not None
+        and decision.get("admitted")
+        and verdict["suspicious"]
+    ):
+        # The cancelled branch. `suppression is not None` above, so the event
+        # never enters the pipeline and never reaches the chain - which is
+        # exactly the audit gap P5.1 recorded as M-16 and Table 9.8 row 7
+        # measured at 50%. The decision is chained on its own path: no
+        # prediction, no response, because the alert was cancelled and acting on
+        # it would defeat the operator's rule. What is preserved is the record
+        # that a detection existed and which rule removed it.
+        _work.put(("governance", event))
+
     return event
 
 
@@ -570,6 +585,8 @@ def _drain() -> None:
             try:
                 if kind == "baseline":
                     _run_baseline(client, *payload)
+                elif kind == "governance":
+                    _run_governance(client, *payload)
                 else:
                     _run_detection(client, *payload)
             except Exception:  # a bad event must not kill the worker
@@ -589,6 +606,13 @@ def _run_detection(client: httpx.Client, event: dict, features: dict, verdict: d
         if outcome["prediction"]:
             event["prediction"] = outcome["prediction"].get("prediction")
             event["threat_level"] = outcome["prediction"].get("threat_level")
+
+
+def _run_governance(client: httpx.Client, event: dict) -> None:
+    block = pipeline.log_governance_decision(client, event)
+    if block:
+        with _LOCK:
+            event["governance_block_id"] = block.get("block_id")
 
 
 def _run_baseline(client: httpx.Client, event: dict) -> None:
