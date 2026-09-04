@@ -36,7 +36,12 @@ from watchdog.observers.polling import PollingObserver
 
 import pipeline
 from admissibility import adjudicate
-from containers import compression_evidence, inner_content_evidence, validate_container
+from containers import (
+    compression_evidence,
+    container_status,
+    inner_content_evidence,
+    tristate,
+)
 from detection import (
     CONTAINER_POLICY_INNER,
     DEFAULT_CONTAINER_POLICY,
@@ -300,7 +305,8 @@ def extract_features(path: str) -> dict:
     readable = not looks_unreadable(magic, size)
     head, tail = sample_file(path, size, retry=readable)
     entropy, statistics = measure(head)
-    container_valid = validate_container(head, tail, identify_container(magic), size)
+    validation_state = container_status(head, tail, identify_container(magic), size)
+    container_valid = tristate(validation_state)
     compression = compression_evidence(head, tail, identify_container(magic), size)
     inner = _inner_content(head, tail, identify_container(magic), size)
 
@@ -314,6 +320,7 @@ def extract_features(path: str) -> dict:
         statistics=statistics,
         compression=compression,
         inner_content=inner,
+        container_status=validation_state,
     )
     return {
         "shannon_entropy": entropy,
@@ -405,9 +412,13 @@ def handle_event(path: str, event_type: str) -> dict | None:
     head, tail = sample_file(path, size, retry=readable)
     entropy, statistics = measure(head)
     # Structural validation: does the file have the format its header declares?
-    # Tri-state - None means no validator, or a file still being written, and
-    # keeps the behaviour that existed before this check.
-    container_valid = validate_container(head, tail, identify_container(magic), size)
+    # Taken once by name - VALID / FORGED / INCOMPLETE / UNVALIDATED /
+    # UNREADABLE - and projected to the tri-state the detector consumes. The
+    # name is what goes in the ledger: the tri-state's None cannot tell "this
+    # format has no validator" from "the validator ran and could not finish",
+    # and that is the distinction an auditor needs after the fact.
+    validation_state = container_status(head, tail, identify_container(magic), size)
+    container_valid = tristate(validation_state)
     # Did the container actually compress what it carries? Read from the same two
     # samples the validator just used, and consumed only by the `+ratio` policy -
     # under `legacy` it is measured and ignored, which is what lets the Phase 6
@@ -431,6 +442,7 @@ def handle_event(path: str, event_type: str) -> dict | None:
         statistics=statistics,
         compression=compression,
         inner_content=inner,
+        container_status=validation_state,
     )
     # Hashing a file we could not read only pays the retry cost again to reach
     # the same None, and it is on the sub-100ms detection path.
@@ -496,6 +508,14 @@ def handle_event(path: str, event_type: str) -> dict | None:
         "admissibility": decision,
         "container_format": verdict["container_format"],
         "container_valid": container_valid,
+        # NOVELTY_PROOF_PLAN.md §9 row 10 and TC-23: the record has to carry the
+        # validation state and the policy version, not just the tri-state and
+        # the outcome. Without the first, "no validator exists for this format"
+        # and "the validator could not finish" are the same null. Without the
+        # second, a decision cannot be re-derived, because the rule that made it
+        # is an environment variable that is not written down anywhere.
+        "validation_state": verdict["validation_state"],
+        "policy_version": verdict["policy"],
         # Both of the model's top two features are decided here. Carrying them
         # on the event means a consumer scoring it later - the dashboard does -
         # reads the values that were actually measured instead of guessing them

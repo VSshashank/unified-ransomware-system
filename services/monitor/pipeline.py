@@ -154,6 +154,12 @@ def log_governance_decision(client: httpx.Client, event: dict) -> dict | None:
             "signal": admissibility.get("signal"),
             "admissibility": admissibility,
             "outcome": admissibility.get("outcome"),
+            # The two fields NOVELTY_PROOF_PLAN.md §9 row 10 requires and this
+            # block did not have. `admissibility` already carries the mitigation
+            # identifier, both capability levels and the reason; these say what
+            # the validator concluded and under which policy it was read.
+            "validation_state": event.get("validation_state"),
+            "policy_version": event.get("policy_version"),
             "suppressed_by": event.get("suppressed_by"),
             "detection_latency_ms": event.get("detection_latency_ms"),
             "observed_at": event.get("timestamp") or utc_now(),
@@ -240,6 +246,12 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
             "admissibility": event.get("admissibility"),
             "container_format": verdict.get("container_format"),
             "container_valid": verdict.get("container_valid"),
+            # An *attenuated* decision is chained here rather than as a
+            # `suppression_decision`, because the alert stood and the event went
+            # through the pipeline. TC-23 asks for the same five fields on it as
+            # on a cancelled one, so both blocks carry them.
+            "validation_state": verdict.get("validation_state"),
+            "policy_version": verdict.get("policy"),
             "detection_latency_ms": event.get("detection_latency_ms"),
             "process_id": event.get("process_id"),
             "prediction": label,
@@ -279,6 +291,13 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
                         "threat_level": threat_level,
                         "actions_taken": response.get("actions_taken", []),
                         "admissibility": event.get("admissibility"),
+                        # The third block that can hold an adjudication, and so
+                        # the third that TC-23 reads. An attenuated decision is
+                        # chained here as well as on the `file_event`; a record
+                        # complete on one and truncated on the other is not a
+                        # complete record.
+                        "validation_state": verdict.get("validation_state"),
+                        "policy_version": verdict.get("policy"),
                         "timestamp": utc_now(),
                     },
                 )

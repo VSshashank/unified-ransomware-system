@@ -113,6 +113,56 @@ class LedgerStub:
             and (w.get("event_data") or {}).get("file_path")
         }
 
+    # NOVELTY_PROOF_PLAN.md §9 row 10, and TC-23, name five things every chained
+    # mitigation decision must carry. Coverage says the decision arrived; this
+    # says it arrived whole. Two of the five were absent until P6.6, and the row
+    # was reported as partial for exactly that reason.
+    REQUIRED_RECORD_FIELDS = {
+        "mitigation_id": lambda b: (b.get("admissibility") or {}).get("rule"),
+        "validation_state": lambda b: b.get("validation_state"),
+        "capability_levels": lambda b: (
+            (b.get("admissibility") or {}).get("forgery_cost")
+            and (b.get("admissibility") or {}).get("avoidance_cost")
+        ),
+        "policy_version": lambda b: b.get("policy_version"),
+        "reason": lambda b: (b.get("admissibility") or {}).get("reason"),
+    }
+
+    def record_completeness(self) -> dict:
+        """Per required field, how many chained adjudications actually carry it.
+
+        Counted over blocks, not over files: an attenuated decision is chained on
+        both a `file_event` and a `response_action`, and a record that is
+        complete on one and not the other is not a complete record.
+        """
+        blocks = [
+            w["event_data"]
+            for w in self.ledger_writes
+            if w.get("event_type") in self.ADJUDICATION_BLOCK_TYPES
+            and (w.get("event_data") or {}).get("admissibility")
+        ]
+        present = {
+            name: sum(1 for b in blocks if probe(b))
+            for name, probe in self.REQUIRED_RECORD_FIELDS.items()
+        }
+        return {
+            "blocks": len(blocks),
+            "present": present,
+            "complete": sum(
+                1
+                for b in blocks
+                if all(probe(b) for probe in self.REQUIRED_RECORD_FIELDS.values())
+            ),
+            "example": (
+                {
+                    name: probe(blocks[0])
+                    for name, probe in self.REQUIRED_RECORD_FIELDS.items()
+                }
+                if blocks
+                else None
+            ),
+        }
+
     def block_types(self) -> dict:
         counts: dict[str, int] = {}
         for write in self.ledger_writes:
@@ -207,6 +257,7 @@ def main() -> int:
                     "adjudication_writes": len(stub.adjudications()),
                     "adjudications_reaching_ledger": len(stub.decisions_chained()),
                     "ledger_block_types": stub.block_types(),
+                    "record_completeness": stub.record_completeness(),
                 }
     finally:
         monitor_pipeline._post = original_post
@@ -216,6 +267,14 @@ def main() -> int:
     total_adjudicated = sum(f["adjudicated"] for f in findings.values())
     total_reaching = sum(f["adjudications_reaching_ledger"] for f in findings.values())
     coverage = (total_reaching / total_adjudicated) if total_adjudicated else 0.0
+
+    completeness = [f["record_completeness"] for f in findings.values()]
+    chained_blocks = sum(c["blocks"] for c in completeness)
+    complete_blocks = sum(c["complete"] for c in completeness)
+    field_totals = {
+        name: sum(c["present"].get(name, 0) for c in completeness)
+        for name in LedgerStub.REQUIRED_RECORD_FIELDS
+    }
 
     report = {
         "schema": "urds.ledger_coverage/1",
@@ -228,6 +287,17 @@ def main() -> int:
         "meets_target": total_reaching == total_adjudicated and total_adjudicated > 0,
         "adjudications_made": total_adjudicated,
         "adjudications_reaching_ledger": total_reaching,
+        "record_completeness": {
+            "required_fields": sorted(LedgerStub.REQUIRED_RECORD_FIELDS),
+            "source": "NOVELTY_PROOF_PLAN.md §9 row 10; regression TC-23",
+            "chained_blocks": chained_blocks,
+            "complete_blocks": complete_blocks,
+            "fraction_complete": (
+                round(complete_blocks / chained_blocks, 4) if chained_blocks else 0.0
+            ),
+            "present_by_field": field_totals,
+            "meets_target": chained_blocks > 0 and complete_blocks == chained_blocks,
+        },
         "by_population": findings,
         "mechanism": (
             "The detection fan-out is still gated on `suppression is None`, and it "
@@ -263,6 +333,14 @@ def main() -> int:
             f"outcomes={f['outcomes'] or '-'} ledger_writes={f['ledger_writes']:<3} "
             f"adjudications_chained={f['adjudications_reaching_ledger']}"
         )
+
+    print("\nrow 10 - is the chained record complete?")
+    print(
+        f"  {complete_blocks}/{chained_blocks} chained adjudication blocks carry all "
+        f"{len(LedgerStub.REQUIRED_RECORD_FIELDS)} required fields"
+    )
+    for name, count in sorted(field_totals.items()):
+        print(f"    {name:<18} {count}/{chained_blocks}")
 
     if os.getenv("URDS_WRITE_REPORTS", "").lower() not in {"1", "true", "yes"}:
         print("\nURDS_WRITE_REPORTS is not set: report not written")

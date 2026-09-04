@@ -717,6 +717,7 @@ def classify(
     compression: dict | None = None,
     inner_content: dict | None = None,
     policy: str | None = None,
+    container_status: str | None = None,
 ) -> dict:
     """Decide whether a file event looks like encryption.
 
@@ -744,6 +745,13 @@ def classify(
     it are what catch intermittent encryption. Omitting it disables that rule
     rather than guessing at it.
 
+    `container_status` is `containers.container_status`'s name for the same
+    validation - VALID / FORGED / INCOMPLETE / UNVALIDATED / UNREADABLE. It is
+    strictly more information than `container_valid`, which collapses the last
+    three to None, and it is echoed onto the verdict as `validation_state` so
+    the ledger entry can say which of them it was. Optional, because a caller
+    that does not supply it gets the same decision it always got.
+
     `compression` is `containers.compression_evidence`'s reading, and `policy`
     one of CONTAINER_POLICIES. Both default to the deployed setting, which is
     `legacy` unless CONTAINER_EXEMPTION_POLICY says otherwise, so a caller that
@@ -766,6 +774,11 @@ def classify(
             "entropy": entropy if readable else None,
             "container_format": container if readable else None,
             "container_valid": container_valid,
+            # The validator's own word, and the policy that read it. Both travel
+            # with the verdict so every consumer down the chain records the same
+            # two values rather than re-reading a global that may have changed.
+            "validation_state": container_status,
+            "policy": policy,
             "ransom_extension": ransom_ext,
             "entropy_delta": entropy_delta,
         }

@@ -419,21 +419,31 @@ def container_status(
         return FORGED
 
 
-def validate_container(
-    head: bytes, tail: bytes, container: str | None, size: int | None = None
-) -> bool | None:
-    """`container_status` as the tri-state the detector consumes.
+def tristate(status: str) -> bool | None:
+    """A `container_status` name projected to the tri-state the detector consumes.
 
     True is VALID, False is FORGED, and None is everything else - no validator,
     still being written, or nothing readable. None means "no verdict", and the
     caller must keep whatever behaviour it had without this check.
+
+    Exposed separately from `validate_container` so a caller that needs both the
+    name and the tri-state pays for one validation rather than two. The name is
+    what the ledger records: it is the difference between "this format has no
+    validator" and "the validator ran and could not finish", and after the fact
+    the tri-state's None cannot tell those apart.
     """
-    status = container_status(head, tail, container, size)
     if status == VALID:
         return True
     if status == FORGED:
         return False
     return None
+
+
+def validate_container(
+    head: bytes, tail: bytes, container: str | None, size: int | None = None
+) -> bool | None:
+    """`container_status` as the tri-state the detector consumes."""
+    return tristate(container_status(head, tail, container, size))
 
 
 # --------------------------------------------------- declared compression yield
