@@ -429,20 +429,23 @@ came out badly has been softened.
 |---|---|---|---|---|
 | 1 | Unvalidated-format closure | Arm C produces no silent `benign_compressed` for the 11 unvalidated-format attacker-valid witnesses | Family A1, **21/21 flagged** under Arm C (7/21 under Arm A) | **yes** |
 | 2 | Validated public-primitive witness | Arm C explicitly evaluates it; if it stays benign, add provenance/history/independent evidence or reject the repair | Family A2, **3/3 flagged** under Arm C. C1 flags 0/3, which is why C1 is not the repair | **yes** |
-| 3 | Incomplete validation | No silent benign cancellation; result is `deferred` or `unverified` | Family A3, **2/2 flagged** — no silent cancellation. But the verdict is `suspected_encryption`/`static_entropy`, **not a named `deferred` state** | **partial** |
+| 3 | Incomplete validation | No silent benign cancellation; result is `deferred` or `unverified` | Family A3, **2/2 flagged**. Since P6.7 the INCOMPLETE case returns the named verdict **`deferred`** under every policy that refuses INCOMPLETE as proof (`a3_zip_no_central_dir.zip`, Arms C1/C/D). `suspicious` stays true and the signal is unchanged | **yes** |
 | 4 | Current/null comparison | Arm A, B and C all reported; Arm B quantifies the maximum cost of deleting the exemption | A 0/275, **B 185/275 (67.3%)**, C 120/275 | **yes** |
 | 5 | Validated benign controls | Arm C non-inferior to Arm A within the predeclared bound | **25.323 pp** upper limit against 2.00 pp | **NO** |
 | 6 | Unvalidated benign controls | Cost reported separately for compressible and incompressible; no zero-cost assumption | **0/30 compressible, 90/90 incompressible**, reported separately | **yes** |
 | 7 | Admission recomputation | Every mitigation/signal pair recomputed; any flipped admission reported | 20 cells × 4 policies, **6 flips**, each attributed to the change that caused it | **yes** |
 | 8 | Fixed detector baseline | 13-family sweep stays 13/13 within the detection deadline and restores correctly | **13/13** within 2 s with all restore round-trips true, under the default policy **and** under Arm C | **yes** |
 | 9 | ML preservation | Feature/API contract tests pass; no policy metadata silently discarded | 37/37 ml-engine tests. The ML hop does not receive the adjudication **by design** — the model scores bytes, not policy — and that is recorded in the report, so it is not discarded silently | **yes** |
-| 10 | Ledger preservation | Every repaired decision reaches the ledger with mitigation ID, validation state, capability levels, **policy version** and reason | Coverage **100.0%**. The block carries rule (mitigation ID), signal, `forgery_cost` and `avoidance_cost` (capability levels), and reason. **Validation state and policy version are absent** | **partial** |
+| 10 | Ledger preservation | Every repaired decision reaches the ledger with mitigation ID, validation state, capability levels, **policy version** and reason | Coverage **100.0%**, and since P6.6 **36/36 chained adjudication blocks carry all five fields** — measured per field by `scripts/ledger_coverage.py`, across all three block types that can hold an adjudication | **yes** |
 | 11 | Response preservation | Suspicious cases still produce the expected response action; no response loss hidden by isolation settings | Attenuated population reaches `/response/trigger` **6/6** with the record intact; isolation reports `enforced: false` explicitly with the rules it would have applied | **yes** |
-| 12 | Recovery preservation | Trusted snapshots achieve 100% verified restoration; missing or mismatched trust never reported as verified | **13/13** local restore round-trips. The second half is fully met — 5/5 injections, none reported as verified. **VSS-backed restore still not measured** (needs an elevated shell) | **partial** |
+| 12 | Recovery preservation | Trusted snapshots achieve 100% verified restoration; missing or mismatched trust never reported as verified | **13/13** local restore round-trips. The second half is fully met — 5/5 injections, none reported as verified. **VSS-backed restore still not measured**, and the blocker is now measured rather than asserted: `reports/vss_status.json` records the host reporting VSS supported, `elevated: false`, and both `list_snapshots` and `create_snapshot` refusing for that one reason | **partial** |
 | 13 | Tamper handling | Every injected ledger-tamper case fails verification and remains traceable | **1/1** detected, named to the block (`block 4`, walk stopped after 4 of 6), plus 32/32 tamper and chain-verification tests | **yes** |
 | 14 | Safety | All cases restore exactly; no unrelated target content modified | All restore round-trips true across both sweeps | **yes** |
 
-**Ten of fourteen met, three partial, one failed.**
+**Twelve of fourteen met, one partial, one failed.** Rows 3 and 10 were partial
+when this section was first written on 3 September 2026; P6.6 and P6.7 closed
+them and the rows above are updated. The failure and the remaining partial are
+unchanged, and neither was closed by anything in this phase.
 
 ### 15.2 The three partials and the one failure
 
@@ -452,24 +455,46 @@ the repair "is accepted only if all required rows pass", so on the plan's own
 terms **the repair is not accepted** — which agrees with D5's ruling that it does
 not ship. The two documents reach the same conclusion by different routes.
 
-**Row 3 is partial** because §7.1's "explicit deferred state" variant was never
-built. The plan asks for INCOMPLETE to surface as `deferred` or `unverified`; the
-repair surfaces it as suspicious. No evidence is silently cancelled, which is the
-substance, but the named state the plan asks for does not exist in
-`detection.py`. The dashboard already renders a `deferred` outcome
-(`GOVERNANCE_OUTCOMES`), so the surface exists and the verdict to feed it does
-not.
+**Row 3 was partial and is closed (P6.7).** §7.1's "explicit deferred state" is
+now built. Under the policies that refuse INCOMPLETE as positive proof —
+`strict-unvalidated` and the two built on it — a file whose validator ran and
+could not finish returns the verdict `deferred`. `suspicious` stays true and the
+signal is unchanged, so the alert still stands and `admissibility.py` ranks it
+exactly as before; what changes is that the record stops claiming a conclusion
+the evidence does not carry. It is gated on INCOMPLETE and not on the tri-state's
+None, because UNVALIDATED is a different answer — no validator exists — and
+naming both `deferred` would hide a coverage gap behind a word that sounds
+temporary. It is deliberately not extended to `legacy`, which exempts an
+incomplete container on its header alone: that is the silent cancellation the row
+forbids, it is what Arm A measured, and rewriting it now would change a baseline
+after the fact.
 
-**Row 10 is partial** on two fields. `validation_state` — the `container_status`
-name, VALID/FORGED/INCOMPLETE/UNVALIDATED/UNREADABLE — is computed on every event
-and not carried into the block; it is the field that would let an auditor tell
-"no validator" from "still being written" after the fact, which is precisely the
-distinction §9.3 finding 1 is about. `policy_version` is absent because the
-policy had no version until Phase 6 gave it one; `CONTAINER_EXEMPTION_POLICY`'s
-value is the natural thing to record.
+**Row 10 was partial and is closed (P6.6).** `validation_state` — the
+`container_status` name, VALID/FORGED/INCOMPLETE/UNVALIDATED/UNREADABLE — and
+`policy_version` — the `CONTAINER_EXEMPTION_POLICY` value that actually decided
+the event — now travel on the verdict and into every block that can hold an
+adjudication. There are three of those, not two: `suppression_decision` for a
+cancelled decision, `file_event` for an attenuated one, and `response_action`,
+which chains the attenuated record a second time. Adding the fields to the first
+two left 24 of 36 blocks complete, and the response hop was the other twelve.
+`scripts/ledger_coverage.py` now measures completeness per field:
 
-**Row 12 is partial** only on VSS, which needs an elevated shell this session did
-not have. Unchanged from Week 20.
+| field | blocks carrying it |
+|---|---|
+| `mitigation_id` | 36/36 |
+| `validation_state` | 36/36 |
+| `capability_levels` | 36/36 |
+| `policy_version` | 36/36 |
+| `reason` | 36/36 |
+
+**Row 12 is still partial**, on VSS alone. What changed is that the blocker is
+measured rather than asserted. `scripts/verify_vss.py --status-only` records the
+host reporting `supported: true`, backend `wmi:Win32_ShadowCopy`,
+`elevated: false`, and both `list_snapshots` and `create_snapshot` refusing with
+an explicit elevation error. `reports/vss_status.json` holds it. So row 12's gap
+is a shell privilege this session did not have, not a capability nobody
+exercised — and the report says which, because "not measured" does not
+distinguish the two.
 
 ### 15.3 What §9's closing note means for the claim
 
@@ -477,32 +502,62 @@ not have. Unchanged from Week 20.
 > presents itself as a unified system; if any are deferred, the final claim must
 > explicitly say 'Monitor-scoped'."
 
-Rows 9, 11, 13 and 14 pass outright. Rows 10 and 12 are **partial, not deferred**
-— both were measured, and what is missing is named. That is a weaker trigger than
-the note describes, and this report does not claim it clears it.
+Rows 9, 10, 11, 13 and 14 now pass outright. Row 12 is **partial, not deferred**
+— it was measured, and what is missing is named and its blocker recorded.
 
-**The honest position:** the integrated claim is supported for propagation,
-response and tamper handling, and carries two named qualifications — the ledger
-record is missing two of its five required fields, and snapshot-backed recovery
-is verified locally but not through VSS. A reader who takes the strict reading of
-§9's note should treat the claim as Monitor-scoped until those two are closed.
-Both are small, specific pieces of work, and neither is blocked by anything in
-§9.13.
+**The honest position, revised.** The ledger qualification is gone: the chained
+record carries all five fields the plan requires, measured across 36 of 36
+blocks. One qualification remains — snapshot-backed recovery is verified locally,
+13/13, and not through VSS, because creating a shadow copy needs an elevated
+shell. Every other integration row passes on its own evidence.
+
+That is a narrower reservation than the one this section carried on 3 September,
+and it is the only one. A reader taking the strictest reading of §9's note should
+attach "local snapshots" to the recovery claim specifically, rather than reducing
+the whole claim to Monitor scope: the ML, ledger and response rows are no longer
+what is holding it back.
 
 ### 15.4 Where the plan's method differs from what was run
 
 Recorded in full in `docs/METHOD_DOCUMENT_STATUS.md`; the two that change how a
 result should be read:
 
-**The ladder.** §5.2 is a five-level scale — 0 direct control, 1 public
-primitive, 2 format-aware, 3 new engineering, 4 secret/preimage. P5.4 calibrated
-against `admissibility.py`'s four-point scale, so the levels are **not directly
-comparable**: the code's HIGH conflates the plan's 3 and 4, and the plan puts a
-standard-library container at **Level 1** where P5.4 measured NEGLIGIBLE, its
-Level 0. The direction of every finding is unaffected — a standard-library
-container is still cheaper than the MODERATE the cost table assumed — but no
-level in `reports/capability_calibration.json` should be quoted as a plan level
-without re-deriving it.
+**The ladder — re-derived in P6.8, and it changes D1's answer.** §5.2 is a
+five-level scale: 0 direct control, 1 public primitive, 2 format-aware, 3 new
+engineering, 4 secret/preimage. P5.4 calibrated against `admissibility.py`'s
+four-point scale. Every strategy now carries a level on **both**, derived twice
+each in opposite decision orders from the same recorded operational facts, with
+one new fact recorded — whether a public primitive performed the operation. All
+ten reproduce on both ladders, and both of the plan's own §5.3 calibration
+hypotheses hold: an unvalidated magic prefix is Level 0, standard-library
+container generation is Level 1.
+
+| entry | kind | code ladder | plan §5.2 |
+|---|---|---|---|
+| `hash` | forgery | high | 4 secret/preimage |
+| `path` | forgery | low | **0 direct attacker control** |
+| `training_mode` | forgery | low | **0 direct attacker control** |
+| `container` | forgery | negligible | 0 direct attacker control |
+| `ransom_extension` | avoidance | negligible | 0 |
+| `static_entropy` | avoidance | negligible | 0 |
+| `structural_mismatch` | avoidance | negligible | **1 public primitive** |
+| `partial_entropy` | avoidance | moderate | 3 new engineering |
+| `entropy_rise` | avoidance | low | **0 direct attacker control** |
+
+The consequence is not cosmetic. On the plan's ladder `path` and `training_mode`
+forgery tie at Level 0 with `ransom_extension` and `static_entropy` avoidance,
+and §5.3's strict rule breaks all four ties against the suppression. **D1 fires**
+— the outcome §9.7 predicted and Phase 5 reported as not occurring, because Phase
+5 asked the question on the code's scale. Policy F of
+`docs/ADMISSION_RECOMPUTE.md` is that computation; under it the path whitelist and
+training mode cancel nothing at all.
+
+The disagreement is one rung. `admissibility.py` prices "a location the attacker
+can already write to" at LOW; §5.2 puts writing bytes and choosing a path
+together in Level 0. **The answer to D1 is a property of the scale, not of the
+system.** Neither ladder is retro-fitted and policy F is not deployed: it would
+disable two shipped mitigations and invalidate every arm of this experiment, all
+of which were measured against the declared table.
 
 **Arm D was more predeclared than this report claimed.** §7.1 lists
 "inner-content/recursive validation" as one of five candidate repair variants,
@@ -514,7 +569,54 @@ requires**, and it is left standing rather than quietly relaxed: the arm was
 still chosen after its own benign numbers were visible, and the conservative
 reading costs nothing that matters, because Arm D cannot ship either way.
 
-§5.3's strict rule — `admit only if C_forge > C_avoid` — is a change the plan
-**mandates** and this work measured without adopting. `admissibility.py` is
-unchanged, and Policies B and D of `docs/ADMISSION_RECOMPUTE.md` are what
-adopting it would do.
+**§5.3's strict rule is adopted (P6.8).** `admissibility.adjudicate` admits on
+`>` rather than `>=`. Against the deployed cost table it is a no-op — all fifteen
+live rule × signal cells decide identically either way, which is why policy B of
+`docs/ADMISSION_RECOMPUTE.md` is cell-for-cell identical to policy A — and that
+is exactly why it was safe to adopt and why adopting it settles nothing on its
+own. What the rule *does* settle, it settles only on the plan's ladder, which is
+policy F above and is not deployed.
+
+
+---
+
+## 16. What P6.6 – P6.8 changed, and what they did not
+
+Added 4 September 2026. Three of the four gaps §15 recorded against the real
+acceptance table are closed; the fourth is unchanged and stated as such.
+
+| # | Gap in §15 | Status | Evidence |
+|---|---|---|---|
+| P6.6 | Row 10 — `validation_state` and `policy_version` absent from the chained record | **closed** | `reports/ledger_coverage.json` → `record_completeness`: 36/36 blocks, 5/5 fields |
+| P6.7 | Row 3 — no named `deferred` state | **closed** | `reports/three_arm_experiment.json` → `a3_zip_no_central_dir.zip` reads `deferred` under C1/C/D |
+| P6.8 | §5.3's strict rule measured but not adopted | **adopted** | `services/monitor/admissibility.py`; policy B of the recompute matrix |
+| P6.8 | §5.2's five-level ladder not derived | **derived** | `reports/capability_calibration.json` → `plan_level` on all 10 strategies |
+| — | Row 12 — VSS-backed restore | **still open** | `reports/vss_status.json`: supported, not elevated, both operations refuse |
+| — | Row 5 — validated benign controls, 25.323 pp against 2.00 pp | **still failed** | unchanged; D5's ruling stands |
+
+### Nothing here rescues the repair
+
+None of this changes the answer to the question Phase 6 exists to ask. Row 5
+still fails, D5 still fires at 100.0 pp against a 15.0 pp tolerance on unvalidated
+× incompressible, and `CONTAINER_EXEMPTION_POLICY` still defaults to `legacy`.
+The five-arm experiment was re-run after every change in this group and **every
+count is identical** to the run recorded in §6:
+
+    A1 7/21/21/21/21   A2 0/3/0/3/3   A3 1/2/2/2/2   A4 0/3/0/3/3   A7 0/3/0/3/1
+    benign 0 / 185 / 90 / 120 / 90 of 275
+
+That is the point of re-running it. A change that closed an acceptance row by
+moving a measurement would be the defect §9.4.1 forbids; these closed rows by
+recording things that were already true and were not being written down, and by
+naming a state that already existed and had no name.
+
+### The one result that is new
+
+P6.8's re-derivation produced a finding, not just a closure. Phase 5 answered D1
+"no cell flips in the predicted direction" and that answer holds only on the
+four-point ladder. On the governing method document's own five-level ladder, with
+the rule that document mandates, four cells flip in the predicted direction and
+two deployed mitigations are not cost-justified. Phase 5's answer was not wrong
+about what it measured; it was measured against the wrong scale, and the reason it
+was measured against the wrong scale is the P0 error recorded in
+`docs/METHOD_DOCUMENT_STATUS.md`.

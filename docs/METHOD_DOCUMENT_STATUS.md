@@ -59,9 +59,28 @@ that matter:
 | 4 | §9 an INCOMPLETE container must yield `deferred` or `unverified` | Under the repair, INCOMPLETE yields `suspected_encryption` / `static_entropy` | The "no silent benign cancellation" half is met; the **named state is not**. §7.1's "explicit deferred state" variant was never built |
 | 5 | §9 the ledger record must carry mitigation ID, validation state, capability levels, **policy version**, and reason | The `suppression_decision` block carries rule, signal, both costs and reason | **Validation state and policy version are missing** from the record |
 
-Items 1, 4 and 5 are open gaps. Item 2 is a decision the plan makes and this work
-deferred. Item 3 is a caution that can now be relaxed, and the Phase 6 report
-says so rather than quietly restating Arm D's status.
+**Update, 4 September 2026 — items 1, 2, 4 and 5 are closed.**
+
+| # | Then | Now |
+|---|---|---|
+| 1 | levels derived on the code ladder only | P6.8 derives every strategy on both ladders, twice each, from the same recorded facts. All ten reproduce; both of §5.3's own calibration hypotheses hold. It changed D1's answer — see below |
+| 2 | `>=` deployed, `>` computed | P6.8 adopts `>`. A no-op against the declared table (policy B ≡ policy A), and mandated, so it was adopted rather than argued about |
+| 3 | Arm D labelled post-hoc, more cautiously than required | unchanged, deliberately. Arm D cannot ship either way and the conservative label costs nothing |
+| 4 | INCOMPLETE yielded `suspected_encryption` | P6.7 gives it the named verdict `deferred` under every policy that refuses INCOMPLETE as proof. `legacy` is untouched, because that is Arm A |
+| 5 | `validation_state` and `policy_version` absent | P6.6 carries both into all three block types that can hold an adjudication. 36/36 blocks now complete on all five required fields |
+
+**Item 1 produced a result, not just a correction.** On the plan's five-level
+ladder, `path` and `training_mode` forgery are Level 0 — §5.2 puts choosing a
+path beside choosing bytes — and so are `ransom_extension` and `static_entropy`
+avoidance. Four ties, and §5.3's strict rule breaks all four against the
+suppression. **D1 fires.** Phase 5 reported that it did not, and that report was
+correct about the four-point ladder it was measured on and wrong about the ladder
+§9.1 makes governing. Policy F of `docs/ADMISSION_RECOMPUTE.md` is the
+computation. It is not deployed, and why not is recorded there.
+
+That is what the P0 error cost, stated as concretely as it can be: a primary
+finding was answered on the wrong scale, and the answer reversed when it was
+asked again on the right one.
 
 ## What was *not* affected
 
