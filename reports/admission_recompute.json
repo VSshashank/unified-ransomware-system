@@ -1,18 +1,18 @@
 {
   "schema": "urds.admission_recompute/1",
-  "generated_at": "2026-09-02T07:07:31.918780Z",
-  "commit": "38aff22c21b4e630b3b75ae88c9fdf030a7f2d7f",
+  "generated_at": "2026-09-04T08:46:27.054098Z",
+  "commit": "8aa18ed12c0b72ff6e28844f5759ed9696aed44b",
   "branch": "feat/admissibility-governance-novelty-v2",
   "policies": {
     "A": {
       "rule": ">=",
       "costs": "declared",
-      "label": "deployed today"
+      "label": "the behaviour before P6.8"
     },
     "B": {
       "rule": ">",
       "costs": "declared",
-      "label": "rule change alone"
+      "label": "rule change alone - DEPLOYED"
     },
     "C": {
       "rule": ">=",
@@ -23,12 +23,23 @@
       "rule": ">",
       "costs": "measured",
       "label": "rule change and calibration"
+    },
+    "E": {
+      "rule": ">=",
+      "costs": "plan",
+      "label": "the plan's ladder alone"
+    },
+    "F": {
+      "rule": ">",
+      "costs": "plan",
+      "label": "the plan's ladder and the plan's rule"
     }
   },
   "suppressions": {
     "hash": {
       "declared": 3,
       "measured": 3,
+      "plan": 4,
       "live": true,
       "note": "SHA-256 preimage. P5.4 negative control did not match.",
       "declared_name": "high",
@@ -37,54 +48,62 @@
     "path": {
       "declared": 1,
       "measured": 1,
+      "plan": 0,
       "live": true,
-      "note": "Write into an approved directory. Measured LOW, as declared.",
+      "note": "Write into an approved directory. Measured LOW on the code ladder, as declared - and Level 0 on the plan's, which puts choosing a path alongside choosing bytes. That single rung is what creates the tie \u00a76 asks about.",
       "declared_name": "low",
       "measured_name": "low"
     },
     "training_mode": {
       "declared": 1,
       "measured": 1,
+      "plan": 0,
       "live": true,
-      "note": "Poison the learned ceiling during the window. Measured LOW, as declared.",
+      "note": "Poison the learned ceiling during the window. Measured LOW on the code ladder, as declared, and Level 0 on the plan's.",
       "declared_name": "low",
       "measured_name": "low"
     },
     "container": {
       "declared": null,
       "measured": 0,
+      "plan": 0,
       "live": false,
-      "note": "Not a rule today - detection.py:702 is a branch, not a suppression, and never reaches adjudicate(). Modelled here at the level P5.4 measured for gzip.compress(ciphertext) and a ZIP_STORED member.",
+      "note": "Not a rule today - detection.py:702 is a branch, not a suppression, and never reaches adjudicate(). Modelled on the code ladder at the level P5.4 measured for gzip.compress(ciphertext) and a ZIP_STORED member, and on the plan's ladder at the level of the cheapest construction the deployed policy accepts, which is a magic prefix at Level 0. Under the repair the cheapest becomes a standard-library container at Level 1.",
       "declared_name": null,
       "measured_name": "negligible"
     }
   },
   "signals": {
     "ransom_extension": {
+      "plan": 0,
       "declared": 0,
       "measured": 0,
       "declared_name": "negligible",
       "measured_name": "negligible"
     },
     "static_entropy": {
+      "plan": 0,
       "declared": 0,
       "measured": 0,
       "declared_name": "negligible",
       "measured_name": "negligible"
     },
     "structural_mismatch": {
+      "plan": 1,
       "declared": 2,
       "measured": 0,
       "declared_name": "moderate",
       "measured_name": "negligible"
     },
     "partial_entropy": {
+      "plan": 3,
       "declared": 2,
       "measured": 2,
       "declared_name": "moderate",
       "measured_name": "moderate"
     },
     "entropy_rise": {
+      "plan": 0,
       "declared": 2,
       "measured": 1,
       "declared_name": "moderate",
@@ -739,6 +758,330 @@
         "admitted": false,
         "outcome": "attenuated"
       }
+    },
+    "E": {
+      "hash|ransom_extension": {
+        "suppression": "hash",
+        "signal": "ransom_extension",
+        "forgery_cost": "secret/preimage",
+        "avoidance_cost": "direct attacker control",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "hash|static_entropy": {
+        "suppression": "hash",
+        "signal": "static_entropy",
+        "forgery_cost": "secret/preimage",
+        "avoidance_cost": "direct attacker control",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "hash|structural_mismatch": {
+        "suppression": "hash",
+        "signal": "structural_mismatch",
+        "forgery_cost": "secret/preimage",
+        "avoidance_cost": "public primitive",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "hash|partial_entropy": {
+        "suppression": "hash",
+        "signal": "partial_entropy",
+        "forgery_cost": "secret/preimage",
+        "avoidance_cost": "new engineering or unavailable privilege",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "hash|entropy_rise": {
+        "suppression": "hash",
+        "signal": "entropy_rise",
+        "forgery_cost": "secret/preimage",
+        "avoidance_cost": "direct attacker control",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "path|ransom_extension": {
+        "suppression": "path",
+        "signal": "ransom_extension",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "path|static_entropy": {
+        "suppression": "path",
+        "signal": "static_entropy",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "path|structural_mismatch": {
+        "suppression": "path",
+        "signal": "structural_mismatch",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "public primitive",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "path|partial_entropy": {
+        "suppression": "path",
+        "signal": "partial_entropy",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "new engineering or unavailable privilege",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "path|entropy_rise": {
+        "suppression": "path",
+        "signal": "entropy_rise",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "training_mode|ransom_extension": {
+        "suppression": "training_mode",
+        "signal": "ransom_extension",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "training_mode|static_entropy": {
+        "suppression": "training_mode",
+        "signal": "static_entropy",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "training_mode|structural_mismatch": {
+        "suppression": "training_mode",
+        "signal": "structural_mismatch",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "public primitive",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "training_mode|partial_entropy": {
+        "suppression": "training_mode",
+        "signal": "partial_entropy",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "new engineering or unavailable privilege",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "training_mode|entropy_rise": {
+        "suppression": "training_mode",
+        "signal": "entropy_rise",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "container|ransom_extension": {
+        "suppression": "container",
+        "signal": "ransom_extension",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "container|static_entropy": {
+        "suppression": "container",
+        "signal": "static_entropy",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "container|structural_mismatch": {
+        "suppression": "container",
+        "signal": "structural_mismatch",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "public primitive",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "container|partial_entropy": {
+        "suppression": "container",
+        "signal": "partial_entropy",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "new engineering or unavailable privilege",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "container|entropy_rise": {
+        "suppression": "container",
+        "signal": "entropy_rise",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": true,
+        "outcome": "cancelled"
+      }
+    },
+    "F": {
+      "hash|ransom_extension": {
+        "suppression": "hash",
+        "signal": "ransom_extension",
+        "forgery_cost": "secret/preimage",
+        "avoidance_cost": "direct attacker control",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "hash|static_entropy": {
+        "suppression": "hash",
+        "signal": "static_entropy",
+        "forgery_cost": "secret/preimage",
+        "avoidance_cost": "direct attacker control",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "hash|structural_mismatch": {
+        "suppression": "hash",
+        "signal": "structural_mismatch",
+        "forgery_cost": "secret/preimage",
+        "avoidance_cost": "public primitive",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "hash|partial_entropy": {
+        "suppression": "hash",
+        "signal": "partial_entropy",
+        "forgery_cost": "secret/preimage",
+        "avoidance_cost": "new engineering or unavailable privilege",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "hash|entropy_rise": {
+        "suppression": "hash",
+        "signal": "entropy_rise",
+        "forgery_cost": "secret/preimage",
+        "avoidance_cost": "direct attacker control",
+        "admitted": true,
+        "outcome": "cancelled"
+      },
+      "path|ransom_extension": {
+        "suppression": "path",
+        "signal": "ransom_extension",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "path|static_entropy": {
+        "suppression": "path",
+        "signal": "static_entropy",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "path|structural_mismatch": {
+        "suppression": "path",
+        "signal": "structural_mismatch",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "public primitive",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "path|partial_entropy": {
+        "suppression": "path",
+        "signal": "partial_entropy",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "new engineering or unavailable privilege",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "path|entropy_rise": {
+        "suppression": "path",
+        "signal": "entropy_rise",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "training_mode|ransom_extension": {
+        "suppression": "training_mode",
+        "signal": "ransom_extension",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "training_mode|static_entropy": {
+        "suppression": "training_mode",
+        "signal": "static_entropy",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "training_mode|structural_mismatch": {
+        "suppression": "training_mode",
+        "signal": "structural_mismatch",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "public primitive",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "training_mode|partial_entropy": {
+        "suppression": "training_mode",
+        "signal": "partial_entropy",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "new engineering or unavailable privilege",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "training_mode|entropy_rise": {
+        "suppression": "training_mode",
+        "signal": "entropy_rise",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "container|ransom_extension": {
+        "suppression": "container",
+        "signal": "ransom_extension",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "container|static_entropy": {
+        "suppression": "container",
+        "signal": "static_entropy",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "container|structural_mismatch": {
+        "suppression": "container",
+        "signal": "structural_mismatch",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "public primitive",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "container|partial_entropy": {
+        "suppression": "container",
+        "signal": "partial_entropy",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "new engineering or unavailable privilege",
+        "admitted": false,
+        "outcome": "attenuated"
+      },
+      "container|entropy_rise": {
+        "suppression": "container",
+        "signal": "entropy_rise",
+        "forgery_cost": "direct attacker control",
+        "avoidance_cost": "direct attacker control",
+        "admitted": false,
+        "outcome": "attenuated"
+      }
     }
   },
   "flips": [
@@ -789,7 +1132,55 @@
       "from": "attenuated",
       "to": "cancelled",
       "attributed_to": "the > rule and the calibration together"
+    },
+    {
+      "policy": "E",
+      "suppression": "path",
+      "signal": "entropy_rise",
+      "from": "attenuated",
+      "to": "cancelled",
+      "attributed_to": "the plan's five-level ladder alone"
+    },
+    {
+      "policy": "E",
+      "suppression": "training_mode",
+      "signal": "entropy_rise",
+      "from": "attenuated",
+      "to": "cancelled",
+      "attributed_to": "the plan's five-level ladder alone"
+    },
+    {
+      "policy": "F",
+      "suppression": "path",
+      "signal": "ransom_extension",
+      "from": "cancelled",
+      "to": "attenuated",
+      "attributed_to": "the plan's ladder and the plan's strict rule"
+    },
+    {
+      "policy": "F",
+      "suppression": "path",
+      "signal": "static_entropy",
+      "from": "cancelled",
+      "to": "attenuated",
+      "attributed_to": "the plan's ladder and the plan's strict rule"
+    },
+    {
+      "policy": "F",
+      "suppression": "training_mode",
+      "signal": "ransom_extension",
+      "from": "cancelled",
+      "to": "attenuated",
+      "attributed_to": "the plan's ladder and the plan's strict rule"
+    },
+    {
+      "policy": "F",
+      "suppression": "training_mode",
+      "signal": "static_entropy",
+      "from": "cancelled",
+      "to": "attenuated",
+      "attributed_to": "the plan's ladder and the plan's strict rule"
     }
   ],
-  "flip_count": 6
+  "flip_count": 12
 }

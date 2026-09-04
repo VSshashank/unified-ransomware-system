@@ -8,46 +8,64 @@ drifts the first time a cost moves.**
 × every signal, recomputed "under both the current `≥` rule and the calibrated
 `>` rule, with every flip marked".
 
-Two things changed between the deployed policy and the calibrated one:
+Three things can change between the deployed policy and the calibrated one:
 
-1. the comparison — `admissibility.py:147` admits when `forging >= avoiding`, so
-   an equal-cost tie goes to the suppression;
-2. the costs — P5.4 measured three of them differently from the table.
+1. the comparison — an equal-cost tie went to the suppression under `>=`;
+2. the costs — P5.4 measured three of them differently from the table;
+3. **the ladder itself** — `NOVELTY_PROOF_PLAN.md` §5.2 is a five-level scale,
+   not the four-point one `admissibility.py` is written on.
 
-Folding both into one recomputation would leave every flip ambiguous, so four
+Folding them into one recomputation would leave every flip ambiguous, so six
 policies are computed and each flip is attributed to whichever change caused it.
 
 | Policy | Comparison | Costs | What it isolates |
 |---|---|---|---|
-| **A** | `>=` | declared | the deployed behaviour, today |
-| **B** | `>` | declared | the rule change alone |
+| **A** | `>=` | declared | the behaviour before P6.8 |
+| **B** | `>` | declared | the rule change alone — **deployed since P6.8** |
 | **C** | `>=` | measured | the P5.4 calibration alone |
 | **D** | `>` | measured | both |
+| **E** | `>=` | plan levels | the plan's ladder alone |
+| **F** | `>` | plan levels | the plan's ladder and the plan's rule — **the policy the plan mandates** |
 
-**No repair is written in Phase 5.** `admissibility.adjudicate` is untouched;
-this script restates its comparison so the `>` rule can be evaluated without
-changing the module. Which policy ships, if any, is a Phase 6 decision made
-against the frozen table.
+E and F did not exist in Phase 5. They were added once the P0 finding that
+`NOVELTY_PROOF_PLAN.md` had never existed was found to be wrong: §9.1 makes that
+document the governing method, §5.3 mandates the strict rule, and §6 asks
+specifically what the strict rule does to a tie between `path` / `training_mode`
+forgery and an avoidance cost. The answer depends entirely on which ladder the
+question is asked on, and this matrix now asks it on both.
+
+**Policy B is deployed.** `admissibility.adjudicate` admits on `>` as of P6.8,
+per §5.3: *"equal capability does not demonstrate that the mitigation is harder
+to forge"*. Against the declared table that is a no-op — every one of the fifteen
+live cells decides the same way under both comparisons — which is exactly why it
+was safe to adopt and why adopting it settles nothing on its own.
+
+**No cost in `admissibility.py` was changed.** Policies C, D, E and F are
+computed here and are not deployed; what that costs is set out below.
 
 ## The costs this is computed over
 
 Declared costs are read from `services/monitor/admissibility.py`. Measured costs
-come from `reports/capability_calibration.json` (P5.4), where each was derived
-from the operational facts of an attack that was built and run.
+and plan levels both come from `reports/capability_calibration.json` (P5.4), where
+each was derived twice, in opposite decision orders, from the operational facts of
+an attack that was built and run. The two ladders are **not comparable rung for
+rung**: the code's `low` ("a location the attacker can already write to") has no
+counterpart in the plan, which puts choosing a path in Level 0 beside choosing
+bytes, and the code's `high` conflates the plan's Level 3 and Level 4.
 
-| entry | kind | declared | measured | changed |
-|---|---|---|---|---|
-| `hash` | forgery | high | high | no |
-| `path` | forgery | low | low | no |
-| `training_mode` | forgery | low | low | no |
-| `container` | forgery | — | negligible | **yes** |
-| `ransom_extension` | avoidance | negligible | negligible | no |
-| `static_entropy` | avoidance | negligible | negligible | no |
-| `structural_mismatch` | avoidance | moderate | negligible | **yes** |
-| `partial_entropy` | avoidance | moderate | moderate | no |
-| `entropy_rise` | avoidance | moderate | low | **yes** |
+| entry | kind | declared | measured | changed | plan level (§5.2) |
+|---|---|---|---|---|---|
+| `hash` | forgery | high | high | no | 4 — secret/preimage |
+| `path` | forgery | low | low | no | 0 — direct attacker control |
+| `training_mode` | forgery | low | low | no | 0 — direct attacker control |
+| `container` | forgery | — | negligible | **yes** | 0 — direct attacker control |
+| `ransom_extension` | avoidance | negligible | negligible | no | 0 — direct attacker control |
+| `static_entropy` | avoidance | negligible | negligible | no | 0 — direct attacker control |
+| `structural_mismatch` | avoidance | moderate | negligible | **yes** | 1 — public primitive |
+| `partial_entropy` | avoidance | moderate | moderate | no | 3 — new engineering or unavailable privilege |
+| `entropy_rise` | avoidance | moderate | low | **yes** | 0 — direct attacker control |
 
-**Policy A — `>=` with declared costs (deployed today)**
+**Policy A — `>=` with declared costs (the behaviour before P6.8)**
 
 | suppression \ signal | ransom_extension | static_entropy | structural_mismatch | partial_entropy | entropy_rise |
 |---|---|---|---|---|---|
@@ -56,7 +74,7 @@ from the operational facts of an attack that was built and run.
 | `training_mode`| **cancelled** | **cancelled** | attenuated | attenuated | attenuated |
 | `container`| — | — | — | — | — |
 
-**Policy B — `>` with declared costs (rule change alone)**
+**Policy B — `>` with declared costs (rule change alone - DEPLOYED)**
 
 | suppression \ signal | ransom_extension | static_entropy | structural_mismatch | partial_entropy | entropy_rise |
 |---|---|---|---|---|---|
@@ -83,9 +101,27 @@ from the operational facts of an attack that was built and run.
 | `training_mode`| **cancelled** | **cancelled** | **cancelled** | attenuated | attenuated |
 | `container`| attenuated | attenuated | attenuated | attenuated | attenuated |
 
+**Policy E — `>=` with plan costs (the plan's ladder alone)**
+
+| suppression \ signal | ransom_extension | static_entropy | structural_mismatch | partial_entropy | entropy_rise |
+|---|---|---|---|---|---|
+| `hash`| **cancelled** | **cancelled** | **cancelled** | **cancelled** | **cancelled** |
+| `path`| **cancelled** | **cancelled** | attenuated | attenuated | **cancelled** |
+| `training_mode`| **cancelled** | **cancelled** | attenuated | attenuated | **cancelled** |
+| `container`| **cancelled** | **cancelled** | attenuated | attenuated | **cancelled** |
+
+**Policy F — `>` with plan costs (the plan's ladder and the plan's rule)**
+
+| suppression \ signal | ransom_extension | static_entropy | structural_mismatch | partial_entropy | entropy_rise |
+|---|---|---|---|---|---|
+| `hash`| **cancelled** | **cancelled** | **cancelled** | **cancelled** | **cancelled** |
+| `path`| attenuated | attenuated | attenuated | attenuated | attenuated |
+| `training_mode`| attenuated | attenuated | attenuated | attenuated | attenuated |
+| `container`| attenuated | attenuated | attenuated | attenuated | attenuated |
+
 ## Flips against policy A
 
-**6 cells flip.**
+**12 cells flip.**
 
 | policy | suppression | signal | from | to | caused by |
 |---|---|---|---|---|---|
@@ -95,12 +131,59 @@ from the operational facts of an attack that was built and run.
 | C | `training_mode` | `entropy_rise` | attenuated | cancelled | the P5.4 calibration alone |
 | D | `path` | `structural_mismatch` | attenuated | cancelled | the > rule and the calibration together |
 | D | `training_mode` | `structural_mismatch` | attenuated | cancelled | the > rule and the calibration together |
+| E | `path` | `entropy_rise` | attenuated | cancelled | the plan's five-level ladder alone |
+| E | `training_mode` | `entropy_rise` | attenuated | cancelled | the plan's five-level ladder alone |
+| F | `path` | `ransom_extension` | cancelled | attenuated | the plan's ladder and the plan's strict rule |
+| F | `path` | `static_entropy` | cancelled | attenuated | the plan's ladder and the plan's strict rule |
+| F | `training_mode` | `ransom_extension` | cancelled | attenuated | the plan's ladder and the plan's strict rule |
+| F | `training_mode` | `static_entropy` | cancelled | attenuated | the plan's ladder and the plan's strict rule |
 
-## D1 — evaluated, and the result runs against the direction it predicted
+## D1 — it depends entirely on which ladder the question is asked on
 
 §9.7 D1 fires when *path-whitelist and training-mode admissions flip from admitted to attenuated under the calibrated rule*, and instructs that this be reported as a primary finding: two deployed mitigations were not cost-justified.
 
-**No cell flips in that direction (0 found). 6 flip the other way** — from attenuated to cancelled.
+**On the code's four-point ladder it does not fire — 0 cells flip in that direction. On the plan's five-level ladder it fires: 4 do.** 8 cells flip the other way, from attenuated to cancelled - six of those from the P5.4 calibration, two from the plan's ladder read without the plan's rule.
+
+### The flips D1 predicted, under policy F
+
+Policy F is the plan applied end to end — its §5.2 ladder and its §5.3 strict rule. It is the policy the governing method document mandates.
+
+| policy | suppression | signal | from | to |
+|---|---|---|---|---|
+| F | `path` | `ransom_extension` | cancelled | attenuated |
+| F | `path` | `static_entropy` | cancelled | attenuated |
+| F | `training_mode` | `ransom_extension` | cancelled | attenuated |
+| F | `training_mode` | `static_entropy` | cancelled | attenuated |
+
+**On the plan's ladder, `path` and `training_mode` forgery are both Level 0,
+and so are `ransom_extension` and `static_entropy` avoidance.** Four ties, and
+§5.3 breaks all four against the suppression. Under policy F the whitelist path
+rule and training mode cancel nothing at all: the only suppression that still
+cancels anything is the hash whitelist, at Level 4.
+
+§6 of the plan set this out as a hypothesis — *"if path and training-mode forgery
+are both Level 1 and static-entropy avoidance is also Level 1, the strict rule
+changes those entries from admitted to attenuated"*. The tie is real and it is at
+Level 0 rather than Level 1, and the consequence is the one the plan named: **two
+deployed mitigations are not cost-justified under the governing method's own
+scale.**
+
+The reason the two ladders disagree is a single rung. `admissibility.py` prices
+"a location the attacker can already write to" at `low`, one step above choosing
+bytes. §5.2 puts *"write bytes, choose a path, rename a file, or prefix a
+recognized magic value"* all in Level 0, and reserves Level 1 for the case where a
+public primitive does the work. A path whitelist is forged by choosing a path.
+On the code's scale that outranks a `negligible` signal; on the plan's it ties
+with one.
+
+**Neither ladder is deployed and neither is being retro-fitted.** What is
+recorded is that the answer to D1 is not a property of the system — it is a
+property of the scale the question is asked on, and Phase 5 answered it on the
+scale that was to hand rather than on the one §9.1 makes governing.
+
+### The flips that go the other way
+
+Every one of these makes a suppression *more* able to cancel evidence than the deployed table allows. None is adopted.
 
 | policy | suppression | signal | from | to |
 |---|---|---|---|---|
@@ -110,8 +193,10 @@ from the operational facts of an attack that was built and run.
 | C | `training_mode` | `entropy_rise` | attenuated | cancelled |
 | D | `path` | `structural_mismatch` | attenuated | cancelled |
 | D | `training_mode` | `structural_mismatch` | attenuated | cancelled |
+| E | `path` | `entropy_rise` | attenuated | cancelled |
+| E | `training_mode` | `entropy_rise` | attenuated | cancelled |
 
-### Why, and why it matters more than the predicted branch would have
+### Why the code ladder moves the other way
 
 Both rules were priced LOW and P5.4 measured both at LOW — the *forgery* side of
 the table was right. What moved is the *avoidance* side: `structural_mismatch`
@@ -125,8 +210,8 @@ NEGLIGIBLE signal. So applying the P5.4 calibration to the deployed policy would
 let an operator's path whitelist cancel a structural-mismatch alert, which policy
 A correctly refuses.
 
-**That is a defect in the cost model, exposed by the calibration.** The two
-quantities have been conflated:
+**That is a defect in the cost model, exposed by the calibration**, and it is
+present on both ladders. The two quantities have been conflated:
 
 - *how cheaply an attacker who wants to avoid this signal can avoid it* — which
   is what P5.4 measured;
@@ -142,8 +227,18 @@ could have avoided it would have.
 ### What is not being done about it
 
 Per D1: the ladder is **not** retro-fitted, and the calibration is **not**
-applied to make the inconvenience go away. Neither `admissibility.py` nor any
-cost in it is changed in Phase 5.
+applied to make the inconvenience go away. No cost in `admissibility.py` is
+changed — not by Phase 5, and not by Phase 6.
+
+The one thing Phase 6 did change is the *comparison*, to the `>` §5.3 mandates.
+That was adopted because it is a no-op against the declared table (policy B is
+cell-for-cell identical to policy A) and because the governing method document
+requires it. Adopting the plan's **ladder** as well is policy F, and it is not
+adopted: it would disable the path whitelist and training mode entirely, and it
+would invalidate every arm of the Phase 6 experiment, all of which were measured
+against the declared table. That is a decision with an operational cost, and it
+belongs with `cost-policy-v2` rather than in a commit that also does five other
+things.
 
 The refinement this points at — separating avoidance cost from evidential weight,
 so that a signal's evadability stops licensing its cancellation — is proposed as
@@ -170,7 +265,13 @@ for `gzip.compress(ciphertext)` and a `ZIP_STORED` member.
 
 That is the honest way to put it in this matrix, and it is also the finding: the
 Monitor's most-used evidence-cancelling path has no row in the cost table at all,
-so under every one of the four policies it cancels whatever it likes.
+so under every one of the six policies it cancels whatever it likes.
+
+On the plan's ladder the row is Level 0, following §5.1 step 6 — *assign the
+lowest reproducible capability level*. Under the deployed `legacy` policy the
+exemption fires on a header, so the cheapest forgery is the four-byte magic
+prefix, not the standard-library container at Level 1. The Phase 6 repair is
+precisely the change that would raise it from 0 to 1.
 
 ## Limits of this matrix
 

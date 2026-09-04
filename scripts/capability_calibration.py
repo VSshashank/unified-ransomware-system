@@ -184,6 +184,84 @@ def rederive_level(facts: dict) -> int:
     return level
 
 
+# --------------------------------------- the plan's ladder, §5.2, five levels
+#
+# The four-point ladder above is `admissibility.py`'s, and it is the scale the
+# deployed cost table is written on. NOVELTY_PROOF_PLAN.md §5.2 is a *different*
+# scale with five rungs, and §9.1 makes the proof plan the governing method
+# document, so both are derived here from the same recorded facts. They are not
+# interchangeable and no level from one may be quoted as a level of the other.
+#
+#   0  direct attacker control      write bytes, choose a path, rename a file,
+#                                   or prefix a recognised magic value
+#   1  public primitive             a standard-library call, installed command
+#                                   or mature package does it, with no
+#                                   format-specific engineering
+#   2  format-aware capability      additional format-specific structural or
+#                                   semantic constraints must be satisfied
+#   3  new engineering              material new implementation, or privileged
+#                                   access outside the threat model
+#   4  secret/preimage              a protected secret or a cryptographic
+#                                   preimage is required
+#
+# The rung that moves things is 0 against 1. The code ladder prices "a location
+# the attacker can already write to" at LOW, one rung above choosing bytes; the
+# plan puts writing bytes and choosing a path on the same rung, Level 0, and
+# reserves Level 1 for the case where a *library* did the work. That single
+# difference is what makes `path` forgery tie with `static_entropy` avoidance
+# under the plan and not under the code - and §6 of the plan asks specifically
+# what the strict rule does to that tie.
+PLAN_LEVEL_NAMES = {
+    0: "direct attacker control",
+    1: "public primitive",
+    2: "format-aware capability",
+    3: "new engineering or unavailable privilege",
+    4: "secret/preimage",
+}
+
+
+def plan_level(facts: dict) -> int:
+    """Primary derivation onto §5.2, top down in the order the rungs are written."""
+    if facts["requires_secret_or_preimage"]:
+        return 4
+    if facts["ships_an_encoder"]:
+        return 3
+    if facts["format_specific_knowledge"]:
+        return 2
+    if facts["public_primitive"] or facts["third_party_dependencies"]:
+        return 1
+    # Everything left is bytes or a location the attacker chooses. §5.2 puts
+    # "choose a path" in Level 0 explicitly, which is where the two ladders part
+    # company: the code's LOW rung has no counterpart here.
+    return 0
+
+
+def plan_rederive_level(facts: dict) -> int:
+    """Second derivation over the same facts, bottom up."""
+    level = 0
+    if facts["public_primitive"] or facts["third_party_dependencies"]:
+        level = max(level, 1)
+    if facts["format_specific_knowledge"]:
+        level = max(level, 2)
+    if facts["ships_an_encoder"]:
+        level = max(level, 3)
+    if facts["requires_secret_or_preimage"]:
+        level = max(level, 4)
+    return level
+
+
+# §5.3 closes with calibration hypotheses, stated there as hypotheses "until the
+# locked search record is complete". They are recorded against the strategies
+# that test them, so the report says whether the plan's own guesses held.
+PLAN_HYPOTHESES = {
+    "static_entropy": (0, "an unvalidated magic prefix is Level 0"),
+    "structural_mismatch": (
+        1,
+        "basic standard-library container generation is Level 1",
+    ),
+}
+
+
 def record(
     strategy: str,
     kind: str,
@@ -198,6 +276,20 @@ def record(
     primary = assign_level(facts)
     second = rederive_level(facts)
     agrees = primary == second
+
+    plan_primary = plan_level(facts)
+    plan_second = plan_rederive_level(facts)
+    plan_agrees = plan_primary == plan_second
+    plan_measured = (
+        plan_primary
+        if plan_agrees
+        else (
+            min(plan_primary, plan_second)
+            if kind == "forgery"
+            else max(plan_primary, plan_second)
+        )
+    )
+    hypothesis = PLAN_HYPOTHESES.get(table_key)
 
     if agrees:
         measured = primary
@@ -224,6 +316,27 @@ def record(
         "measured_level": measured,
         "measured_name": LEVEL_NAMES[measured],
         "matches_declared": measured == declared,
+        # The same facts read against the governing method document's ladder.
+        # Kept in its own block, and named differently, so no reader can take a
+        # level from one scale for a level of the other.
+        "plan_level": {
+            "ladder": "NOVELTY_PROOF_PLAN.md §5.2 (five levels)",
+            "level": plan_measured,
+            "name": PLAN_LEVEL_NAMES[plan_measured],
+            "primary_derivation": PLAN_LEVEL_NAMES[plan_primary],
+            "second_derivation": PLAN_LEVEL_NAMES[plan_second],
+            "agrees": plan_agrees,
+            "status": "reproduced" if plan_agrees else "unresolved",
+            "hypothesis": (
+                None
+                if hypothesis is None
+                else {
+                    "plan_says": hypothesis[1],
+                    "level": hypothesis[0],
+                    "holds": plan_measured == hypothesis[0],
+                }
+            ),
+        },
         "source_trail": {
             "command": command,
             "artefact_sha256": artefact_sha256,
@@ -280,6 +393,7 @@ def measure_container(workdir: Path) -> list[dict]:
             },
             facts={
                 "third_party_dependencies": [],
+                "public_primitive": True,
                 "ships_an_encoder": False,
                 "format_specific_knowledge": False,
                 "attacker_statements": 1,
@@ -327,6 +441,7 @@ def measure_container(workdir: Path) -> list[dict]:
             },
             facts={
                 "third_party_dependencies": [],
+                "public_primitive": True,
                 "ships_an_encoder": False,
                 "format_specific_knowledge": False,
                 "attacker_statements": 2,
@@ -389,6 +504,7 @@ def measure_entropy_strategies(workdir: Path) -> list[dict]:
             },
             facts={
                 "third_party_dependencies": [],
+                "public_primitive": False,
                 "ships_an_encoder": False,
                 "format_specific_knowledge": False,
                 "attacker_statements": 1,
@@ -442,6 +558,7 @@ def measure_entropy_strategies(workdir: Path) -> list[dict]:
             },
             facts={
                 "third_party_dependencies": [],
+                "public_primitive": False,
                 "ships_an_encoder": False,
                 "format_specific_knowledge": False,
                 "attacker_statements": 1,
@@ -499,6 +616,7 @@ def measure_entropy_strategies(workdir: Path) -> list[dict]:
             },
             facts={
                 "third_party_dependencies": [],
+                "public_primitive": False,
                 "ships_an_encoder": True,
                 "format_specific_knowledge": True,
                 "attacker_statements": None,
@@ -537,6 +655,7 @@ def measure_entropy_strategies(workdir: Path) -> list[dict]:
             },
             facts={
                 "third_party_dependencies": [],
+                "public_primitive": False,
                 "ships_an_encoder": False,
                 "format_specific_knowledge": False,
                 "attacker_statements": 0,
@@ -588,6 +707,7 @@ def measure_whitelist(workdir: Path) -> list[dict]:
             },
             facts={
                 "third_party_dependencies": [],
+                "public_primitive": False,
                 "ships_an_encoder": False,
                 "format_specific_knowledge": False,
                 "attacker_statements": 1,
@@ -632,6 +752,7 @@ def measure_whitelist(workdir: Path) -> list[dict]:
             },
             facts={
                 "third_party_dependencies": [],
+                "public_primitive": False,
                 "ships_an_encoder": False,
                 "format_specific_knowledge": False,
                 "attacker_statements": None,
@@ -719,6 +840,7 @@ def measure_training_mode(workdir: Path) -> list[dict]:
             },
             facts={
                 "third_party_dependencies": [],
+                "public_primitive": False,
                 "ships_an_encoder": False,
                 "format_specific_knowledge": False,
                 "attacker_statements": 6,
@@ -983,6 +1105,7 @@ def measure_ml_confidence_gate(workdir: Path) -> list[dict]:
             },
             facts={
                 "third_party_dependencies": [],
+                "public_primitive": True,
                 # The successful variations require producing a structurally valid
                 # container, which is the same work the container attack needs.
                 "ships_an_encoder": False,
@@ -1083,6 +1206,18 @@ def main() -> int:
             str(value): name for value, name in sorted(LEVEL_NAMES.items())
         },
         "ladder_source": "services/monitor/admissibility.py:68-71",
+        "plan_ladder": {
+            str(value): name for value, name in sorted(PLAN_LEVEL_NAMES.items())
+        },
+        "plan_ladder_source": "NOVELTY_PROOF_PLAN.md §5.2",
+        "two_ladders_note": (
+            "Every strategy carries a level on both scales, derived twice each "
+            "from the same recorded operational facts. They are not comparable "
+            "rung for rung: the code's LOW ('a location the attacker can already "
+            "write to') has no counterpart in the plan, which puts choosing a "
+            "path in Level 0 alongside choosing bytes, and the code's HIGH "
+            "conflates the plan's Level 3 and Level 4."
+        ),
         "second_reviewer_statement": (
             "§9.15 requires the AS↔NI ring. Every level here was derived twice, in "
             "opposite decision orders, over the same recorded operational facts and "

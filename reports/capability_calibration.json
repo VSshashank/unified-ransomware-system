@@ -1,7 +1,7 @@
 {
   "schema": "urds.capability_calibration/1",
-  "generated_at": "2026-09-02T13:29:53.754283Z",
-  "commit": "7d8ee7ec8147b6e08a05e908bed94565b5895e1f",
+  "generated_at": "2026-09-04T08:43:16.592809Z",
+  "commit": "8aa18ed12c0b72ff6e28844f5759ed9696aed44b",
   "branch": "feat/admissibility-governance-novelty-v2",
   "ladder": {
     "0": "negligible",
@@ -10,6 +10,15 @@
     "3": "high"
   },
   "ladder_source": "services/monitor/admissibility.py:68-71",
+  "plan_ladder": {
+    "0": "direct attacker control",
+    "1": "public primitive",
+    "2": "format-aware capability",
+    "3": "new engineering or unavailable privilege",
+    "4": "secret/preimage"
+  },
+  "plan_ladder_source": "NOVELTY_PROOF_PLAN.md \u00a75.2",
+  "two_ladders_note": "Every strategy carries a level on both scales, derived twice each from the same recorded operational facts. They are not comparable rung for rung: the code's LOW ('a location the attacker can already write to') has no counterpart in the plan, which puts choosing a path in Level 0 alongside choosing bytes, and the code's HIGH conflates the plan's Level 3 and Level 4.",
   "second_reviewer_statement": "\u00a79.15 requires the AS\u2194NI ring. Every level here was derived twice, in opposite decision orders, over the same recorded operational facts and without reference to the first conclusion - which is the reproduction protocol. Both derivations were written in one session by one author. No record claims an independent human reviewer, and every record carries reproduction.independent_human_reviewer = false.",
   "summary": {
     "levels_measured": 10,
@@ -60,6 +69,7 @@
       },
       "operational_facts": {
         "third_party_dependencies": [],
+        "public_primitive": true,
         "ships_an_encoder": false,
         "format_specific_knowledge": false,
         "attacker_statements": 1,
@@ -76,9 +86,23 @@
       "measured_level": 0,
       "measured_name": "negligible",
       "matches_declared": false,
+      "plan_level": {
+        "ladder": "NOVELTY_PROOF_PLAN.md \u00a75.2 (five levels)",
+        "level": 1,
+        "name": "public primitive",
+        "primary_derivation": "public primitive",
+        "second_derivation": "public primitive",
+        "agrees": true,
+        "status": "reproduced",
+        "hypothesis": {
+          "plan_says": "basic standard-library container generation is Level 1",
+          "level": 1,
+          "holds": true
+        }
+      },
       "source_trail": {
         "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
-        "artefact_sha256": "ac6017a6abd8dba3f908d9de6fc861d110307434c13aaa3f5e8243b3f4067aa6",
+        "artefact_sha256": "609922041cc55f577e1797c4bcc55512f495e7802439292a7c78c87c986d5a0c",
         "scored_by": "detection.classify via scripts/capability_calibration.py::score"
       },
       "reproduction": {
@@ -105,6 +129,7 @@
       },
       "operational_facts": {
         "third_party_dependencies": [],
+        "public_primitive": true,
         "ships_an_encoder": false,
         "format_specific_knowledge": false,
         "attacker_statements": 2,
@@ -121,6 +146,20 @@
       "measured_level": 0,
       "measured_name": "negligible",
       "matches_declared": false,
+      "plan_level": {
+        "ladder": "NOVELTY_PROOF_PLAN.md \u00a75.2 (five levels)",
+        "level": 1,
+        "name": "public primitive",
+        "primary_derivation": "public primitive",
+        "second_derivation": "public primitive",
+        "agrees": true,
+        "status": "reproduced",
+        "hypothesis": {
+          "plan_says": "basic standard-library container generation is Level 1",
+          "level": 1,
+          "holds": true
+        }
+      },
       "source_trail": {
         "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
         "artefact_sha256": "390e43f3f1a2e1891b2b935249e79420f43be053372a325bd2bd02f45da06303",
@@ -157,6 +196,7 @@
       },
       "operational_facts": {
         "third_party_dependencies": [],
+        "public_primitive": false,
         "ships_an_encoder": false,
         "format_specific_knowledge": false,
         "attacker_statements": 1,
@@ -173,6 +213,20 @@
       "measured_level": 0,
       "measured_name": "negligible",
       "matches_declared": true,
+      "plan_level": {
+        "ladder": "NOVELTY_PROOF_PLAN.md \u00a75.2 (five levels)",
+        "level": 0,
+        "name": "direct attacker control",
+        "primary_derivation": "direct attacker control",
+        "second_derivation": "direct attacker control",
+        "agrees": true,
+        "status": "reproduced",
+        "hypothesis": {
+          "plan_says": "an unvalidated magic prefix is Level 0",
+          "level": 0,
+          "holds": true
+        }
+      },
       "source_trail": {
         "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
         "artefact_sha256": "053944be14d8e03c9e7d27652266dca707441a228ce92fc9396fdc2d068180bd",
@@ -208,6 +262,7 @@
       },
       "operational_facts": {
         "third_party_dependencies": [],
+        "public_primitive": false,
         "ships_an_encoder": false,
         "format_specific_knowledge": false,
         "attacker_statements": 1,
@@ -226,6 +281,16 @@
       "measured_level": 1,
       "measured_name": "low",
       "matches_declared": false,
+      "plan_level": {
+        "ladder": "NOVELTY_PROOF_PLAN.md \u00a75.2 (five levels)",
+        "level": 0,
+        "name": "direct attacker control",
+        "primary_derivation": "direct attacker control",
+        "second_derivation": "direct attacker control",
+        "agrees": true,
+        "status": "reproduced",
+        "hypothesis": null
+      },
       "source_trail": {
         "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
         "artefact_sha256": "03252324608c5201ea11dd838cf3a48d621ce3dba9804d8e3bc36cf383025cb8",
@@ -255,6 +320,7 @@
       },
       "operational_facts": {
         "third_party_dependencies": [],
+        "public_primitive": false,
         "ships_an_encoder": true,
         "format_specific_knowledge": true,
         "attacker_statements": null,
@@ -269,6 +335,16 @@
       "measured_level": 2,
       "measured_name": "moderate",
       "matches_declared": true,
+      "plan_level": {
+        "ladder": "NOVELTY_PROOF_PLAN.md \u00a75.2 (five levels)",
+        "level": 3,
+        "name": "new engineering or unavailable privilege",
+        "primary_derivation": "new engineering or unavailable privilege",
+        "second_derivation": "new engineering or unavailable privilege",
+        "agrees": true,
+        "status": "reproduced",
+        "hypothesis": null
+      },
       "source_trail": {
         "command": "(not empirically run - see why_it_is_not_run_here)",
         "artefact_sha256": null,
@@ -298,6 +374,7 @@
       },
       "operational_facts": {
         "third_party_dependencies": [],
+        "public_primitive": false,
         "ships_an_encoder": false,
         "format_specific_knowledge": false,
         "attacker_statements": 0,
@@ -312,6 +389,16 @@
       "measured_level": 0,
       "measured_name": "negligible",
       "matches_declared": true,
+      "plan_level": {
+        "ladder": "NOVELTY_PROOF_PLAN.md \u00a75.2 (five levels)",
+        "level": 0,
+        "name": "direct attacker control",
+        "primary_derivation": "direct attacker control",
+        "second_derivation": "direct attacker control",
+        "agrees": true,
+        "status": "reproduced",
+        "hypothesis": null
+      },
       "source_trail": {
         "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
         "artefact_sha256": "b87b7893081cc1965228fc41e4730b047c5bf10f8a489076da76c2bc8f5f57b3",
@@ -341,6 +428,7 @@
       },
       "operational_facts": {
         "third_party_dependencies": [],
+        "public_primitive": false,
         "ships_an_encoder": false,
         "format_specific_knowledge": false,
         "attacker_statements": 1,
@@ -350,7 +438,7 @@
       "measurement": {
         "rule_matched": {
           "rule": "path",
-          "value": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\capability_f32gpcnj\\approved\\*"
+          "value": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\capability_csthv87d\\approved\\*"
         },
         "adjudication_outcome": "cancelled",
         "admitted": true,
@@ -361,6 +449,16 @@
       "measured_level": 1,
       "measured_name": "low",
       "matches_declared": true,
+      "plan_level": {
+        "ladder": "NOVELTY_PROOF_PLAN.md \u00a75.2 (five levels)",
+        "level": 0,
+        "name": "direct attacker control",
+        "primary_derivation": "direct attacker control",
+        "second_derivation": "direct attacker control",
+        "agrees": true,
+        "status": "reproduced",
+        "hypothesis": null
+      },
       "source_trail": {
         "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
         "artefact_sha256": "43fa1f94da3601cfc321540f41073b2051c2ca39dffa976197caf1a47bc7f625",
@@ -390,6 +488,7 @@
       },
       "operational_facts": {
         "third_party_dependencies": [],
+        "public_primitive": false,
         "ships_an_encoder": false,
         "format_specific_knowledge": false,
         "attacker_statements": null,
@@ -404,6 +503,16 @@
       "measured_level": 3,
       "measured_name": "high",
       "matches_declared": true,
+      "plan_level": {
+        "ladder": "NOVELTY_PROOF_PLAN.md \u00a75.2 (five levels)",
+        "level": 4,
+        "name": "secret/preimage",
+        "primary_derivation": "secret/preimage",
+        "second_derivation": "secret/preimage",
+        "agrees": true,
+        "status": "reproduced",
+        "hypothesis": null
+      },
       "source_trail": {
         "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
         "artefact_sha256": null,
@@ -433,6 +542,7 @@
       },
       "operational_facts": {
         "third_party_dependencies": [],
+        "public_primitive": false,
         "ships_an_encoder": false,
         "format_specific_knowledge": false,
         "attacker_statements": 6,
@@ -447,14 +557,14 @@
             ".zip": {
               "entropy_ceiling": 8.0,
               "directories": [
-                "c:/users/nikhi/appdata/local/temp/capability_f32gpcnj/watched"
+                "c:/users/nikhi/appdata/local/temp/capability_csthv87d/watched"
               ],
               "profiles": [
                 {
                   "structure": "container:zip",
                   "entropy_ceiling": 8.0,
                   "directories": [
-                    "c:/users/nikhi/appdata/local/temp/capability_f32gpcnj/watched"
+                    "c:/users/nikhi/appdata/local/temp/capability_csthv87d/watched"
                   ]
                 }
               ]
@@ -468,7 +578,7 @@
         "attack_signal": null,
         "rule_matched": {
           "rule": "training_mode",
-          "value": ".zip (container:zip) in c:/users/nikhi/appdata/local/temp/capability_f32gpcnj/watched at or below 8.0 bits/byte"
+          "value": ".zip (container:zip) in c:/users/nikhi/appdata/local/temp/capability_csthv87d/watched at or below 8.0 bits/byte"
         },
         "adjudication_outcome": "cancelled",
         "admitted": true,
@@ -479,6 +589,16 @@
       "measured_level": 1,
       "measured_name": "low",
       "matches_declared": true,
+      "plan_level": {
+        "ladder": "NOVELTY_PROOF_PLAN.md \u00a75.2 (five levels)",
+        "level": 0,
+        "name": "direct attacker control",
+        "primary_derivation": "direct attacker control",
+        "second_derivation": "direct attacker control",
+        "agrees": true,
+        "status": "reproduced",
+        "hypothesis": null
+      },
       "source_trail": {
         "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
         "artefact_sha256": "5d1036a2d89174ad6d22e32f7ee4b104a580d846b3041be117f066d01409dd15",
@@ -600,6 +720,7 @@
       },
       "operational_facts": {
         "third_party_dependencies": [],
+        "public_primitive": true,
         "ships_an_encoder": false,
         "format_specific_knowledge": false,
         "attacker_statements": 2,
@@ -647,6 +768,16 @@
       "measured_level": 0,
       "measured_name": "negligible",
       "matches_declared": false,
+      "plan_level": {
+        "ladder": "NOVELTY_PROOF_PLAN.md \u00a75.2 (five levels)",
+        "level": 1,
+        "name": "public primitive",
+        "primary_derivation": "public primitive",
+        "second_derivation": "public primitive",
+        "agrees": true,
+        "status": "reproduced",
+        "hypothesis": null
+      },
       "source_trail": {
         "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
         "artefact_sha256": "027d65b50bf38a782f58e761e28301f04e075315fad67212b07e3b85d7f17f0a",

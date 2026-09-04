@@ -85,7 +85,7 @@ forging it against avoiding the signal, and the outcome — `cancelled` or
 
 | # | Call site | What it decides | Note |
 |---|---|---|---|
-| M-04 | `admissibility.py:147` `admitted = forging >= avoiding` | whether a matched rule cancels or is attenuated | **`>=`, not `>`.** An equal-cost tie admits the suppression. This is the rule P5.5 recomputes the whole matrix under. |
+| M-04 | `admissibility.py` `admitted = forging > avoiding` | whether a matched rule cancels or is attenuated | **Was `>=` when this inventory was written; strict since P6.8**, per `NOVELTY_PROOF_PLAN.md` §5.3. Against the declared cost table the change is a no-op - all fifteen live cells decide the same either way, which is policy B of `docs/ADMISSION_RECOMPUTE.md`. It is not a no-op on the plan's five-level ladder, where it attenuates four cells the deployed table cancels (policy F). |
 | M-05 | `app.py:424` `if verdict["suspicious"]:` | whether `adjudicate` is called **at all** | A suppression that matches a verdict the detector already called benign is never adjudicated and never recorded. Combined with M-06 below, this is why the container exemption sits outside the governance layer entirely. |
 
 ### The container exemption — §9.3 finding 1

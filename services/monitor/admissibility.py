@@ -15,8 +15,8 @@ principle is what makes the other cases fall out instead of having to be noticed
     spend to not trigger it. Every suppression has a **forgery cost** - what an
     attacker must spend to make it fire on a file they control.
 
-    A suppression may cancel a detection only when forging the suppression costs
-    at least as much as avoiding the detection.
+    A suppression may cancel a detection only when forging the suppression
+    costs **strictly more** than avoiding the detection.
 
 Where it does not, the suppression is not discarded - it is *attenuated*: the
 alert stands, and both costs are recorded on the event and into the ledger, so
@@ -144,7 +144,19 @@ def adjudicate(verdict: dict, suppression: dict | None) -> dict | None:
     signal = verdict.get("signal")
     forging = forgery_cost(suppression.get("rule"))
     avoiding = avoidance_cost(signal)
-    admitted = forging >= avoiding
+    # Strict, per NOVELTY_PROOF_PLAN.md §5.3: "equal capability does not
+    # demonstrate that the mitigation is harder to forge". A tie is not
+    # evidence, so a tie no longer admits.
+    #
+    # Against the declared table above this changes nothing: all 15
+    # rule × signal cells decide the same way under `>` as under `>=`, which is
+    # what `scripts/admission_recompute.py` reports as policy B, and the four
+    # cells the strict rule *does* move are moved by the P5.4 measured costs
+    # (policy D), which are not deployed here. The one reachable difference the
+    # change could make is a rule not in FORGERY_COST meeting a verdict with no
+    # signal, and `app.handle_event` only adjudicates suspicious verdicts, which
+    # always carry one.
+    admitted = forging > avoiding
 
     return {
         **suppression,
@@ -157,7 +169,7 @@ def adjudicate(verdict: dict, suppression: dict | None) -> dict | None:
             f"forging the {suppression.get('rule')} rule costs {COST_NAMES[forging]}; "
             f"avoiding the {signal or 'benign'} signal costs {COST_NAMES[avoiding]}"
             + (
-                " - the suppression is at least as expensive, so it applies"
+                " - the suppression is strictly more expensive, so it applies"
                 if admitted
                 else " - the suppression is cheaper than the evidence, so the alert stands"
             )
