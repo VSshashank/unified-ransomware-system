@@ -1,7 +1,7 @@
 {
   "schema": "urds.three_arm_experiment/1",
-  "generated_at": "2026-09-03T05:47:29.885468Z",
-  "commit": "5e6d635d8a665aa744cdb48c7e5e70422012c5c3",
+  "generated_at": "2026-09-04T08:21:00.406845Z",
+  "commit": "f7098e3cc9c4620a95a9436d8eb25620691d05eb",
   "branch": "feat/admissibility-governance-novelty-v2",
   "entropy_threshold": 7.5,
   "arms": {
@@ -750,60 +750,60 @@
       "repetitions": 20,
       "files_per_repetition": 7,
       "samples": 140,
-      "median_ms": 4.409,
-      "q1_ms": 3.838,
-      "q3_ms": 11.179,
-      "iqr_ms": 7.341,
-      "p95_ms": 13.303,
-      "max_ms": 14.264,
+      "median_ms": 6.151,
+      "q1_ms": 4.115,
+      "q3_ms": 10.763,
+      "iqr_ms": 6.648,
+      "p95_ms": 13.507,
+      "max_ms": 15.771,
       "order": "interleaved with the other arms, rotating per repetition"
     },
     "B": {
       "repetitions": 20,
       "files_per_repetition": 7,
       "samples": 140,
-      "median_ms": 4.382,
-      "q1_ms": 3.775,
-      "q3_ms": 10.885,
-      "iqr_ms": 7.11,
-      "p95_ms": 13.174,
-      "max_ms": 15.456,
+      "median_ms": 7.059,
+      "q1_ms": 4.169,
+      "q3_ms": 11.029,
+      "iqr_ms": 6.86,
+      "p95_ms": 13.352,
+      "max_ms": 14.513,
       "order": "interleaved with the other arms, rotating per repetition"
     },
     "C1": {
       "repetitions": 20,
       "files_per_repetition": 7,
       "samples": 140,
-      "median_ms": 4.239,
-      "q1_ms": 3.77,
-      "q3_ms": 10.372,
-      "iqr_ms": 6.601,
-      "p95_ms": 13.222,
-      "max_ms": 15.65,
+      "median_ms": 6.281,
+      "q1_ms": 4.064,
+      "q3_ms": 11.18,
+      "iqr_ms": 7.116,
+      "p95_ms": 13.641,
+      "max_ms": 15.753,
       "order": "interleaved with the other arms, rotating per repetition"
     },
     "C": {
       "repetitions": 20,
       "files_per_repetition": 7,
       "samples": 140,
-      "median_ms": 4.192,
-      "q1_ms": 3.701,
-      "q3_ms": 10.187,
-      "iqr_ms": 6.486,
-      "p95_ms": 13.661,
-      "max_ms": 14.948,
+      "median_ms": 5.728,
+      "q1_ms": 4.114,
+      "q3_ms": 11.457,
+      "iqr_ms": 7.343,
+      "p95_ms": 14.275,
+      "max_ms": 15.359,
       "order": "interleaved with the other arms, rotating per repetition"
     },
     "D": {
       "repetitions": 20,
       "files_per_repetition": 7,
       "samples": 140,
-      "median_ms": 4.257,
-      "q1_ms": 3.771,
-      "q3_ms": 10.536,
-      "iqr_ms": 6.765,
-      "p95_ms": 13.392,
-      "max_ms": 15.239,
+      "median_ms": 5.861,
+      "q1_ms": 4.119,
+      "q3_ms": 10.959,
+      "iqr_ms": 6.84,
+      "p95_ms": 13.139,
+      "max_ms": 14.755,
       "order": "interleaved with the other arms, rotating per repetition"
     }
   },
@@ -898,7 +898,7 @@
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
-          "reason": "entropy 8.0 explained by a zip header (this format has no structural validator)"
+          "reason": "entropy 8.0 explained by a zip header whose structure is incomplete (the validator ran and could not finish; legacy exempts on the header anyway)"
         },
         "B": {
           "verdict": "suspected_encryption",
@@ -907,22 +907,22 @@
           "reason": "entropy 8.0 >= 7.5; the container exemption is disabled"
         },
         "C1": {
-          "verdict": "suspected_encryption",
+          "verdict": "deferred",
           "suspicious": true,
           "signal": "static_entropy",
-          "reason": "entropy 8.0 >= 7.5; a zip header, but no structural validator ran on it - nothing about this file was verified"
+          "reason": "entropy 8.0 >= 7.5; the zip structure is incomplete - the validator ran and could not finish, so nothing about this file is verified yet"
         },
         "C": {
-          "verdict": "suspected_encryption",
+          "verdict": "deferred",
           "suspicious": true,
           "signal": "static_entropy",
-          "reason": "entropy 8.0 >= 7.5; a zip header, but no structural validator ran on it - nothing about this file was verified"
+          "reason": "entropy 8.0 >= 7.5; the zip structure is incomplete - the validator ran and could not finish, so nothing about this file is verified yet"
         },
         "D": {
-          "verdict": "suspected_encryption",
+          "verdict": "deferred",
           "suspicious": true,
           "signal": "static_entropy",
-          "reason": "entropy 8.0 >= 7.5; a zip header, but no structural validator ran on it - nothing about this file was verified"
+          "reason": "entropy 8.0 >= 7.5; the zip structure is incomplete - the validator ran and could not finish, so nothing about this file is verified yet"
         }
       }
     },
@@ -1828,7 +1828,7 @@
     {
       "family": "A2_standard_library_container",
       "file": "a2_gzip_compress.gz",
-      "sha256": "821a17444825c52419f12e7a9ad56b29b239928b6df82a67144d3f2c3b7f64f8",
+      "sha256": "62e7ffccc7bef7f448c55ee3960d3ecbaf6e321667c0f14ba2d5db68ce78a96e",
       "size": 120058,
       "construction": "gzip.compress(ciphertext) - a real deflate stream with a real CRC-32",
       "entropy": 8.0,
@@ -2078,7 +2078,7 @@
           "verdict": "benign_compressed",
           "suspicious": false,
           "signal": null,
-          "reason": "entropy 8.0 explained by a zip header (this format has no structural validator)"
+          "reason": "entropy 8.0 explained by a zip header whose structure is incomplete (the validator ran and could not finish; legacy exempts on the header anyway)"
         },
         "B": {
           "verdict": "suspected_encryption",
@@ -2087,22 +2087,22 @@
           "reason": "entropy 8.0 >= 7.5; the container exemption is disabled"
         },
         "C1": {
-          "verdict": "suspected_encryption",
+          "verdict": "deferred",
           "suspicious": true,
           "signal": "static_entropy",
-          "reason": "entropy 8.0 >= 7.5; a zip header, but no structural validator ran on it - nothing about this file was verified"
+          "reason": "entropy 8.0 >= 7.5; the zip structure is incomplete - the validator ran and could not finish, so nothing about this file is verified yet"
         },
         "C": {
-          "verdict": "suspected_encryption",
+          "verdict": "deferred",
           "suspicious": true,
           "signal": "static_entropy",
-          "reason": "entropy 8.0 >= 7.5; a zip header, but no structural validator ran on it - nothing about this file was verified"
+          "reason": "entropy 8.0 >= 7.5; the zip structure is incomplete - the validator ran and could not finish, so nothing about this file is verified yet"
         },
         "D": {
-          "verdict": "suspected_encryption",
+          "verdict": "deferred",
           "suspicious": true,
           "signal": "static_entropy",
-          "reason": "entropy 8.0 >= 7.5; a zip header, but no structural validator ran on it - nothing about this file was verified"
+          "reason": "entropy 8.0 >= 7.5; the zip structure is incomplete - the validator ran and could not finish, so nothing about this file is verified yet"
         }
       }
     },
@@ -2286,7 +2286,7 @@
     {
       "family": "A7_forged_inner_content",
       "file": "a7_gzip_naive_magic.gz",
-      "sha256": "4ea576ef82d2dc05645143d1c0066f5f23e13fe385057e64616f42cfac281521",
+      "sha256": "25aa9bb5ab02f1f2f4520102fa975d0f613b3cd74b7aa50ae578f6a6c16130ac",
       "size": 120062,
       "construction": "gzip of four JPEG magic bytes and ciphertext - no real marker chain",
       "entropy": 8.0,
@@ -2344,7 +2344,7 @@
     {
       "family": "A7_forged_inner_content",
       "file": "a7_gzip_real_jpeg_head.gz",
-      "sha256": "a18fcd8b37ed5fa9e5518327e3b79275897060833e4495a990fe0335d65f843b",
+      "sha256": "4d7cd3ced701b97f7b875665bd1849c1e2cd028d9e3bda35ad7af51217d138ef",
       "size": 120527,
       "construction": "gzip of a genuine JPEG through SOS, ciphertext where the scan data goes",
       "entropy": 8.0,

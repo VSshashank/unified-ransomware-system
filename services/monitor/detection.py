@@ -33,7 +33,7 @@ from collections import Counter, OrderedDict, deque
 
 # Only the read size is needed here; the structural verdict itself is taken by
 # the caller and handed to `classify`, so this module stays free of the parsing.
-from containers import CONTAINER_TAIL_BYTES
+from containers import CONTAINER_TAIL_BYTES, INCOMPLETE as CONTAINER_INCOMPLETE
 
 # Entropy at or above this is "encrypted-looking". 7.5 bits/byte is the usual
 # operating point: plain text sits ~4.5, office documents ~6, and both ciphertext
@@ -631,6 +631,26 @@ CONTAINER_POLICIES = (
 # `ratio` with one appeal added, so anything true of `ratio` is true of it.
 _RATIO_POLICIES = (CONTAINER_POLICY_RATIO, CONTAINER_POLICY_INNER)
 
+# The policies that refuse INCOMPLETE as positive structural proof, and so the
+# ones under which a flag on a half-written container is a *deferral* rather
+# than a judgement. `legacy` is not among them: under legacy an INCOMPLETE
+# container is exempted, which is the silent benign cancellation
+# NOVELTY_PROOF_PLAN.md §9 row 3 forbids and Arm A of the Phase 6 experiment
+# measured. That behaviour is left exactly as it was measured.
+_DEFERRING_POLICIES = (
+    CONTAINER_POLICY_STRICT,
+    CONTAINER_POLICY_RATIO,
+    CONTAINER_POLICY_INNER,
+)
+
+# §7.1's "explicit deferred state", and the verdict name services/dashboard
+# already renders (GOVERNANCE_OUTCOMES, "no verdict was reached on this event").
+# It is not a third truth value: `suspicious` stays True and the signal is
+# unchanged, so the alert stands and admissibility ranks it exactly as before.
+# What changes is that the record says the validator did not finish, instead of
+# claiming a conclusion the evidence does not carry.
+DEFERRED = "deferred"
+
 # Off by default, per section 9.4.2 and P6.1: the repair does not ship until the
 # measured false-positive cost has been put through D5. An unrecognised value is
 # not silently coerced - that would turn a typo in a deployment into a policy
@@ -649,6 +669,7 @@ def container_explains_entropy(
     policy: str,
     compression: dict | None = None,
     inner: dict | None = None,
+    status: str | None = None,
 ) -> tuple[bool, str]:
     """Does the declared container explain high entropy under `policy`?
 
@@ -668,14 +689,31 @@ def container_explains_entropy(
     if policy == CONTAINER_POLICY_OFF:
         return False, "the container exemption is disabled"
     if policy == CONTAINER_POLICY_LEGACY:
-        return True, (
-            f"a structurally valid {container} container"
-            if container_valid is True
-            else f"a {container} header (this format has no structural validator)"
-        )
+        if container_valid is True:
+            return True, f"a structurally valid {container} container"
+        # The decision is unchanged - legacy exempts on the header, which is
+        # what Arm A measured - but the sentence has to be true. A truncated ZIP
+        # was being recorded as a format with no validator, which is a different
+        # gap from the one it is, and both are exempted here for the same wrong
+        # reason: the header alone.
+        if status == CONTAINER_INCOMPLETE:
+            return True, (
+                f"a {container} header whose structure is incomplete (the validator "
+                "ran and could not finish; legacy exempts on the header anyway)"
+            )
+        return True, f"a {container} header (this format has no structural validator)"
 
     # strict, and ratio on top of it
     if container_valid is not True:
+        if status == CONTAINER_INCOMPLETE:
+            # A validator ran and could not finish - a file still being written,
+            # or a truncated one. Saying "no validator ran on it" here was
+            # wrong, and it is the difference between a gap in coverage and a
+            # measurement that is not finished yet.
+            return False, (
+                f"the {container} structure is incomplete - the validator ran and "
+                "could not finish, so nothing about this file is verified yet"
+            )
         return False, (
             f"a {container} header, but no structural validator ran on it - "
             "nothing about this file was verified"
@@ -764,6 +802,13 @@ def classify(
     high_entropy = entropy >= threshold
     statistics = statistics or {}
     partial = looks_partially_encrypted(statistics)
+    # Did the validator run and fail to finish, under a policy that refuses to
+    # read that as proof? Then a flag here is a deferral. Gated on INCOMPLETE
+    # specifically: UNVALIDATED is a different answer - no validator exists for
+    # this format - and naming both `deferred` would hide the coverage gap the
+    # repair is about behind a word that sounds like a temporary condition.
+    deferring = container_status == CONTAINER_INCOMPLETE and policy in _DEFERRING_POLICIES
+    encryption_verdict = DEFERRED if deferring else "suspected_encryption"
 
     def verdict_of(suspicious: bool, verdict: str, reason: str, signal: str | None) -> dict:
         return {
@@ -845,12 +890,18 @@ def classify(
     if not high_entropy and partial and not partial_explained:
         return verdict_of(
             True,
-            "suspected_encryption",
+            encryption_verdict,
             f"whole-file entropy {entropy} is below {threshold}, but "
             f"{statistics['high_entropy_block_fraction']:.0%} of its "
             f"{statistics['entropy_blocks']} blocks are at or above {HIGH_ENTROPY_BLOCK} "
             f"with a spread of {statistics['entropy_block_spread']} - part of this file was "
-            "replaced with ciphertext and the rest was left alone",
+            "replaced with ciphertext and the rest was left alone"
+            + (
+                "; the container's own validator did not finish, so this is deferred "
+                "rather than concluded"
+                if deferring
+                else ""
+            ),
             "partial_entropy",
         )
 
@@ -858,7 +909,7 @@ def classify(
     # counts as an explanation is the policy's decision, and the reason string
     # carries whichever clause decided, either way.
     explains, why = container_explains_entropy(
-        container, container_valid, policy, compression, inner_content
+        container, container_valid, policy, compression, inner_content, container_status
     )
     if high_entropy and explains and not ransom_ext:
         return verdict_of(
@@ -869,7 +920,7 @@ def classify(
         reason = f"entropy {entropy} >= {threshold}; {why}"
         if ransom_ext:
             reason += " and a known ransomware extension"
-        return verdict_of(True, "suspected_encryption", reason, "static_entropy")
+        return verdict_of(True, encryption_verdict, reason, "static_entropy")
 
     if ransom_ext:
         return verdict_of(

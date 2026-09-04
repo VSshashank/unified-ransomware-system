@@ -150,6 +150,7 @@ def score(path: Path, inputs: dict, policy: str, entropy_delta: float | None = N
         compression=inputs["compression"],
         inner_content=inputs["inner_content"],
         policy=policy,
+        container_status=inputs["container_status"],
     )
     return {
         "verdict": verdict["verdict"],
@@ -397,6 +398,7 @@ def _one_pass(path: Path, policy: str) -> float:
         compression=containers.compression_evidence(head, tail, fmt, size),
         inner_content=containers.inner_content_evidence(head, tail, fmt, size),
         policy=policy,
+        container_status=containers.container_status(head, tail, fmt, size),
     )
     return (time.perf_counter() - start) * 1000.0
 
