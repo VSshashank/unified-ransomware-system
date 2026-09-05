@@ -1,7 +1,7 @@
 {
   "schema": "urds.admission_recompute/1",
-  "generated_at": "2026-09-04T08:46:27.054098Z",
-  "commit": "8aa18ed12c0b72ff6e28844f5759ed9696aed44b",
+  "generated_at": "2026-09-04T08:56:07.245361Z",
+  "commit": "c74324cbcb6a8ca74eaa9dd8486f4e8acb0f308c",
   "branch": "feat/admissibility-governance-novelty-v2",
   "policies": {
     "A": {
@@ -96,11 +96,11 @@
       "measured_name": "negligible"
     },
     "partial_entropy": {
-      "plan": 3,
+      "plan": 1,
       "declared": 2,
-      "measured": 2,
+      "measured": 0,
       "declared_name": "moderate",
-      "measured_name": "moderate"
+      "measured_name": "negligible"
     },
     "entropy_rise": {
       "plan": 0,
@@ -464,7 +464,7 @@
         "suppression": "hash",
         "signal": "partial_entropy",
         "forgery_cost": "high",
-        "avoidance_cost": "moderate",
+        "avoidance_cost": "negligible",
         "admitted": true,
         "outcome": "cancelled"
       },
@@ -504,9 +504,9 @@
         "suppression": "path",
         "signal": "partial_entropy",
         "forgery_cost": "low",
-        "avoidance_cost": "moderate",
-        "admitted": false,
-        "outcome": "attenuated"
+        "avoidance_cost": "negligible",
+        "admitted": true,
+        "outcome": "cancelled"
       },
       "path|entropy_rise": {
         "suppression": "path",
@@ -544,9 +544,9 @@
         "suppression": "training_mode",
         "signal": "partial_entropy",
         "forgery_cost": "low",
-        "avoidance_cost": "moderate",
-        "admitted": false,
-        "outcome": "attenuated"
+        "avoidance_cost": "negligible",
+        "admitted": true,
+        "outcome": "cancelled"
       },
       "training_mode|entropy_rise": {
         "suppression": "training_mode",
@@ -584,9 +584,9 @@
         "suppression": "container",
         "signal": "partial_entropy",
         "forgery_cost": "negligible",
-        "avoidance_cost": "moderate",
-        "admitted": false,
-        "outcome": "attenuated"
+        "avoidance_cost": "negligible",
+        "admitted": true,
+        "outcome": "cancelled"
       },
       "container|entropy_rise": {
         "suppression": "container",
@@ -626,7 +626,7 @@
         "suppression": "hash",
         "signal": "partial_entropy",
         "forgery_cost": "high",
-        "avoidance_cost": "moderate",
+        "avoidance_cost": "negligible",
         "admitted": true,
         "outcome": "cancelled"
       },
@@ -666,9 +666,9 @@
         "suppression": "path",
         "signal": "partial_entropy",
         "forgery_cost": "low",
-        "avoidance_cost": "moderate",
-        "admitted": false,
-        "outcome": "attenuated"
+        "avoidance_cost": "negligible",
+        "admitted": true,
+        "outcome": "cancelled"
       },
       "path|entropy_rise": {
         "suppression": "path",
@@ -706,9 +706,9 @@
         "suppression": "training_mode",
         "signal": "partial_entropy",
         "forgery_cost": "low",
-        "avoidance_cost": "moderate",
-        "admitted": false,
-        "outcome": "attenuated"
+        "avoidance_cost": "negligible",
+        "admitted": true,
+        "outcome": "cancelled"
       },
       "training_mode|entropy_rise": {
         "suppression": "training_mode",
@@ -746,7 +746,7 @@
         "suppression": "container",
         "signal": "partial_entropy",
         "forgery_cost": "negligible",
-        "avoidance_cost": "moderate",
+        "avoidance_cost": "negligible",
         "admitted": false,
         "outcome": "attenuated"
       },
@@ -788,7 +788,7 @@
         "suppression": "hash",
         "signal": "partial_entropy",
         "forgery_cost": "secret/preimage",
-        "avoidance_cost": "new engineering or unavailable privilege",
+        "avoidance_cost": "public primitive",
         "admitted": true,
         "outcome": "cancelled"
       },
@@ -828,7 +828,7 @@
         "suppression": "path",
         "signal": "partial_entropy",
         "forgery_cost": "direct attacker control",
-        "avoidance_cost": "new engineering or unavailable privilege",
+        "avoidance_cost": "public primitive",
         "admitted": false,
         "outcome": "attenuated"
       },
@@ -868,7 +868,7 @@
         "suppression": "training_mode",
         "signal": "partial_entropy",
         "forgery_cost": "direct attacker control",
-        "avoidance_cost": "new engineering or unavailable privilege",
+        "avoidance_cost": "public primitive",
         "admitted": false,
         "outcome": "attenuated"
       },
@@ -908,7 +908,7 @@
         "suppression": "container",
         "signal": "partial_entropy",
         "forgery_cost": "direct attacker control",
-        "avoidance_cost": "new engineering or unavailable privilege",
+        "avoidance_cost": "public primitive",
         "admitted": false,
         "outcome": "attenuated"
       },
@@ -950,7 +950,7 @@
         "suppression": "hash",
         "signal": "partial_entropy",
         "forgery_cost": "secret/preimage",
-        "avoidance_cost": "new engineering or unavailable privilege",
+        "avoidance_cost": "public primitive",
         "admitted": true,
         "outcome": "cancelled"
       },
@@ -990,7 +990,7 @@
         "suppression": "path",
         "signal": "partial_entropy",
         "forgery_cost": "direct attacker control",
-        "avoidance_cost": "new engineering or unavailable privilege",
+        "avoidance_cost": "public primitive",
         "admitted": false,
         "outcome": "attenuated"
       },
@@ -1030,7 +1030,7 @@
         "suppression": "training_mode",
         "signal": "partial_entropy",
         "forgery_cost": "direct attacker control",
-        "avoidance_cost": "new engineering or unavailable privilege",
+        "avoidance_cost": "public primitive",
         "admitted": false,
         "outcome": "attenuated"
       },
@@ -1070,7 +1070,7 @@
         "suppression": "container",
         "signal": "partial_entropy",
         "forgery_cost": "direct attacker control",
-        "avoidance_cost": "new engineering or unavailable privilege",
+        "avoidance_cost": "public primitive",
         "admitted": false,
         "outcome": "attenuated"
       },
@@ -1096,6 +1096,14 @@
     {
       "policy": "C",
       "suppression": "path",
+      "signal": "partial_entropy",
+      "from": "attenuated",
+      "to": "cancelled",
+      "attributed_to": "the P5.4 calibration alone"
+    },
+    {
+      "policy": "C",
+      "suppression": "path",
       "signal": "entropy_rise",
       "from": "attenuated",
       "to": "cancelled",
@@ -1105,6 +1113,14 @@
       "policy": "C",
       "suppression": "training_mode",
       "signal": "structural_mismatch",
+      "from": "attenuated",
+      "to": "cancelled",
+      "attributed_to": "the P5.4 calibration alone"
+    },
+    {
+      "policy": "C",
+      "suppression": "training_mode",
+      "signal": "partial_entropy",
       "from": "attenuated",
       "to": "cancelled",
       "attributed_to": "the P5.4 calibration alone"
@@ -1127,8 +1143,24 @@
     },
     {
       "policy": "D",
+      "suppression": "path",
+      "signal": "partial_entropy",
+      "from": "attenuated",
+      "to": "cancelled",
+      "attributed_to": "the > rule and the calibration together"
+    },
+    {
+      "policy": "D",
       "suppression": "training_mode",
       "signal": "structural_mismatch",
+      "from": "attenuated",
+      "to": "cancelled",
+      "attributed_to": "the > rule and the calibration together"
+    },
+    {
+      "policy": "D",
+      "suppression": "training_mode",
+      "signal": "partial_entropy",
       "from": "attenuated",
       "to": "cancelled",
       "attributed_to": "the > rule and the calibration together"
@@ -1182,5 +1214,5 @@
       "attributed_to": "the plan's ladder and the plan's strict rule"
     }
   ],
-  "flip_count": 12
+  "flip_count": 16
 }

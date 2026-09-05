@@ -360,7 +360,7 @@ Recorded, not worked around.
 | 2 | Detection-path latency after repair | median sub-100 ms; median and IQR over ≥10 reps | Arm C **median 4.192 ms, IQR 6.486 ms**, p95 13.661 ms over 140 samples | **yes** |
 | 3 | False-positive difference, validated formats | ≤2 pp, one-sided 95% | Arm C **25.323 pp** (30 of 155) | **NO** |
 | 4 | False-positive difference, unvalidated × incompressible | measured and reported; D5 applies | Arm C **100.0 pp** (90 of 90) vs a 15.0 pp tolerance | **reported; D5 fires** |
-| 5 | Capability levels with a reproducible source trail | 100% | **9 of 10 empirical**, 1 derived from source and labelled | **9/10** |
+| 5 | Capability levels with a reproducible source trail | 100% | **10 of 10 empirical**. `partial_entropy` was the tenth and was built on 4 September 2026: `base64.b64encode(ciphertext)` defeats it, and every other entropy signal with it | **met** |
 | 6 | Capability levels independently reproduced | 100%, or unresolved under D2 | **10/10 protocol-reproduced, 0/10 independently human-reproduced** | **no** |
 | 7 | Mitigation decisions reaching the ledger | 100% | **100.0%** — was 50.0% at Week 20 | **yes** |
 | 8 | Trusted-restore verification on snapshot-backed cases | 100% | **13/13 local restore round-trips**; VSS-backed restore still not measured — needs an elevated shell | **partial** |

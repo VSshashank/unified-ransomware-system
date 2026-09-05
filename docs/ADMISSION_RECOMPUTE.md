@@ -46,9 +46,13 @@ computed here and are not deployed; what that costs is set out below.
 ## The costs this is computed over
 
 Declared costs are read from `services/monitor/admissibility.py`. Measured costs
-and plan levels both come from `reports/capability_calibration.json` (P5.4), where
-each was derived twice, in opposite decision orders, from the operational facts of
-an attack that was built and run. The two ladders are **not comparable rung for
+and plan levels are both **read from** `reports/capability_calibration.json`
+(P5.4) rather than restated here — the measured level for `partial_entropy` moved
+once the locked tooling search was actually run for it, and a hard-coded copy
+would have kept computing this matrix against a number the calibration no longer
+holds. In that file each level was
+derived twice, in opposite decision orders, from the operational facts of an
+attack that was built and run. The two ladders are **not comparable rung for
 rung**: the code's `low` ("a location the attacker can already write to") has no
 counterpart in the plan, which puts choosing a path in Level 0 beside choosing
 bytes, and the code's `high` conflates the plan's Level 3 and Level 4.
@@ -62,7 +66,7 @@ bytes, and the code's `high` conflates the plan's Level 3 and Level 4.
 | `ransom_extension` | avoidance | negligible | negligible | no | 0 — direct attacker control |
 | `static_entropy` | avoidance | negligible | negligible | no | 0 — direct attacker control |
 | `structural_mismatch` | avoidance | moderate | negligible | **yes** | 1 — public primitive |
-| `partial_entropy` | avoidance | moderate | moderate | no | 3 — new engineering or unavailable privilege |
+| `partial_entropy` | avoidance | moderate | negligible | **yes** | 1 — public primitive |
 | `entropy_rise` | avoidance | moderate | low | **yes** | 0 — direct attacker control |
 
 **Policy A — `>=` with declared costs (the behaviour before P6.8)**
@@ -88,17 +92,17 @@ bytes, and the code's `high` conflates the plan's Level 3 and Level 4.
 | suppression \ signal | ransom_extension | static_entropy | structural_mismatch | partial_entropy | entropy_rise |
 |---|---|---|---|---|---|
 | `hash`| **cancelled** | **cancelled** | **cancelled** | **cancelled** | **cancelled** |
-| `path`| **cancelled** | **cancelled** | **cancelled** | attenuated | **cancelled** |
-| `training_mode`| **cancelled** | **cancelled** | **cancelled** | attenuated | **cancelled** |
-| `container`| **cancelled** | **cancelled** | **cancelled** | attenuated | attenuated |
+| `path`| **cancelled** | **cancelled** | **cancelled** | **cancelled** | **cancelled** |
+| `training_mode`| **cancelled** | **cancelled** | **cancelled** | **cancelled** | **cancelled** |
+| `container`| **cancelled** | **cancelled** | **cancelled** | **cancelled** | attenuated |
 
 **Policy D — `>` with measured costs (rule change and calibration)**
 
 | suppression \ signal | ransom_extension | static_entropy | structural_mismatch | partial_entropy | entropy_rise |
 |---|---|---|---|---|---|
 | `hash`| **cancelled** | **cancelled** | **cancelled** | **cancelled** | **cancelled** |
-| `path`| **cancelled** | **cancelled** | **cancelled** | attenuated | attenuated |
-| `training_mode`| **cancelled** | **cancelled** | **cancelled** | attenuated | attenuated |
+| `path`| **cancelled** | **cancelled** | **cancelled** | **cancelled** | attenuated |
+| `training_mode`| **cancelled** | **cancelled** | **cancelled** | **cancelled** | attenuated |
 | `container`| attenuated | attenuated | attenuated | attenuated | attenuated |
 
 **Policy E — `>=` with plan costs (the plan's ladder alone)**
@@ -121,16 +125,20 @@ bytes, and the code's `high` conflates the plan's Level 3 and Level 4.
 
 ## Flips against policy A
 
-**12 cells flip.**
+**16 cells flip.**
 
 | policy | suppression | signal | from | to | caused by |
 |---|---|---|---|---|---|
 | C | `path` | `structural_mismatch` | attenuated | cancelled | the P5.4 calibration alone |
+| C | `path` | `partial_entropy` | attenuated | cancelled | the P5.4 calibration alone |
 | C | `path` | `entropy_rise` | attenuated | cancelled | the P5.4 calibration alone |
 | C | `training_mode` | `structural_mismatch` | attenuated | cancelled | the P5.4 calibration alone |
+| C | `training_mode` | `partial_entropy` | attenuated | cancelled | the P5.4 calibration alone |
 | C | `training_mode` | `entropy_rise` | attenuated | cancelled | the P5.4 calibration alone |
 | D | `path` | `structural_mismatch` | attenuated | cancelled | the > rule and the calibration together |
+| D | `path` | `partial_entropy` | attenuated | cancelled | the > rule and the calibration together |
 | D | `training_mode` | `structural_mismatch` | attenuated | cancelled | the > rule and the calibration together |
+| D | `training_mode` | `partial_entropy` | attenuated | cancelled | the > rule and the calibration together |
 | E | `path` | `entropy_rise` | attenuated | cancelled | the plan's five-level ladder alone |
 | E | `training_mode` | `entropy_rise` | attenuated | cancelled | the plan's five-level ladder alone |
 | F | `path` | `ransom_extension` | cancelled | attenuated | the plan's ladder and the plan's strict rule |
@@ -142,7 +150,7 @@ bytes, and the code's `high` conflates the plan's Level 3 and Level 4.
 
 §9.7 D1 fires when *path-whitelist and training-mode admissions flip from admitted to attenuated under the calibrated rule*, and instructs that this be reported as a primary finding: two deployed mitigations were not cost-justified.
 
-**On the code's four-point ladder it does not fire — 0 cells flip in that direction. On the plan's five-level ladder it fires: 4 do.** 8 cells flip the other way, from attenuated to cancelled - six of those from the P5.4 calibration, two from the plan's ladder read without the plan's rule.
+**On the code's four-point ladder it does not fire — 0 cells flip in that direction. On the plan's five-level ladder it fires: 4 do.** 12 cells flip the other way, from attenuated to cancelled - 10 from the P5.4 calibration and 2 from the plan's ladder read without the plan's rule.
 
 ### The flips D1 predicted, under policy F
 
@@ -188,21 +196,38 @@ Every one of these makes a suppression *more* able to cancel evidence than the d
 | policy | suppression | signal | from | to |
 |---|---|---|---|---|
 | C | `path` | `structural_mismatch` | attenuated | cancelled |
+| C | `path` | `partial_entropy` | attenuated | cancelled |
 | C | `path` | `entropy_rise` | attenuated | cancelled |
 | C | `training_mode` | `structural_mismatch` | attenuated | cancelled |
+| C | `training_mode` | `partial_entropy` | attenuated | cancelled |
 | C | `training_mode` | `entropy_rise` | attenuated | cancelled |
 | D | `path` | `structural_mismatch` | attenuated | cancelled |
+| D | `path` | `partial_entropy` | attenuated | cancelled |
 | D | `training_mode` | `structural_mismatch` | attenuated | cancelled |
+| D | `training_mode` | `partial_entropy` | attenuated | cancelled |
 | E | `path` | `entropy_rise` | attenuated | cancelled |
 | E | `training_mode` | `entropy_rise` | attenuated | cancelled |
 
 ### Why the code ladder moves the other way
 
 Both rules were priced LOW and P5.4 measured both at LOW — the *forgery* side of
-the table was right. What moved is the *avoidance* side: `structural_mismatch`
-fell from moderate to negligible and `entropy_rise` from moderate to low, because
-P5.4 built the attacks that evade them and neither cost the attacker anything
-close to moderate.
+the table was right. What moved is the *avoidance* side. Three signals the table
+prices at moderate were measured cheaper, because P5.4 built the attacks that
+evade them and none cost the attacker anything close to moderate:
+
+- `structural_mismatch` moderate → negligible — `gzip.compress(ciphertext)`
+- `entropy_rise` moderate → low — write to a path nothing has measured
+- `partial_entropy` moderate → negligible — `base64.b64encode(ciphertext)`
+
+The third of those was recorded in Phase 5 as *not buildable* without
+distribution-aware code, and that was wrong. §5.1's locked tooling search had not
+been run for the row, and §5.3 names base64 as Level 1 in the same sentence it
+names standard-library container generation. Base64 flattens uniform ciphertext
+to exactly 6.00 bits/byte, which is under the block threshold, under the file
+threshold, and under the differential floor — **one standard-library call defeats
+all three entropy signals at once**, at a cost of 33% in file size. It is the
+cheapest attack in the whole calibration and it was priced as the most expensive
+avoidance in the table.
 
 Under the cost model's own comparison, lowering what a signal costs to avoid
 makes that signal **easier to cancel** — a LOW suppression now outranks a
@@ -278,8 +303,10 @@ precisely the change that would raise it from 0 to 1.
 - It is a matrix over the cost table, not over files. A cell says what
   `adjudicate` would decide given that pair; it does not say how often the pair
   occurs. Phase 6's three-arm experiment measures the second thing.
-- `partial_entropy` was not empirically attacked in P5.4 — its level is derived
-  from source analysis and recorded as such. Its rows inherit that.
+- Every level is now empirical. `partial_entropy` was the one derived from source
+  analysis, and it was re-measured: `base64.b64encode(ciphertext)` defeats it, and
+  the row moved from moderate to negligible. 10 of 10 strategies were built and
+  run.
 - The `container` rows are hypothetical by construction, as above.
 - The measured costs come from derivations written in one session by one author.
   Per P5.4's own record, `independent_human_reviewer` is false throughout.

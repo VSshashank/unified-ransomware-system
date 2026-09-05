@@ -55,6 +55,7 @@ Writes the report only when URDS_WRITE_REPORTS=1.
 
 from __future__ import annotations
 
+import base64
 import gzip
 import hashlib
 import io
@@ -587,7 +588,49 @@ def measure_entropy_strategies(workdir: Path) -> list[dict]:
         )
     )
 
-    # --- partial_entropy: keep every block under the block threshold
+    # --- partial_entropy: keep every block under the block threshold.
+    #
+    # P5.4 recorded this as not buildable without the attacker writing
+    # format-aware, distribution-aware code, and derived MODERATE from that.
+    # **That reasoning was wrong**, and NOVELTY_PROOF_PLAN.md §5.3 says why in one
+    # word: base64. §5.1 asks for a search of the standard library for the
+    # cheapest strategy that defeats each signal, and the search was not done for
+    # this row. `base64.b64encode` is one statement, ships nothing, knows nothing
+    # about any format, and flattens ciphertext from 8.00 bits/byte to exactly
+    # 6.00 - under the block threshold, under the file threshold, and under the
+    # differential floor. The attacker does not encrypt less; they encrypt
+    # everything and pay 33% in file size.
+    #
+    # The old record and its reasoning are preserved in the report under
+    # `superseded`, because a level that moved should show what moved it.
+    variants = {}
+    for label, encoded in (
+        ("base64", base64.b64encode(deterministic_payload("partial:b64"))),
+        ("base32", base64.b32encode(deterministic_payload("partial:b32"))),
+        ("ascii85", base64.a85encode(deterministic_payload("partial:a85"))),
+    ):
+        variant_path = workdir / f"cap_partial_{label}.docx"
+        variant_path.write_bytes(encoded)
+        variants[label] = score(variant_path)
+
+    # The differential control: the same evasion on a path already measured at
+    # prose entropy, which is the one signal a flattened payload might still trip.
+    prose = (b"quarterly deployment report, section body text. " * 3000)[:PAYLOAD_BYTES]
+    watched = workdir / "cap_partial_watched.docx"
+    watched.write_bytes(prose)
+    history = detection.EntropyHistory()
+    first = score(watched)
+    history.observe(str(watched), first["entropy"], len(prose))
+    flattened = base64.b64encode(deterministic_payload("partial:rise"))
+    watched.write_bytes(flattened)
+    risen_head, _ = detection.sample_file(str(watched), len(flattened))
+    risen_entropy, _ = detection.measure(risen_head)
+    risen = score(
+        watched,
+        entropy_delta=history.observe(str(watched), risen_entropy, len(flattened)),
+    )
+
+    b64 = variants["base64"]
     results.append(
         record(
             strategy="partial_entropy / never reach ciphertext entropy in any block",
@@ -596,40 +639,80 @@ def measure_entropy_strategies(workdir: Path) -> list[dict]:
             declared=admissibility.AVOIDANCE_COST["partial_entropy"],
             attack={
                 "description": (
-                    "Encrypt so that no 4KB block reaches the block threshold. That "
-                    "rules out applying a stream cipher to any contiguous region, "
-                    "which is the whole point of intermittent encryption."
+                    "Encode the ciphertext so no block reaches the block threshold. "
+                    "The alphabet does the flattening; nothing about the encryption "
+                    "changes."
                 ),
-                "construction": (
-                    "not built: the attack is a constraint on the encryptor's output "
-                    "distribution, not a wrapper around it"
+                "construction": "base64.b64encode(ciphertext)",
+                "why_it_works": (
+                    "Base64 spends 8 output bits per 6 bits of input, so uniform "
+                    f"ciphertext lands at exactly {b64['entropy']} bits/byte. That is "
+                    f"under HIGH_ENTROPY_BLOCK ({detection.HIGH_ENTROPY_BLOCK}), so no "
+                    "block counts as high-entropy and partial_entropy cannot fire; "
+                    f"under the file threshold ({detection.DEFAULT_ENTROPY_THRESHOLD}), "
+                    "so static_entropy cannot fire; and under ENTROPY_RISE_FLOOR "
+                    f"({detection.ENTROPY_RISE_FLOOR}), so entropy_rise cannot fire "
+                    "either. One standard-library call defeats all three entropy "
+                    "signals at once."
                 ),
-                "why_it_is_not_run_here": (
-                    "Producing ciphertext whose every block sits below the threshold "
-                    "means either encrypting less of the file or post-processing the "
-                    "output to flatten it - both of which are the attacker writing "
-                    "format-aware, distribution-aware code. The level is derived from "
-                    "that fact, and the fact is not in dispute; building a partial "
-                    "encryptor to confirm it would add no evidence the source does not "
-                    "already give."
-                ),
+                "variants": {
+                    label: {
+                        "entropy": v["entropy"],
+                        "verdict": v["verdict"],
+                        "signal": v["signal"],
+                        "suspicious": v["suspicious"],
+                    }
+                    for label, v in variants.items()
+                },
+                "differential_control": {
+                    "construction": "prose first, then base64(ciphertext) on the same path",
+                    "first_entropy": first["entropy"],
+                    "second_entropy": risen["entropy"],
+                    "verdict": risen["verdict"],
+                    "signal": risen["signal"],
+                    "note": (
+                        "Two independent reasons the rise does not fire: the delta is "
+                        f"under ENTROPY_RISE_THRESHOLD ({detection.ENTROPY_RISE_THRESHOLD}) "
+                        "and the result is under the floor."
+                    ),
+                },
+                "superseded": {
+                    "previous_construction": (
+                        "not built: the attack is a constraint on the encryptor's "
+                        "output distribution, not a wrapper around it"
+                    ),
+                    "previous_level": "moderate",
+                    "why_it_was_wrong": (
+                        "It assumed flattening the distribution required the attacker "
+                        "to encrypt less or to post-process with distribution-aware "
+                        "code. An expanding alphabet does it with one call and no "
+                        "knowledge of anything. §5.1's locked tooling search was not "
+                        "run for this row, and §5.3 names base64 as Level 1 outright."
+                    ),
+                },
             },
             facts={
                 "third_party_dependencies": [],
-                "public_primitive": False,
-                "ships_an_encoder": True,
-                "format_specific_knowledge": True,
-                "attacker_statements": None,
+                "public_primitive": True,
+                "ships_an_encoder": False,
+                "format_specific_knowledge": False,
+                "attacker_statements": 1,
                 "requires_secret_or_preimage": False,
                 "write_location_only": False,
             },
             measurement={
-                "attack_built": False,
-                "basis": "source analysis of detection.py:690 and the block statistics in measure()",
-                "attack_succeeded": None,
+                "attack_built": True,
+                "entropy": b64["entropy"],
+                "container_status": b64["container_status"],
+                "verdict": b64["verdict"],
+                "suspicious": b64["suspicious"],
+                "attack_succeeded": not b64["suspicious"],
+                "size_cost_ratio": 4 / 3,
             },
-            command="(not empirically run - see why_it_is_not_run_here)",
-            artefact_sha256=None,
+            command=".venv/Scripts/python.exe scripts/capability_calibration.py",
+            artefact_sha256=sha256_bytes(
+                base64.b64encode(deterministic_payload("partial:b64"))
+            ),
         )
     )
 

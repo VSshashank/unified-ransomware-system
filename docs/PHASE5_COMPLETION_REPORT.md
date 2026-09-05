@@ -127,9 +127,17 @@ not.
 
 ## 3. Capability levels
 
-From `reports/capability_calibration.json`. Nine of the ten carry an empirical
-source trail — the exact command, the artefact hash where one exists, and the
-attack that was built and run. The tenth is derived from source and says so.
+From `reports/capability_calibration.json`.
+
+> **Updated 4 September 2026.** When this section was written, nine of the ten
+> levels carried an empirical source trail and `partial_entropy` was derived from
+> source. It has since been built and run, and it changed: **10 of 10 are now
+> empirical**, and `partial_entropy` moved from moderate to negligible. What was
+> wrong, and why, is in §3.1 below. The table is updated; the original figure is
+> stated here rather than removed.
+
+All ten carry an empirical source trail — the exact command, the artefact hash
+where one exists, and the attack that was built and run.
 
 | Strategy | Kind | Declared | Measured | Attack | Agreed |
 |---|---|---|---|---|---|
@@ -137,17 +145,61 @@ attack that was built and run. The tenth is derived from source and says so.
 | container exemption / `ZIP_STORED` | avoidance | moderate | **negligible** | succeeded | yes |
 | `static_entropy` / magic over ciphertext | avoidance | negligible | negligible | succeeded | yes |
 | `entropy_rise` / unobserved path | avoidance | moderate | **low** | succeeded | yes |
-| `partial_entropy` / flatten every block | avoidance | moderate | moderate | *not built* | yes |
+| `partial_entropy` / flatten every block | avoidance | moderate | **negligible** | succeeded | yes |
 | `ransom_extension` / do not rename | avoidance | negligible | negligible | succeeded | yes |
 | whitelist `path` / approved directory | forgery | low | low | succeeded | yes |
 | whitelist `hash` / SHA-256 preimage | forgery | high | high | **failed** | yes |
 | `training_mode` / poison the ceiling | forgery | low | low | succeeded | yes |
 | `Cforge(ml_confidence_gate)` | avoidance | *(absent from table)* | **negligible** | succeeded | yes |
 
-**Source trail: 9 of 10 empirical, 1 derived** (`summary.with_empirical_source_trail`).
-`partial_entropy` was not built — the attack is a constraint on the encryptor's
-output distribution rather than a wrapper around it, and the record says so rather
-than claiming a trail it does not have. `whitelist hash` counts as empirical
+**Source trail: 10 of 10 empirical, 0 derived** (`summary.with_empirical_source_trail`).
+
+### 3.1 The one level that was wrong, and what it cost
+
+`partial_entropy` was originally recorded as *not built*, with the reason that
+the attack is a constraint on the encryptor's output distribution rather than a
+wrapper around it, so producing under-threshold blocks would need the attacker to
+encrypt less or to post-process with distribution-aware code. Level: moderate,
+derived from that reasoning.
+
+**The reasoning was wrong, and §5.1 of the governing method document says why the
+error was possible: the locked tooling search was not run for this row.** §5.3 of
+the same document names the answer in passing — *"base64 and basic
+standard-library container generation are Level 1"*.
+
+    base64.b64encode(ciphertext)
+
+One statement, no dependencies, no format knowledge, nothing shipped. Base64
+spends eight output bits per six bits of input, so uniform ciphertext lands at
+exactly **6.000 bits/byte**:
+
+| signal | threshold | base64(ciphertext) | fires? |
+|---|---|---|---|
+| `static_entropy` | 7.5 whole-file | 6.000 | no |
+| `partial_entropy` | 7.9 per 4KB block | max block 5.99, high-block fraction 0.00 | no |
+| `entropy_rise` | rise ≥ 2.0 **and** result ≥ 7.0 | rise 1.98 from prose, result 6.000 | no, for either reason |
+
+Measured, not reasoned: `base32` lands at 5.000 and `ascii85` at 6.410, and all
+three return plain `benign`. The same payload without the encoding returns
+`suspected_encryption` on `static_entropy`, and on a watched path returns
+`entropy_rise` at a delta of 3.98.
+
+**This is the cheapest attack in the entire calibration, and the table priced it
+as the most expensive avoidance in the system.** The cost is 33% in file size for
+base64, 60% for base32. Nothing about the encryption changes; the alphabet does
+the flattening.
+
+Consequences, all of them recorded rather than repaired here:
+
+- The measured level moves moderate → negligible on the code ladder and 3 → 1 on
+  the plan's. Four more cells flip in `docs/ADMISSION_RECOMPUTE.md` (policies C
+  and D now cancel `path × partial_entropy` and `training_mode × partial_entropy`).
+- It is **not** an argument for a new detector in this phase. The obvious
+  counter — flag high-printable-ratio content that decodes to high entropy —
+  would fire on PEM certificates, `.eml` attachments, JWTs, data URIs and
+  embedded images, and this project's whole method is that a mitigation is not
+  proposed until its benign cost is measured. That measurement has not been made,
+  so no such detector is written. It is recorded as an open finding. `whitelist hash` counts as empirical
 despite having no artefact: a preimage produces none, and its negative control is
 a real measurement — an attacker-controlled file offered against a populated hash
 whitelist, which did not match.
@@ -219,7 +271,7 @@ Five of the nine rows are Phase 6 measurements and cannot be answered at the Wee
 | 2 | Detection-path latency *after repair* | median within sub-100 ms; median and IQR over ≥10 reps | *no repair exists in Phase 5.* Baseline over 40 reps: **median 11.29 ms, IQR 20.47 ms**, p95 23.99 ms | **n/a** |
 | 3 | False-positive difference, validated formats | ≤2 pp, one-sided 95% | *needs Arm C.* **And the corpus cannot support the bound**: 85 validated files bound a perfect result at 3.46 pp; 149 needed | **not evaluable** |
 | 4 | False-positive difference, unvalidated × incompressible | measured and reported; D5 applies | *needs Arm C.* Arm A baseline on the frozen corpus is **0 / 48** | **pending** |
-| 5 | Capability levels with a reproducible source trail | 100% | **9 of 10 empirical**, 1 derived from source and labelled as derived | **9/10** |
+| 5 | Capability levels with a reproducible source trail | 100% | **10 of 10 empirical** since 4 September 2026, when `partial_entropy` was built and run. Was 9 of 10 | **met** |
 | 6 | Capability levels independently reproduced | 100%, or unresolved under D2 | **10/10 protocol-reproduced, 0/10 independently human-reproduced.** 0 unresolved | **no** — see D2 |
 | 7 | Mitigation decisions reaching the ledger | 100% | **50.0%** — `reports/ledger_coverage.json` | **NO** |
 | 8 | Trusted-restore verification on snapshot-backed cases | 100% | **13/13 local restore round-trips.** VSS-backed restore not measured — needs an elevated shell | **partial** |
@@ -294,7 +346,7 @@ for Phase 6/7.
 | **Independent human reproduction** of capability levels (§9.15, Table 9.8) | One author, one session. The protocol was reproduced; the independence was not | `reproduction.independent_human_reviewer: false` on every record |
 | **P5.3 coverage** — 9 of 16 registry formats | No encoder available here for `rar`, `7z`, `lz4`, `zstd`, `mp3`, `ogg`, `flac`, `iso-bmff`. Hand-assembling one would be the forgery this corpus exists to be the opposite of | `summary.formats_in_registry_with_no_encoder_here` |
 | **P5.3 sample size** — 85 validated files | Insufficient for Table 9.8's ≤2 pp bound at one-sided 95%: even a perfect result bounds at 3.46 pp. 149 needed | `docs/PHASE5_PREDECLARED_BOUNDS.md` §Bound 1 |
-| **`partial_entropy` empirical attack** | The attack is a constraint on the encryptor's output distribution, not a wrapper; level derived from source and recorded as derived | `capability_calibration.json`, `measurement.attack_built: false` |
+| ~~**`partial_entropy` empirical attack**~~ **CLOSED 4 Sep 2026** | Built and run: `base64.b64encode(ciphertext)` sits at 6.000 bits/byte and defeats all three entropy signals. The original reasoning was wrong; see §3.1 | `capability_calibration.json`, `measurement.attack_built: true` |
 | **VSS-backed recovery measurement** | Needs an elevated shell, which this session does not have. `file_recovery_success` comes from the simulator sweep's local restore round-trips | 2 skipped tests in `services/response` |
 | **Compose-stack pipeline measurement** | No Docker stack was brought up; all measurement is in-process. `pipeline.run` warnings in the run log show the fan-out failing DNS | `baseline_run.log` |
 | **Phases 6, 7, 8** | Out of scope for this session by direction | — |
@@ -327,7 +379,7 @@ git rev-list -n 1 cost-table-frozen-week20
 | §9.4.1 requires | Status |
 |---|---|
 | Every evidence-cancelling path classified | **34 call sites**, 29 of them evidence-cancelling, across all six services — `docs/MITIGATION_INVENTORY.md` |
-| Every capability level with a reproducible source trail **or** an unresolved record | **9 of 10 empirical, 1 derived and labelled as derived.** 0 unresolved |
+| Every capability level with a reproducible source trail **or** an unresolved record | **10 of 10 empirical** as of 4 September 2026. 0 unresolved |
 | Confirmed by a second reviewer | **Protocol reproduced, independence not.** See D2 — this is a shortfall, not a pass |
 | Admission-flip table complete | **20 cells × 4 policies, 6 flips attributed** — `docs/ADMISSION_RECOMPUTE.md` |
 | Cost table frozen **before any repair branch is opened** | **No repair branch was opened.** `services/` has zero diff lines across the whole phase |

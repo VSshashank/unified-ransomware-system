@@ -68,28 +68,35 @@ PLAN_NAMES = {
 CALIBRATION = REPORTS / "capability_calibration.json"
 
 
-def plan_levels() -> dict[str, int]:
-    """The §5.2 level per cost-table key, read from what P5.4 actually recorded.
+def calibrated_levels() -> tuple[dict[str, int], dict[str, int]]:
+    """Both ladders, per cost-table key, read from what P5.4 actually recorded.
 
     §5.1 step 6 says to assign *the lowest* reproducible level, so where two
     strategies defeat the same entry the cheaper one is the level. Raises if the
     calibration has not been run: a matrix that quietly substituted a number
     nobody measured would be worse than one that does not build.
+
+    Read rather than restated, on both scales, because the measured level for
+    `partial_entropy` moved once the locked tooling search §5.1 asks for was
+    actually run for it - and a hard-coded copy here would have kept computing
+    the matrix against a number the calibration no longer holds.
     """
     if not CALIBRATION.exists():
         raise SystemExit(
             f"{CALIBRATION} is missing - run scripts/capability_calibration.py first"
         )
     report = json.loads(CALIBRATION.read_text(encoding="utf-8"))
-    lowest: dict[str, int] = {}
+    code: dict[str, int] = {}
+    plan: dict[str, int] = {}
     for entry in report["levels"]:
         key = entry["cost_table_key"]
+        code[key] = min(code.get(key, entry["measured_level"]), entry["measured_level"])
         level = entry["plan_level"]["level"]
-        lowest[key] = min(lowest.get(key, level), level)
-    return lowest
+        plan[key] = min(plan.get(key, level), level)
+    return code, plan
 
 
-PLAN = plan_levels()
+MEASURED, PLAN = calibrated_levels()
 
 # The four suppressions §9.4.1 names. Three are live rules that reach
 # adjudicate(); the fourth is the container exemption, which today is a branch
@@ -99,14 +106,14 @@ PLAN = plan_levels()
 SUPPRESSIONS = {
     "hash": {
         "declared": admissibility.FORGERY_COST["hash"],
-        "measured": admissibility.HIGH,
+        "measured": MEASURED["hash"],
         "plan": PLAN["hash"],
         "live": True,
         "note": "SHA-256 preimage. P5.4 negative control did not match.",
     },
     "path": {
         "declared": admissibility.FORGERY_COST["path"],
-        "measured": admissibility.LOW,
+        "measured": MEASURED["path"],
         "plan": PLAN["path"],
         "live": True,
         "note": (
@@ -118,7 +125,7 @@ SUPPRESSIONS = {
     },
     "training_mode": {
         "declared": admissibility.FORGERY_COST["training_mode"],
-        "measured": admissibility.LOW,
+        "measured": MEASURED["training_mode"],
         "plan": PLAN["training_mode"],
         "live": True,
         "note": (
@@ -128,7 +135,7 @@ SUPPRESSIONS = {
     },
     "container": {
         "declared": None,
-        "measured": admissibility.NEGLIGIBLE,
+        "measured": MEASURED["static_entropy"],
         # §5.1 step 6: the lowest reproducible level. Under the deployed `legacy`
         # policy the exemption fires on a header, so the cheapest way to forge it
         # is the four-byte magic prefix P5.4 measured at Level 0 - not the
@@ -153,27 +160,27 @@ SIGNALS = {
     "ransom_extension": {
         "plan": PLAN["ransom_extension"],
         "declared": admissibility.AVOIDANCE_COST["ransom_extension"],
-        "measured": admissibility.NEGLIGIBLE,
+        "measured": MEASURED["ransom_extension"],
     },
     "static_entropy": {
         "plan": PLAN["static_entropy"],
         "declared": admissibility.AVOIDANCE_COST["static_entropy"],
-        "measured": admissibility.NEGLIGIBLE,
+        "measured": MEASURED["static_entropy"],
     },
     "structural_mismatch": {
         "plan": PLAN["structural_mismatch"],
         "declared": admissibility.AVOIDANCE_COST["structural_mismatch"],
-        "measured": admissibility.NEGLIGIBLE,
+        "measured": MEASURED["structural_mismatch"],
     },
     "partial_entropy": {
         "plan": PLAN["partial_entropy"],
         "declared": admissibility.AVOIDANCE_COST["partial_entropy"],
-        "measured": admissibility.MODERATE,
+        "measured": MEASURED["partial_entropy"],
     },
     "entropy_rise": {
         "plan": PLAN["entropy_rise"],
         "declared": admissibility.AVOIDANCE_COST["entropy_rise"],
-        "measured": admissibility.LOW,
+        "measured": MEASURED["entropy_rise"],
     },
 }
 
@@ -346,9 +353,13 @@ computed here and are not deployed; what that costs is set out below.
 ## The costs this is computed over
 
 Declared costs are read from `services/monitor/admissibility.py`. Measured costs
-and plan levels both come from `reports/capability_calibration.json` (P5.4), where
-each was derived twice, in opposite decision orders, from the operational facts of
-an attack that was built and run. The two ladders are **not comparable rung for
+and plan levels are both **read from** `reports/capability_calibration.json`
+(P5.4) rather than restated here — the measured level for `partial_entropy` moved
+once the locked tooling search was actually run for it, and a hard-coded copy
+would have kept computing this matrix against a number the calibration no longer
+holds. In that file each level was
+derived twice, in opposite decision orders, from the operational facts of an
+attack that was built and run. The two ladders are **not comparable rung for
 rung**: the code's `low` ("a location the attacker can already write to") has no
 counterpart in the plan, which puts choosing a path in Level 0 beside choosing
 bytes, and the code's `high` conflates the plan's Level 3 and Level 4.
@@ -378,8 +389,10 @@ precisely the change that would raise it from 0 to 1.
 - It is a matrix over the cost table, not over files. A cell says what
   `adjudicate` would decide given that pair; it does not say how often the pair
   occurs. Phase 6's three-arm experiment measures the second thing.
-- `partial_entropy` was not empirically attacked in P5.4 — its level is derived
-  from source analysis and recorded as such. Its rows inherit that.
+- Every level is now empirical. `partial_entropy` was the one derived from source
+  analysis, and it was re-measured: `base64.b64encode(ciphertext)` defeats it, and
+  the row moved from moderate to negligible. 10 of 10 strategies were built and
+  run.
 - The `container` rows are hypothetical by construction, as above.
 - The measured costs come from derivations written in one session by one author.
   Per P5.4's own record, `independent_human_reviewer` is false throughout.
@@ -411,8 +424,10 @@ def d1_verdict(flips: list[dict]) -> str:
         f"**On the code's four-point ladder it does not fire — {len(code_ladder)} cells "
         f"flip in that direction. On the plan's five-level ladder it fires: "
         f"{len(plan_ladder)} do.** {len(strengthened)} cells flip the other way, from "
-        "attenuated to cancelled - six of those from the P5.4 calibration, two from "
-        "the plan's ladder read without the plan's rule.\n"
+        f"attenuated to cancelled - "
+        f"{sum(1 for f in strengthened if f['policy'] in {'C', 'D'})} from the P5.4 "
+        f"calibration and {sum(1 for f in strengthened if f['policy'] in {'E', 'F'})} "
+        "from the plan's ladder read without the plan's rule.\n"
     )
 
     if plan_ladder:
@@ -476,10 +491,23 @@ scale that was to hand rather than on the one §9.1 makes governing.\n"""
         """### Why the code ladder moves the other way
 
 Both rules were priced LOW and P5.4 measured both at LOW — the *forgery* side of
-the table was right. What moved is the *avoidance* side: `structural_mismatch`
-fell from moderate to negligible and `entropy_rise` from moderate to low, because
-P5.4 built the attacks that evade them and neither cost the attacker anything
-close to moderate.
+the table was right. What moved is the *avoidance* side. Three signals the table
+prices at moderate were measured cheaper, because P5.4 built the attacks that
+evade them and none cost the attacker anything close to moderate:
+
+- `structural_mismatch` moderate → negligible — `gzip.compress(ciphertext)`
+- `entropy_rise` moderate → low — write to a path nothing has measured
+- `partial_entropy` moderate → negligible — `base64.b64encode(ciphertext)`
+
+The third of those was recorded in Phase 5 as *not buildable* without
+distribution-aware code, and that was wrong. §5.1's locked tooling search had not
+been run for the row, and §5.3 names base64 as Level 1 in the same sentence it
+names standard-library container generation. Base64 flattens uniform ciphertext
+to exactly 6.00 bits/byte, which is under the block threshold, under the file
+threshold, and under the differential floor — **one standard-library call defeats
+all three entropy signals at once**, at a cost of 33% in file size. It is the
+cheapest attack in the whole calibration and it was priced as the most expensive
+avoidance in the table.
 
 Under the cost model's own comparison, lowering what a signal costs to avoid
 makes that signal **easier to cancel** — a LOW suppression now outranks a
