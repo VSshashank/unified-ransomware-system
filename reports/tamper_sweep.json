@@ -1,7 +1,7 @@
 {
   "schema": "urds.tamper_sweep/1",
-  "generated_at": "2026-09-05T04:26:13.049692Z",
-  "commit": "392540a9a9511d723009d3393dd0ff25838c146e",
+  "generated_at": "2026-09-05T05:17:55.418890Z",
+  "commit": "429f1231eaf48f49c2b7b47dc8360cb5b1149b8c",
   "branch": "feat/admissibility-governance-novelty-v2",
   "requirement": "Phase 7 P7.3 and Chapter 9 \u00a79.4.2: injected ledger-tamper cases must fail verification 100% of the time.",
   "method": "Every shape at every position, each against its own freshly built 40-block chain. Tampering is done through SQL, not the API, because the API is what a tamper claim has to hold up against someone who has stopped using it. Verification uses a new HashChainLedger opened on the file, so no cached connection can answer from a snapshot taken before the edit.",
@@ -72,7 +72,7 @@
       "detected": true,
       "invalid_block_id": 1,
       "blocks_checked": 1,
-      "verification_time_ms": 0.625,
+      "verification_time_ms": 0.365,
       "position": "first"
     },
     {
@@ -85,7 +85,7 @@
       "detected": true,
       "invalid_block_id": 20,
       "blocks_checked": 20,
-      "verification_time_ms": 0.635,
+      "verification_time_ms": 0.372,
       "position": "middle"
     },
     {
@@ -98,7 +98,7 @@
       "detected": true,
       "invalid_block_id": 40,
       "blocks_checked": 40,
-      "verification_time_ms": 0.703,
+      "verification_time_ms": 0.604,
       "position": "last"
     },
     {
@@ -111,7 +111,7 @@
       "detected": true,
       "invalid_block_id": 1,
       "blocks_checked": 1,
-      "verification_time_ms": 0.559,
+      "verification_time_ms": 0.346,
       "position": "first"
     },
     {
@@ -124,7 +124,7 @@
       "detected": true,
       "invalid_block_id": 20,
       "blocks_checked": 20,
-      "verification_time_ms": 0.722,
+      "verification_time_ms": 0.393,
       "position": "middle"
     },
     {
@@ -137,7 +137,7 @@
       "detected": true,
       "invalid_block_id": 40,
       "blocks_checked": 40,
-      "verification_time_ms": 1.379,
+      "verification_time_ms": 0.354,
       "position": "last"
     },
     {
@@ -150,7 +150,7 @@
       "detected": true,
       "invalid_block_id": 1,
       "blocks_checked": 1,
-      "verification_time_ms": 0.634,
+      "verification_time_ms": 0.41,
       "position": "first"
     },
     {
@@ -163,7 +163,7 @@
       "detected": true,
       "invalid_block_id": 20,
       "blocks_checked": 20,
-      "verification_time_ms": 0.68,
+      "verification_time_ms": 0.334,
       "position": "middle"
     },
     {
@@ -176,7 +176,7 @@
       "detected": true,
       "invalid_block_id": 40,
       "blocks_checked": 40,
-      "verification_time_ms": 0.711,
+      "verification_time_ms": 0.38,
       "position": "last"
     },
     {
@@ -189,7 +189,7 @@
       "detected": true,
       "invalid_block_id": 1,
       "blocks_checked": 1,
-      "verification_time_ms": 0.465,
+      "verification_time_ms": 0.423,
       "position": "first"
     },
     {
@@ -202,7 +202,7 @@
       "detected": true,
       "invalid_block_id": 20,
       "blocks_checked": 20,
-      "verification_time_ms": 0.724,
+      "verification_time_ms": 0.361,
       "position": "middle"
     },
     {
@@ -215,7 +215,7 @@
       "detected": true,
       "invalid_block_id": 40,
       "blocks_checked": 40,
-      "verification_time_ms": 0.821,
+      "verification_time_ms": 0.381,
       "position": "last"
     },
     {
@@ -228,7 +228,7 @@
       "detected": true,
       "invalid_block_id": 1,
       "blocks_checked": 1,
-      "verification_time_ms": 0.433,
+      "verification_time_ms": 0.424,
       "position": "first"
     },
     {
@@ -241,7 +241,7 @@
       "detected": true,
       "invalid_block_id": 20,
       "blocks_checked": 20,
-      "verification_time_ms": 1.017,
+      "verification_time_ms": 0.354,
       "position": "middle"
     },
     {
@@ -254,7 +254,7 @@
       "detected": true,
       "invalid_block_id": 40,
       "blocks_checked": 40,
-      "verification_time_ms": 0.705,
+      "verification_time_ms": 0.39,
       "position": "last"
     },
     {
@@ -267,7 +267,7 @@
       "detected": true,
       "invalid_block_id": 2,
       "blocks_checked": 1,
-      "verification_time_ms": 0.392,
+      "verification_time_ms": 0.347,
       "position": "first"
     },
     {
@@ -280,7 +280,7 @@
       "detected": true,
       "invalid_block_id": 21,
       "blocks_checked": 20,
-      "verification_time_ms": 0.588,
+      "verification_time_ms": 0.359,
       "position": "middle"
     },
     {
@@ -293,7 +293,7 @@
       "detected": false,
       "invalid_block_id": null,
       "blocks_checked": 39,
-      "verification_time_ms": 0.713,
+      "verification_time_ms": 0.344,
       "position": "last"
     },
     {
@@ -306,7 +306,7 @@
       "detected": true,
       "invalid_block_id": 1,
       "blocks_checked": 1,
-      "verification_time_ms": 1.208,
+      "verification_time_ms": 0.328,
       "position": "first"
     },
     {
@@ -319,7 +319,7 @@
       "detected": true,
       "invalid_block_id": 1,
       "blocks_checked": 1,
-      "verification_time_ms": 0.546,
+      "verification_time_ms": 0.422,
       "position": "middle"
     },
     {
@@ -332,7 +332,7 @@
       "detected": true,
       "invalid_block_id": 1,
       "blocks_checked": 1,
-      "verification_time_ms": 0.536,
+      "verification_time_ms": 0.387,
       "position": "last"
     },
     {
@@ -345,7 +345,7 @@
       "detected": false,
       "invalid_block_id": null,
       "blocks_checked": 41,
-      "verification_time_ms": 0.521,
+      "verification_time_ms": 0.482,
       "position": "last"
     },
     {
@@ -358,7 +358,7 @@
       "detected": false,
       "invalid_block_id": null,
       "blocks_checked": 0,
-      "verification_time_ms": 0.774,
+      "verification_time_ms": 0.306,
       "position": "first"
     },
     {
@@ -371,7 +371,7 @@
       "detected": false,
       "invalid_block_id": null,
       "blocks_checked": 19,
-      "verification_time_ms": 1.095,
+      "verification_time_ms": 0.369,
       "position": "middle"
     },
     {
@@ -384,7 +384,7 @@
       "detected": false,
       "invalid_block_id": null,
       "blocks_checked": 39,
-      "verification_time_ms": 0.507,
+      "verification_time_ms": 0.392,
       "position": "last"
     },
     {
@@ -397,7 +397,7 @@
       "detected": false,
       "invalid_block_id": null,
       "blocks_checked": 40,
-      "verification_time_ms": 0.811,
+      "verification_time_ms": 0.4,
       "position": "first"
     },
     {
@@ -410,7 +410,7 @@
       "detected": false,
       "invalid_block_id": null,
       "blocks_checked": 40,
-      "verification_time_ms": 0.605,
+      "verification_time_ms": 0.413,
       "position": "middle"
     },
     {
@@ -423,7 +423,7 @@
       "detected": false,
       "invalid_block_id": null,
       "blocks_checked": 40,
-      "verification_time_ms": 3.963,
+      "verification_time_ms": 0.428,
       "position": "last"
     }
   ]

@@ -1,7 +1,7 @@
 {
   "schema": "urds.capability_calibration/1",
-  "generated_at": "2026-09-04T08:55:02.257624Z",
-  "commit": "c74324cbcb6a8ca74eaa9dd8486f4e8acb0f308c",
+  "generated_at": "2026-09-05T05:17:46.589685Z",
+  "commit": "429f1231eaf48f49c2b7b47dc8360cb5b1149b8c",
   "branch": "feat/admissibility-governance-novelty-v2",
   "ladder": {
     "0": "negligible",
@@ -64,7 +64,7 @@
       "declared_name": "moderate",
       "attack": {
         "description": "Wrap the ciphertext in a genuine gzip member.",
-        "construction": "gzip.compress(ciphertext)",
+        "construction": "gzip.compress(ciphertext, mtime=0)",
         "why_it_works": "containers._validate_gzip inflates a bounded prefix and the stream really does inflate, so container_status is VALID and classify returns benign_compressed on the exemption at detection.py:702."
       },
       "operational_facts": {
@@ -102,7 +102,7 @@
       },
       "source_trail": {
         "command": ".venv/Scripts/python.exe scripts/capability_calibration.py",
-        "artefact_sha256": "fd11e32228c85e05e39a2ac27c78c9e4a07526428a452e5ad337710c55222b9c",
+        "artefact_sha256": "ead4b872bd1ca651c3e829762070614636f216a1b599caecd827f974259c8adc",
         "scored_by": "detection.classify via scripts/capability_calibration.py::score"
       },
       "reproduction": {
@@ -475,7 +475,7 @@
       "measurement": {
         "rule_matched": {
           "rule": "path",
-          "value": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\capability_jl0nenj0\\approved\\*"
+          "value": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\capability_yys43qh3\\approved\\*"
         },
         "adjudication_outcome": "cancelled",
         "admitted": true,
@@ -594,14 +594,14 @@
             ".zip": {
               "entropy_ceiling": 8.0,
               "directories": [
-                "c:/users/nikhi/appdata/local/temp/capability_jl0nenj0/watched"
+                "c:/users/nikhi/appdata/local/temp/capability_yys43qh3/watched"
               ],
               "profiles": [
                 {
                   "structure": "container:zip",
                   "entropy_ceiling": 8.0,
                   "directories": [
-                    "c:/users/nikhi/appdata/local/temp/capability_jl0nenj0/watched"
+                    "c:/users/nikhi/appdata/local/temp/capability_yys43qh3/watched"
                   ]
                 }
               ]
@@ -615,7 +615,7 @@
         "attack_signal": null,
         "rule_matched": {
           "rule": "training_mode",
-          "value": ".zip (container:zip) in c:/users/nikhi/appdata/local/temp/capability_jl0nenj0/watched at or below 8.0 bits/byte"
+          "value": ".zip (container:zip) in c:/users/nikhi/appdata/local/temp/capability_yys43qh3/watched at or below 8.0 bits/byte"
         },
         "adjudication_outcome": "cancelled",
         "admitted": true,

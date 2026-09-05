@@ -1,7 +1,7 @@
 {
   "schema": "urds.failure_injection/1",
-  "generated_at": "2026-09-03T06:22:55.505079Z",
-  "commit": "477c8d346ae841a62aeedbeaf22182be4db31bf1",
+  "generated_at": "2026-09-05T05:17:56.109809Z",
+  "commit": "429f1231eaf48f49c2b7b47dc8360cb5b1149b8c",
   "branch": "feat/admissibility-governance-novelty-v2",
   "requirement": "Chapter 9 \u00a79.4.2: missing baseline, mismatched restore hash, corrupted snapshot, ledger tampering, response isolation - each producing a distinct, recorded outcome; none reported as verified.",
   "method": "Each injection is run against the real component: the real RecoveryManager, the real HashChainLedger, the real isolate_host. Only the ledger transport is stood in for, and it records rather than answers. The tamper is written through SQL, not the API.",
@@ -39,7 +39,7 @@
       "restored": false,
       "integrity_verified": false,
       "restored_hash": null,
-      "reason": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\failure_injection_tpyzb9mf\\corrupted_snapshot\\quarterly.docx is not present in the snapshot",
+      "reason": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\failure_injection_q5gfc2bh\\corrupted_snapshot\\quarterly.docx is not present in the snapshot",
       "overall_status": "failed",
       "ledger_events": [
         "recovery_failed",
@@ -57,13 +57,13 @@
         "valid": true,
         "blocks_checked": 6,
         "invalid_block_id": null,
-        "verification_time_ms": 0.882
+        "verification_time_ms": 0.571
       },
       "verification_after": {
         "valid": false,
         "blocks_checked": 4,
         "invalid_block_id": 4,
-        "verification_time_ms": 0.38
+        "verification_time_ms": 0.334
       },
       "invalid_block_id": 4,
       "blocks_checked": 4,
@@ -87,7 +87,7 @@
   "signatures": {
     "missing_baseline": "True|False|partial|None|None|None|No prior hash for this path in the ledger; integrity could not be verified",
     "mismatched_restore_hash": "True|False|partial|None|None|None|Restored file hash does not match ledger block 41",
-    "corrupted_snapshot": "False|False|failed|None|None|None|C:\\Users\\nikhi\\AppData\\Local\\Temp\\failure_injection_tpyzb9mf\\corrupted_snapshot\\quarterly.docx is not present in the snapshot",
+    "corrupted_snapshot": "False|False|failed|None|None|None|C:\\Users\\nikhi\\AppData\\Local\\Temp\\failure_injection_q5gfc2bh\\corrupted_snapshot\\quarterly.docx is not present in the snapshot",
     "ledger_tampering": "None|None|None|None|None|True|hash chain broken at block 4: the recomputed hash does not match the stored one. The walk stopped there, having checked 4 of 6 blocks - verify_chain reports how far it got rather than certifying a short walk (inventory row D-01)",
     "response_isolation": "None|None|None|simulated|False|None|RESPONSE_ISOLATION_ENABLED is not set; rules were planned but not applied"
   },

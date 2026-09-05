@@ -1,0 +1,291 @@
+{
+  "schema": "urds.artefact_manifest.v1",
+  "generated_at": "2026-09-05T05:17:45.267865+00:00",
+  "commit": "429f1231eaf48f49c2b7b47dc8360cb5b1149b8c",
+  "branch": "feat/admissibility-governance-novelty-v2",
+  "what_the_two_digests_mean": {
+    "sha256": "over the committed bytes; detects an edited artefact",
+    "stable_sha256": "over the JSON with the listed volatile paths removed and keys sorted; this is the digest a reproducer compares"
+  },
+  "freeze_tags": {
+    "corpus-frozen-week19": "2c242d6ef610afc7aa13f3384f980810de192e09",
+    "cost-table-frozen-week20": "0354d8ff6692bcff5ffa3c483036b689157ae528",
+    "corpus-frozen-week21": "9a40bc66f83f7507c130c62c86566b6580b8a7f9",
+    "repair-accepted-week24": "e69bb3a36bb2dcc9b24af6f93f02f2ae62bdc00f"
+  },
+  "artefacts": [
+    {
+      "path": "reports/benign_corpus_manifest.json",
+      "backs": "the 275-file stratified benign corpus and its per-file hashes",
+      "command": "URDS_WRITE_REPORTS=1 python scripts/build_benign_corpus.py",
+      "verify_command": "python scripts/build_benign_corpus.py --verify",
+      "seed": "20260902 (scripts/build_benign_corpus.py DEFAULT_SEED)",
+      "reproduction": "deterministic",
+      "tolerance": null,
+      "volatile_excluded_from_stable_digest": [
+        "generated_at",
+        "commit",
+        "branch"
+      ],
+      "present": true,
+      "bytes": 186129,
+      "sha256": "b7ea70ee21e978301483a8a8c78a2a84163b50ccec5b04711e58c3f210ac4414",
+      "stable_sha256": "04c0b11e849c2fae99b4c37218d8278c1904f0599d749b82e3c803a30182c4b3"
+    },
+    {
+      "path": "reports/capability_calibration.json",
+      "backs": "10 capability levels on two ladders; the base64 finding",
+      "command": "URDS_WRITE_REPORTS=1 python scripts/capability_calibration.py",
+      "verify_command": null,
+      "seed": "none - every strategy is built from fixed bytes",
+      "reproduction": "deterministic",
+      "tolerance": null,
+      "volatile_excluded_from_stable_digest": [
+        "generated_at",
+        "commit",
+        "branch"
+      ],
+      "present": true,
+      "bytes": 39210,
+      "sha256": "0c13b0e3709bdbb1f35d46688e601d0ceb8f1ff500f5bbbab821016dccefbc4c",
+      "stable_sha256": "b0296920f85d90327b1bf0e4255904aeddac4320d45c62920fea5cb8e23174b4"
+    },
+    {
+      "path": "reports/admission_recompute.json",
+      "backs": "20 cells x 6 policies, 16 flips, D1 on both ladders",
+      "command": "URDS_WRITE_REPORTS=1 python scripts/admission_recompute.py",
+      "verify_command": null,
+      "seed": "none - reads capability levels from capability_calibration.json",
+      "reproduction": "deterministic",
+      "tolerance": null,
+      "volatile_excluded_from_stable_digest": [
+        "generated_at",
+        "commit",
+        "branch"
+      ],
+      "present": true,
+      "bytes": 38549,
+      "sha256": "78cf0c904488dd04665e3f5bb4d3094fcbab1f5962c301b5d7c0c38b96f50921",
+      "stable_sha256": "220fb244be80e4b1c8d3fdcd370bbe1e591972d533c41bb1bb3bb23cb9e23df0"
+    },
+    {
+      "path": "reports/three_arm_experiment.json",
+      "backs": "five arms, 34 attack cases, 275 benign files; D3 and D4",
+      "command": "URDS_WRITE_REPORTS=1 python scripts/three_arm_experiment.py",
+      "verify_command": null,
+      "seed": "corpus seed 20260902; attack witnesses built from fixed bytes",
+      "reproduction": "deterministic",
+      "tolerance": "latency_ms is excluded from the stable digest; it is a measurement, and the arms are compared to each other within one run rather than across runs",
+      "volatile_excluded_from_stable_digest": [
+        "generated_at",
+        "commit",
+        "branch",
+        "latency_ms"
+      ],
+      "present": true,
+      "bytes": 478569,
+      "sha256": "3e9a2aa47c8011cb50d022774ddfa89a7b964252eff9e8cda2b3f7cfd3552009",
+      "stable_sha256": "044a5754c2415a5b4aa1fbfb6ce1444d5adb3e59440fa124e1ae963b2edf5de6"
+    },
+    {
+      "path": "reports/benign_tradeoff.json",
+      "backs": "Bound 1 at 25.323 pp against 2.00; D5 at 100.0 pp",
+      "command": "URDS_WRITE_REPORTS=1 python scripts/benign_tradeoff.py",
+      "verify_command": null,
+      "seed": "none - reads three_arm_experiment.json",
+      "reproduction": "deterministic",
+      "tolerance": null,
+      "volatile_excluded_from_stable_digest": [
+        "generated_at",
+        "commit",
+        "branch"
+      ],
+      "present": true,
+      "bytes": 18897,
+      "sha256": "c0513e16a57bbb635660e1167b7d92b5aecb8a3763bd184389f79cf7a525e9a6",
+      "stable_sha256": "8fe6d5b1bbaca499db04eec9e10695e438f6452f3e09da1987289ad86573e985"
+    },
+    {
+      "path": "reports/ledger_coverage.json",
+      "backs": "100.0% coverage; 36/36 blocks on 5/5 required fields",
+      "command": "URDS_WRITE_REPORTS=1 python scripts/ledger_coverage.py",
+      "verify_command": null,
+      "seed": "none",
+      "reproduction": "deterministic",
+      "tolerance": null,
+      "volatile_excluded_from_stable_digest": [
+        "generated_at",
+        "commit",
+        "branch"
+      ],
+      "present": true,
+      "bytes": 5599,
+      "sha256": "8ede2883c21714531fd17d5b2b36314f6a7bacdc3a57f709696ccefc100927c2",
+      "stable_sha256": "f81b68b685ca7d070fc3094b50b7d980fba8022c2759edb86e0932ecca83f2d6"
+    },
+    {
+      "path": "reports/pipeline_governance.json",
+      "backs": "one adjudication across Monitor to Recovery, asserted by equality",
+      "command": "URDS_WRITE_REPORTS=1 python scripts/pipeline_governance.py",
+      "verify_command": null,
+      "seed": "none - payloads derive from a SHA-256 chain over a fixed tag",
+      "reproduction": "deterministic",
+      "tolerance": null,
+      "volatile_excluded_from_stable_digest": [
+        "generated_at",
+        "commit",
+        "branch"
+      ],
+      "present": true,
+      "bytes": 10395,
+      "sha256": "d85078280c842aacef7da4e1512c22ee27060b011118c7bcd11cbf704b3bb69a",
+      "stable_sha256": "6d2bf06d446539e401be309dc4d2d43ca1e395c6e325735cb12748d8fd603cd0"
+    },
+    {
+      "path": "reports/tamper_sweep.json",
+      "backs": "20/20 in-place detected, 0/8 structural detected",
+      "command": "URDS_WRITE_REPORTS=1 python scripts/tamper_sweep.py",
+      "verify_command": null,
+      "seed": "none - 40-block chains over fixed payloads",
+      "reproduction": "deterministic",
+      "tolerance": null,
+      "volatile_excluded_from_stable_digest": [
+        "generated_at",
+        "commit",
+        "branch"
+      ],
+      "present": true,
+      "bytes": 13559,
+      "sha256": "7450a1115c937b096962b6c0c871fa88f11de5edcb840e1e65725920d35b06e5",
+      "stable_sha256": "9d697d8dac507de652e46b7eaf0d50dd7d0322a35c71d123e64541c9b0e3663a"
+    },
+    {
+      "path": "reports/failure_injection.json",
+      "backs": "five recovery injections, none reported as verified",
+      "command": "URDS_WRITE_REPORTS=1 python scripts/failure_injection.py",
+      "verify_command": null,
+      "seed": "none",
+      "reproduction": "deterministic",
+      "tolerance": null,
+      "volatile_excluded_from_stable_digest": [
+        "generated_at",
+        "commit",
+        "branch"
+      ],
+      "present": true,
+      "bytes": 4887,
+      "sha256": "159c17aa5d94a59fbafa075f5ad6485480eb2c11709dd5a37350e39a59fbb211",
+      "stable_sha256": "aa6327157ceebd7cce03d2cd65d302307f0029898d043efbe04fa81f5d81db05"
+    },
+    {
+      "path": "reports/simulator_families.json",
+      "backs": "13/13 simulator families detected and restored",
+      "command": "URDS_WRITE_REPORTS=1 python scripts/simulator_sweep.py",
+      "verify_command": null,
+      "seed": "fixed per-family keystream seeds in scripts/ransomware_simulator.py",
+      "reproduction": "deterministic",
+      "tolerance": "per-family detection latency is wall-clock; the 13/13 detection and restore outcomes are not",
+      "volatile_excluded_from_stable_digest": [
+        "generated_at"
+      ],
+      "present": true,
+      "bytes": 8706,
+      "sha256": "b8ebd27fb93e96c335231369ceb5dbc0ac6dd2b1f6ec72330a3bc131fd6eafc7",
+      "stable_sha256": "b3c65fc0abd08bde1d31ce1d97a86a7f6a73748253d83040746b3d153f17d7fd"
+    },
+    {
+      "path": "reports/load_test.json",
+      "backs": "p95 94.650 ms, p99 110.550 ms, 18.7:1 produce-to-drain",
+      "command": "URDS_WRITE_REPORTS=1 python scripts/load_test.py",
+      "verify_command": null,
+      "seed": "none",
+      "reproduction": "timing-dependent",
+      "tolerance": "every number in this report is wall-clock on one host. A reader reproduces the shape - p99 above the 100 ms budget and a produce-to-drain ratio well above 1:1 - not the digits. The host block records what it was measured on",
+      "volatile_excluded_from_stable_digest": [
+        "generated_at",
+        "commit",
+        "branch",
+        "host"
+      ],
+      "present": true,
+      "bytes": 3128,
+      "sha256": "2ab98a33b190dd1ab4784806fef54dd14804a6deed06f63731640362dd1ef672",
+      "stable_sha256": "59925e377a2a5c903e171f09b6f8b44419584686e37ddda9b080d8b433a550b1"
+    },
+    {
+      "path": "reports/vss_status.json",
+      "backs": "acceptance row 12: VSS supported, not elevated, both operations refuse",
+      "command": "python scripts/verify_vss.py --status-only",
+      "verify_command": null,
+      "seed": "none",
+      "reproduction": "timing-dependent",
+      "tolerance": "the result depends on the host and on whether the shell is elevated. On an elevated Windows shell this report should differ, and that difference is the point of running it",
+      "volatile_excluded_from_stable_digest": [
+        "generated_at",
+        "commit",
+        "branch"
+      ],
+      "present": true,
+      "bytes": 1533,
+      "sha256": "1a243f3b2332edb9dd376bcf8b33e468792857ccd81390e8a2fbf02ff4023beb",
+      "stable_sha256": "d5d204dd0bef4fe50c7b795ac962c4527dc8425f0ecd4d126326542b75e490f5"
+    }
+  ],
+  "source": [
+    {
+      "path": "services/monitor/detection.py",
+      "sha256": "02823d885c3a08b12617da8fa7ec179d456fbab59e1b8618ef4f754a7f782181",
+      "bytes": 43744
+    },
+    {
+      "path": "services/monitor/admissibility.py",
+      "sha256": "067adea39c434a13181a80ff954c07ea3d7c70f0938d122fa0763477819a0061",
+      "bytes": 8898
+    },
+    {
+      "path": "services/monitor/containers.py",
+      "sha256": "ed7766df2c6bbf3a5ec6a22e3c6cea1b666d78eb5abd4f9aeed30104a4b95825",
+      "bytes": 31311
+    },
+    {
+      "path": "services/monitor/pipeline.py",
+      "sha256": "dcc87bc860f0e955046f96dc623112d1db9758301fc6b70c9884ab16fd6ff35d",
+      "bytes": 13954
+    },
+    {
+      "path": "services/monitor/app.py",
+      "sha256": "bc137c92801550ed6732529a90f2de713124100f2a58bd017f157c0f49d9ab5c",
+      "bytes": 35347
+    },
+    {
+      "path": "services/ledger/ledger.py",
+      "sha256": null,
+      "bytes": null
+    },
+    {
+      "path": "scripts/capability_calibration.py",
+      "sha256": "adce3f4abcdf0726db4ae10ac5c3b41294ec636dd0881c8fae10e3bd5abe798e",
+      "bytes": 60142
+    },
+    {
+      "path": "scripts/admission_recompute.py",
+      "sha256": "77211d80526a768b464306cc95a3ecaf3e2f15f5a2a3cfb54d86f3cac99b7858",
+      "bytes": 29498
+    },
+    {
+      "path": "scripts/three_arm_experiment.py",
+      "sha256": "7894fdfbaec78c423046a64e2152d5286e0b99e844d9bc3a43ed9e6ab3465d67",
+      "bytes": 29469
+    },
+    {
+      "path": "scripts/benign_tradeoff.py",
+      "sha256": "e508347a9681f649d6fe238b3654bdd4da2ea7a73b0176ca65317df28371549d",
+      "bytes": 15490
+    },
+    {
+      "path": "scripts/build_benign_corpus.py",
+      "sha256": "73eadd0b497118d1787e8ab4fd9242bcc5a2c8c2a00cb9c9b1efe4984e6f6e17",
+      "bytes": 25043
+    }
+  ]
+}

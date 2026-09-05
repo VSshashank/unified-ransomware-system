@@ -1,7 +1,7 @@
 {
   "schema": "urds.pipeline_governance/1",
-  "generated_at": "2026-09-04T08:16:31.365658Z",
-  "commit": "f00e0dfeec6b749ce7a76c15e714afcca27bc488",
+  "generated_at": "2026-09-05T05:17:57.845933Z",
+  "commit": "429f1231eaf48f49c2b7b47dc8360cb5b1149b8c",
   "branch": "feat/admissibility-governance-novelty-v2",
   "method": "Real handle_event, real pipeline, real RecoveryManager. Only the network transport is replaced, and it records rather than answers. The deferred population holds a genuine exclusive Win32 handle.",
   "reference_decision": {
@@ -235,10 +235,10 @@
       "status": "success",
       "files_recovered": 1,
       "integrity_verified": false,
-      "timestamp": "2026-09-04T08:16:31.358963Z",
+      "timestamp": "2026-09-05T05:17:57.842245Z",
       "files": [
         {
-          "file_path": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\recovery_hop_frv52zsc\\document.docx",
+          "file_path": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\recovery_hop_gi7mvbru\\document.docx",
           "restored": true,
           "integrity_verified": false,
           "restored_hash": "10383af0c7af4db6a455d2f5bb93a00b186e01daf195ba09409ba412d4d23c85",

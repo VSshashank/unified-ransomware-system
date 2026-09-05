@@ -372,7 +372,13 @@ def measure_container(workdir: Path) -> list[dict]:
 
     # --- Attack 1: the standard-library valid container (§9.3 finding 2)
     payload = deterministic_payload("container:gzip")
-    blob = gzip.compress(payload)
+    # mtime=0 pins the header timestamp. gzip.compress writes the current time
+    # by default, which made this the one artefact_sha256 in the report that a
+    # reader could not reproduce (found in P8.4, 5 September 2026). The attack
+    # is unchanged - an attacker would call gzip.compress either way, and the
+    # stream still inflates, so container_status is still VALID and the level
+    # is still negligible / plan Level 1.
+    blob = gzip.compress(payload, mtime=0)
     path = workdir / "cap_gzip_stdlib.gz"
     path.write_bytes(blob)
     outcome = score(path)
@@ -385,7 +391,7 @@ def measure_container(workdir: Path) -> list[dict]:
             declared=admissibility.AVOIDANCE_COST["structural_mismatch"],
             attack={
                 "description": "Wrap the ciphertext in a genuine gzip member.",
-                "construction": "gzip.compress(ciphertext)",
+                "construction": "gzip.compress(ciphertext, mtime=0)",
                 "why_it_works": (
                     "containers._validate_gzip inflates a bounded prefix and the stream "
                     "really does inflate, so container_status is VALID and classify "

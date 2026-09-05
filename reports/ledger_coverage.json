@@ -1,7 +1,7 @@
 {
   "schema": "urds.ledger_coverage/1",
-  "generated_at": "2026-09-04T08:14:00.346887Z",
-  "commit": "f00e0dfeec6b749ce7a76c15e714afcca27bc488",
+  "generated_at": "2026-09-05T05:17:48.374998Z",
+  "commit": "429f1231eaf48f49c2b7b47dc8360cb5b1149b8c",
   "branch": "feat/admissibility-governance-novelty-v2",
   "table_9_8_row": "Mitigation decisions reaching the ledger",
   "target": "100%",
