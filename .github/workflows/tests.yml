@@ -52,6 +52,15 @@ jobs:
             # Table 5.9's targets; nothing the container runs imports psutil.
             extras: "psutil"
           - service: ml-engine
+            # 18 of this service's tests are `skipif`-gated on
+            # models/behavioral_model.pkl, and `models/` is gitignored - a
+            # pickle is not a source artefact and does not belong in the tree.
+            # They skip in CI and say why, which is the honest outcome: the
+            # alternative is training a model in the job and then testing a
+            # different model from the one that ships. **TC-20 and TC-21 do not
+            # skip** - TC-20 rebuilds the training corpus from its seed and
+            # TC-21 reads reports/behavioral_model_metrics.json, which is
+            # tracked - so Table 9.7's rows are covered either way.
             extras: ""
           - service: response
             extras: ""
