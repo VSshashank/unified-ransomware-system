@@ -72,7 +72,12 @@ MANIFEST = REPORTS / "artefact_manifest.json"
 # Volatile paths are stripped before the stable digest. A dotted path descends
 # through dicts only; a path that does not exist is not an error, because a
 # report may legitimately omit a key.
-COMMON_VOLATILE = ("generated_at", "commit", "branch")
+# Provenance about the run rather than a result. Excluded at any depth: a
+# reader re-running from a clean checkout is at a different commit, on a
+# different branch, at a different time, and none of that is a finding.
+# `benign_tradeoff.json` carries these nested under `source_experiment`,
+# which is why the depth marker is on them rather than the top level.
+COMMON_VOLATILE = ("**/generated_at", "**/commit", "**/branch")
 
 # --------------------------------------------------------------------------
 # The artefacts that back a headline figure. Anything not in this table is not
@@ -190,11 +195,24 @@ ARTEFACTS: list[dict] = [
         "backs": "13/13 simulator families detected and restored",
         "command": "URDS_WRITE_REPORTS=1 python scripts/simulator_sweep.py",
         "seed": "fixed per-family keystream seeds in scripts/ransomware_simulator.py",
-        "reproduction": "deterministic",
-        "volatile": ("generated_at",),
+        "reproduction": "environment-dependent",
+        "volatile": COMMON_VOLATILE + (
+            "slowest_detection_seconds", "fastest_detection_seconds",
+            "**/detection_seconds", "**/collateral_events_flagged"),
         "verify_command": None,
-        "tolerance": "per-family detection latency is wall-clock; the 13/13 "
-                     "detection and restore outcomes are not",
+        "tolerance": "Two things in this report move between runs and neither is "
+                     "a headline figure. Detection latency is wall-clock. "
+                     "collateral_events_flagged counts watcher events that "
+                     "arrived while a different family was running, so it "
+                     "depends on how the filesystem event queue interleaves: "
+                     "three consecutive runs on 5 September 2026 gave "
+                     "{poisoner: 5, renamer: 2}, {poisoner: 5, renamer: 1} and "
+                     "{poisoner: 5, locker: 1}. What did not move across those "
+                     "three runs is what the thesis quotes: 13 of 13 families "
+                     "detected, every family within 2 s, and every restore "
+                     "round-trip true. Those five fields are excluded from the "
+                     "stable digest; every other field, including per-family "
+                     "verdicts, signals and entropy, is in it.",
     },
     {
         "path": "reports/load_test.json",
@@ -264,12 +282,41 @@ def normalise(value):
     return value
 
 
-def strip(value, paths: tuple[str, ...]):
-    """Return a copy of `value` with the declared top-level paths removed."""
-    if not isinstance(value, dict):
-        return normalise(value)
-    return normalise({key: item for key, item in value.items()
-                      if key not in paths})
+def strip(value, names: tuple[str, ...]):
+    """Return a copy of `value` with the declared volatile keys removed.
+
+    A declared name is removed at the top level only. A name written
+    ``**/name`` is removed at any depth. The distinction is deliberate and it
+    was learned: the clean-checkout gate on 5 September 2026 found that
+    `reports/simulator_families.json` drifts on two fields that live inside
+    `results[i]` - `detection_seconds` and `collateral_events_flagged` - which
+    were declared volatile and, because removal was top-level only, were never
+    actually excluded. A declaration that does not take effect is worse than
+    no declaration, because it reads as a decision that was made.
+
+    Depth is opted into per name rather than applied to all of them, because
+    the two kinds of volatile field are not the same kind of thing. Run
+    provenance - `generated_at`, `commit`, `branch` - is volatile wherever it
+    appears, including `benign_tradeoff.json`'s nested `source_experiment`
+    block, because a reader reproducing from a clean checkout is at a different
+    commit by construction. A measured field like `latency_ms` is volatile only
+    where it was measured; if the same name turned up somewhere else in a
+    report it would want deciding on its own merits, not silently erasing.
+    """
+    deep = frozenset(n[3:] for n in names if n.startswith("**/"))
+    top = frozenset(n for n in names if not n.startswith("**/"))
+
+    def walk(node, is_root: bool):
+        if isinstance(node, dict):
+            return {key: walk(item, False) for key, item in node.items()
+                    if key not in deep
+                    and key not in TIMING_KEYS
+                    and not (is_root and key in top)}
+        if isinstance(node, list):
+            return [walk(item, False) for item in node]
+        return normalise(node)
+
+    return walk(value, True)
 
 
 def stable_digest(path: Path, volatile: tuple[str, ...]) -> str | None:

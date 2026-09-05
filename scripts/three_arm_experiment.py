@@ -250,7 +250,12 @@ def build_attack_cases() -> list[dict]:
     emit(
         "A2_standard_library_container",
         "a2_gzip_compress.gz",
-        gzip.compress(payload),
+        # mtime=0 pins the gzip header timestamp. Without it every run writes
+        # the current time into the header, the witness SHA-256 changes, and a
+        # reader checking artefact hashes sees drift in an experiment whose arm
+        # counts never moved. The attack is unchanged: an attacker calls
+        # gzip.compress either way.
+        gzip.compress(payload, mtime=0),
         "gzip.compress(ciphertext) - a real deflate stream with a real CRC-32",
     )
     emit(
@@ -326,13 +331,13 @@ def build_attack_cases() -> list[dict]:
     emit(
         "A7_forged_inner_content",
         "a7_gzip_naive_magic.gz",
-        gzip.compress(b"\xff\xd8\xff\xe0" + noise(rng, PAYLOAD_BYTES)),
+        gzip.compress(b"\xff\xd8\xff\xe0" + noise(rng, PAYLOAD_BYTES), mtime=0),
         "gzip of four JPEG magic bytes and ciphertext - no real marker chain",
     )
     emit(
         "A7_forged_inner_content",
         "a7_gzip_real_jpeg_head.gz",
-        gzip.compress(head_only + noise(rng, PAYLOAD_BYTES)),
+        gzip.compress(head_only + noise(rng, PAYLOAD_BYTES), mtime=0),
         "gzip of a genuine JPEG through SOS, ciphertext where the scan data goes",
     )
     emit(

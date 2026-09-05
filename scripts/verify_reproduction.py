@@ -92,7 +92,7 @@ def run(command: list[str], cwd: Path, env: dict | None = None,
     except OSError as exc:
         stdout, stderr, code = "", str(exc), 127
     tail = [line for line in (stdout or "").strip().splitlines() if line.strip()]
-    return {
+    result = {
         "command": " ".join(command),
         "returncode": code,
         "ok": code == 0,
@@ -100,6 +100,18 @@ def run(command: list[str], cwd: Path, env: dict | None = None,
         "last_line": tail[-1] if tail else "",
         "stderr_tail": (stderr or "").strip().splitlines()[-4:],
     }
+    if code != 0:
+        # A failing stage that records only its summary line is a report saying
+        # something broke and not saying what. The first gate run to fail a test
+        # suite recorded "5 failed, 377 passed" and nothing else, and the five
+        # had to be found by rerunning pytest in the clone by hand. Record the
+        # lines that name them.
+        named = [line for line in tail
+                 if line.startswith(("FAILED", "ERROR", "E   "))]
+        if named:
+            result["failures"] = named[:40]
+        result["stdout_tail"] = tail[-20:]
+    return result
 
 
 # --------------------------------------------------------------------------

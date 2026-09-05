@@ -1,7 +1,7 @@
 {
   "schema": "urds.artefact_manifest.v1",
-  "generated_at": "2026-09-05T05:45:13.042524+00:00",
-  "commit": "97da6fdfd41283026df8f97b53ec34f447234549",
+  "generated_at": "2026-09-05T09:56:23.153118+00:00",
+  "commit": "34582a4db1fa76b2391e63b0151a7682fb388497",
   "branch": "feat/admissibility-governance-novelty-v2",
   "what_the_two_digests_mean": {
     "sha256": "over the committed bytes; detects an edited artefact",
@@ -23,9 +23,9 @@
       "reproduction": "deterministic",
       "tolerance": null,
       "volatile_excluded_from_stable_digest": [
-        "generated_at",
-        "commit",
-        "branch"
+        "**/generated_at",
+        "**/commit",
+        "**/branch"
       ],
       "present": true,
       "bytes": 186129,
@@ -41,9 +41,9 @@
       "reproduction": "environment-dependent",
       "tolerance": "Nine of the ten strategies are built from fixed bytes and reproduce exactly anywhere. The tenth, Cforge(ml_confidence_gate), scores a feature vector against models/behavioral_model.pkl, which is gitignored: on a clean checkout that level is recorded unresolved under D2 instead of measured, and four summary counters move with it - levels_measured stays 10 while with_empirical_source_trail and reproduced fall to 9 and unresolved_under_d2 rises to 1. That is D2 behaving as designed, not a failure. Every other level, both ladders, the base64 finding and the disagreement list are unaffected",
       "volatile_excluded_from_stable_digest": [
-        "generated_at",
-        "commit",
-        "branch"
+        "**/generated_at",
+        "**/commit",
+        "**/branch"
       ],
       "present": true,
       "bytes": 39210,
@@ -59,9 +59,9 @@
       "reproduction": "deterministic",
       "tolerance": null,
       "volatile_excluded_from_stable_digest": [
-        "generated_at",
-        "commit",
-        "branch"
+        "**/generated_at",
+        "**/commit",
+        "**/branch"
       ],
       "present": true,
       "bytes": 38549,
@@ -77,15 +77,15 @@
       "reproduction": "deterministic",
       "tolerance": "latency_ms is excluded from the stable digest; it is a measurement, and the arms are compared to each other within one run rather than across runs",
       "volatile_excluded_from_stable_digest": [
-        "generated_at",
-        "commit",
-        "branch",
+        "**/generated_at",
+        "**/commit",
+        "**/branch",
         "latency_ms"
       ],
       "present": true,
-      "bytes": 478569,
-      "sha256": "3e9a2aa47c8011cb50d022774ddfa89a7b964252eff9e8cda2b3f7cfd3552009",
-      "stable_sha256": "044a5754c2415a5b4aa1fbfb6ce1444d5adb3e59440fa124e1ae963b2edf5de6"
+      "bytes": 478557,
+      "sha256": "c407e0b0e689b2a47973d41ebf02b91eeef2abbb422700f6dc6b35d5f42698d7",
+      "stable_sha256": "a5eb5590e9bb84bb942586110f1567869700e4f6ed8e58f6f993a2d2fa8389f0"
     },
     {
       "path": "reports/benign_tradeoff.json",
@@ -96,14 +96,14 @@
       "reproduction": "deterministic",
       "tolerance": null,
       "volatile_excluded_from_stable_digest": [
-        "generated_at",
-        "commit",
-        "branch"
+        "**/generated_at",
+        "**/commit",
+        "**/branch"
       ],
       "present": true,
       "bytes": 18897,
-      "sha256": "c0513e16a57bbb635660e1167b7d92b5aecb8a3763bd184389f79cf7a525e9a6",
-      "stable_sha256": "8fe6d5b1bbaca499db04eec9e10695e438f6452f3e09da1987289ad86573e985"
+      "sha256": "cfa08e108be09dcf1d3d9c559a91ee0dcadc0945491559aa01ab4dc3725ea44a",
+      "stable_sha256": "9294ee68655e16ec40252299c72a39c9568175ca23329b520ca4bbed569d2277"
     },
     {
       "path": "reports/ledger_coverage.json",
@@ -114,9 +114,9 @@
       "reproduction": "deterministic",
       "tolerance": null,
       "volatile_excluded_from_stable_digest": [
-        "generated_at",
-        "commit",
-        "branch"
+        "**/generated_at",
+        "**/commit",
+        "**/branch"
       ],
       "present": true,
       "bytes": 5599,
@@ -132,9 +132,9 @@
       "reproduction": "deterministic",
       "tolerance": null,
       "volatile_excluded_from_stable_digest": [
-        "generated_at",
-        "commit",
-        "branch"
+        "**/generated_at",
+        "**/commit",
+        "**/branch"
       ],
       "present": true,
       "bytes": 10395,
@@ -150,9 +150,9 @@
       "reproduction": "deterministic",
       "tolerance": null,
       "volatile_excluded_from_stable_digest": [
-        "generated_at",
-        "commit",
-        "branch"
+        "**/generated_at",
+        "**/commit",
+        "**/branch"
       ],
       "present": true,
       "bytes": 13556,
@@ -168,9 +168,9 @@
       "reproduction": "deterministic",
       "tolerance": null,
       "volatile_excluded_from_stable_digest": [
-        "generated_at",
-        "commit",
-        "branch"
+        "**/generated_at",
+        "**/commit",
+        "**/branch"
       ],
       "present": true,
       "bytes": 4887,
@@ -183,15 +183,21 @@
       "command": "URDS_WRITE_REPORTS=1 python scripts/simulator_sweep.py",
       "verify_command": null,
       "seed": "fixed per-family keystream seeds in scripts/ransomware_simulator.py",
-      "reproduction": "deterministic",
-      "tolerance": "per-family detection latency is wall-clock; the 13/13 detection and restore outcomes are not",
+      "reproduction": "environment-dependent",
+      "tolerance": "Two things in this report move between runs and neither is a headline figure. Detection latency is wall-clock. collateral_events_flagged counts watcher events that arrived while a different family was running, so it depends on how the filesystem event queue interleaves: three consecutive runs on 5 September 2026 gave {poisoner: 5, renamer: 2}, {poisoner: 5, renamer: 1} and {poisoner: 5, locker: 1}. What did not move across those three runs is what the thesis quotes: 13 of 13 families detected, every family within 2 s, and every restore round-trip true. Those five fields are excluded from the stable digest; every other field, including per-family verdicts, signals and entropy, is in it.",
       "volatile_excluded_from_stable_digest": [
-        "generated_at"
+        "**/generated_at",
+        "**/commit",
+        "**/branch",
+        "slowest_detection_seconds",
+        "fastest_detection_seconds",
+        "**/detection_seconds",
+        "**/collateral_events_flagged"
       ],
       "present": true,
       "bytes": 8706,
-      "sha256": "b8ebd27fb93e96c335231369ceb5dbc0ac6dd2b1f6ec72330a3bc131fd6eafc7",
-      "stable_sha256": "b3c65fc0abd08bde1d31ce1d97a86a7f6a73748253d83040746b3d153f17d7fd"
+      "sha256": "9b82db407e7fe517b4e4b65ca05157ac5404514b5ed73378e46c11a5f327c3b7",
+      "stable_sha256": "373965ec4f1d2d2914c2878b4f76c9068854b4e8d9223af2e0024aed53e7ec40"
     },
     {
       "path": "reports/load_test.json",
@@ -202,9 +208,9 @@
       "reproduction": "timing-dependent",
       "tolerance": "every number in this report is wall-clock on one host. A reader reproduces the shape - p99 above the 100 ms budget and a produce-to-drain ratio well above 1:1 - not the digits. The host block records what it was measured on",
       "volatile_excluded_from_stable_digest": [
-        "generated_at",
-        "commit",
-        "branch",
+        "**/generated_at",
+        "**/commit",
+        "**/branch",
         "host"
       ],
       "present": true,
@@ -221,9 +227,9 @@
       "reproduction": "timing-dependent",
       "tolerance": "the result depends on the host and on whether the shell is elevated. On an elevated Windows shell this report should differ, and that difference is the point of running it",
       "volatile_excluded_from_stable_digest": [
-        "generated_at",
-        "commit",
-        "branch"
+        "**/generated_at",
+        "**/commit",
+        "**/branch"
       ],
       "present": true,
       "bytes": 1533,
@@ -279,8 +285,8 @@
     },
     {
       "path": "scripts/three_arm_experiment.py",
-      "sha256": "7894fdfbaec78c423046a64e2152d5286e0b99e844d9bc3a43ed9e6ab3465d67",
-      "bytes": 29469
+      "sha256": "475e1ca4d521f9c7eaad21e1602f8db64f7e3c825114eeb2ae00600c8939c303",
+      "bytes": 30593
     },
     {
       "path": "scripts/benign_tradeoff.py",
@@ -289,8 +295,8 @@
     },
     {
       "path": "scripts/build_benign_corpus.py",
-      "sha256": "73eadd0b497118d1787e8ab4fd9242bcc5a2c8c2a00cb9c9b1efe4984e6f6e17",
-      "bytes": 25043
+      "sha256": "264f30d62abdc5aac2c11e08ad0f8c551f5b1987359a0e13fb44ea9974ca1a03",
+      "bytes": 26491
     }
   ]
 }

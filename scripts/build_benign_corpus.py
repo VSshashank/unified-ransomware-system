@@ -105,10 +105,20 @@ DEFAULT_SEED = 20260902
 FIXED_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 FIXED_EPOCH = 0
 
-# Files per (format, construction) cell. 8 keeps every stratum populated enough
-# for a paired comparison without making the build take longer than the thing it
-# feeds.
-PER_CELL = 8
+# Files per (format, construction) cell.
+#
+# 15, because that is what the corpus the thesis measures was built with, and
+# the default has to reproduce the measured artefact. It was 8 until 5 September
+# 2026, when scripts/verify_reproduction.py ran the reproducibility appendix from
+# a clean checkout: the appendix's own command rebuilt a 149-file corpus instead
+# of the 275-file one every benign figure is about, and nothing said so. The
+# manifest recorded per_cell, and --verify read it back from the manifest it had
+# just overwritten, so the check agreed with itself and the corpus was wrong.
+#
+# The committed manifest is unchanged; this only means a fresh build with no
+# flags now produces the corpus that was measured, which is what a
+# reproducibility appendix needs its default to do.
+PER_CELL = 15
 
 WORDS = (
     "quarterly", "revenue", "deployment", "incident", "baseline", "container",
@@ -579,8 +589,20 @@ def main() -> int:
             print(f"no manifest at {manifest_path}; build it first")
             return 1
         manifest = json.loads(manifest_path.read_text())
-        result = verify(manifest, manifest.get("per_cell", args.per_cell), CORPUS_ROOT / "_verify")
+        recorded_per_cell = manifest.get("per_cell", args.per_cell)
+        result = verify(manifest, recorded_per_cell, CORPUS_ROOT / "_verify")
+        # The manifest's own size, stated. --verify rebuilds at the manifest's
+        # per_cell and compares against that same manifest, so it agrees with
+        # itself even when the manifest describes a corpus nobody intended to
+        # build. Printing the count is what lets a reader notice.
+        result["manifest_files"] = len(manifest["files"])
+        result["manifest_per_cell"] = recorded_per_cell
+        result["built_with_the_current_default"] = recorded_per_cell == PER_CELL
         print(json.dumps(result, indent=2))
+        if not result["built_with_the_current_default"]:
+            print(f"NOTE: this manifest was built with --per-cell "
+                  f"{recorded_per_cell}; the current default is {PER_CELL}. "
+                  f"A fresh build with no flags will not reproduce it.")
         return 0 if result["byte_identical"] else 1
 
     rows = build(args.seed, args.per_cell, CORPUS_ROOT, write_files=True)
