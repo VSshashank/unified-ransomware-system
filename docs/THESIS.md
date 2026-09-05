@@ -1475,12 +1475,27 @@ control was run specifically to give it the chance to come out either way.
 
 Detection latency is unchanged by the repair. All five arms measure within noise
 of one another, interleaved per repetition with rotation so no arm benefits from
-cache warmth [`reports/three_arm_experiment.json`, `latency_ms`]:
+cache warmth. Twenty repetitions of seven files gives 140 samples per arm
+[`reports/three_arm_experiment.json`, `latency_ms`]:
 
 | Arm | Median | IQR | p95 |
 |---|---|---|---|
-| A | 6.151 ms | 6.648 ms | 13.507 ms |
-| B | 7.059 ms | 6.860 ms | 13.352 ms |
+| A | 3.093 ms | 0.388 ms | 5.393 ms |
+| B | 3.094 ms | 0.258 ms | 4.726 ms |
+| C1 | 3.075 ms | 0.173 ms | 4.481 ms |
+| C | 3.085 ms | 0.175 ms | 4.949 ms |
+| D | 3.083 ms | 0.374 ms | 6.543 ms |
+
+**Arm C is 0.008 ms from the baseline at the median, in a distribution whose
+interquartile range is 0.388 ms.** The arms are indistinguishable, and the
+sign of the difference is not meaningful.
+
+Two things about these digits. They are **wall-clock on one host**, so they are
+excluded from the artefact's stable digest and a reader reproducing this will get
+different numbers — the finding is the *shape*, five arms within noise, not the
+milliseconds. And they are in-process, so they are a floor rather than a
+deployment figure; §9.3's concurrent measurement is the one to read for what the
+deployed path costs.
 
 The repair is rejected on false positives, not on speed, and this measurement
 exists so that nobody has to wonder which.
