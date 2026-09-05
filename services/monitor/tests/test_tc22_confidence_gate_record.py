@@ -209,5 +209,18 @@ def test_tc22_the_calibration_recorded_the_same_conclusion():
     assert gate, "the ML gate strategy is no longer measured"
 
     measurement = gate[0]["measurement"]
+
+    # This is the one strategy that needs a trained model, and models/ is
+    # gitignored - so on a clean checkout the calibration records that it had
+    # nothing to measure against instead of a result. Asserting the full record
+    # unconditionally made this test fail on every clean checkout, which the
+    # Week 32 gate found. Check the no-model record has the documented shape
+    # rather than skipping silently: a skip here would look like coverage.
+    if measurement.get("attack_succeeded") is None:
+        assert "no model at" in measurement.get("basis", ""), (
+            "the ML gate was not measured and the record does not say why")
+        assert gate[0]["measured_level"] is None
+        pytest.skip("no trained model in this checkout; see thesis 11.6")
+
     assert measurement["monitor_floor_makes_gate_unreachable"] is True
     assert measurement["finding_3_status"] == "restated"
