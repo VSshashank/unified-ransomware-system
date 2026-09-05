@@ -1,7 +1,7 @@
 {
   "schema": "urds.artefact_manifest.v1",
-  "generated_at": "2026-09-05T05:17:45.267865+00:00",
-  "commit": "429f1231eaf48f49c2b7b47dc8360cb5b1149b8c",
+  "generated_at": "2026-09-05T05:39:08.222812+00:00",
+  "commit": "bcb865f6ed188b7537d083ac4093e59f254360c5",
   "branch": "feat/admissibility-governance-novelty-v2",
   "what_the_two_digests_mean": {
     "sha256": "over the committed bytes; detects an edited artefact",
@@ -38,8 +38,8 @@
       "command": "URDS_WRITE_REPORTS=1 python scripts/capability_calibration.py",
       "verify_command": null,
       "seed": "none - every strategy is built from fixed bytes",
-      "reproduction": "deterministic",
-      "tolerance": null,
+      "reproduction": "environment-dependent",
+      "tolerance": "Nine of the ten strategies are built from fixed bytes and reproduce exactly anywhere. The tenth, Cforge(ml_confidence_gate), scores a feature vector against models/behavioral_model.pkl, which is gitignored: on a clean checkout that level is recorded unresolved under D2 instead of measured, and four summary counters move with it - levels_measured stays 10 while with_empirical_source_trail and reproduced fall to 9 and unresolved_under_d2 rises to 1. That is D2 behaving as designed, not a failure. Every other level, both ladders, the base64 finding and the disagreement list are unaffected",
       "volatile_excluded_from_stable_digest": [
         "generated_at",
         "commit",
@@ -47,7 +47,7 @@
       ],
       "present": true,
       "bytes": 39210,
-      "sha256": "0c13b0e3709bdbb1f35d46688e601d0ceb8f1ff500f5bbbab821016dccefbc4c",
+      "sha256": "319e64f9706977444a9b218cb6ba19c3c23230fb6ddf5adbfb321de64f9a3b2a",
       "stable_sha256": "b0296920f85d90327b1bf0e4255904aeddac4320d45c62920fea5cb8e23174b4"
     },
     {
@@ -65,7 +65,7 @@
       ],
       "present": true,
       "bytes": 38549,
-      "sha256": "78cf0c904488dd04665e3f5bb4d3094fcbab1f5962c301b5d7c0c38b96f50921",
+      "sha256": "74fc8a115e123c48ed2c3d5b504331f0812b6a464eff5f9461d40a23bce25aed",
       "stable_sha256": "220fb244be80e4b1c8d3fdcd370bbe1e591972d533c41bb1bb3bb23cb9e23df0"
     },
     {
@@ -120,7 +120,7 @@
       ],
       "present": true,
       "bytes": 5599,
-      "sha256": "8ede2883c21714531fd17d5b2b36314f6a7bacdc3a57f709696ccefc100927c2",
+      "sha256": "d761f746db294acda890849a213ea31d54730e0f4518e3a8fb7c62c5525fb9b7",
       "stable_sha256": "f81b68b685ca7d070fc3094b50b7d980fba8022c2759edb86e0932ecca83f2d6"
     },
     {
@@ -138,7 +138,7 @@
       ],
       "present": true,
       "bytes": 10395,
-      "sha256": "d85078280c842aacef7da4e1512c22ee27060b011118c7bcd11cbf704b3bb69a",
+      "sha256": "388a9e1759cc8b21f3172720eebc4e22adebe55cc20b2ddaeb5a68d08cce30e8",
       "stable_sha256": "6d2bf06d446539e401be309dc4d2d43ca1e395c6e325735cb12748d8fd603cd0"
     },
     {
@@ -155,8 +155,8 @@
         "branch"
       ],
       "present": true,
-      "bytes": 13559,
-      "sha256": "7450a1115c937b096962b6c0c871fa88f11de5edcb840e1e65725920d35b06e5",
+      "bytes": 13556,
+      "sha256": "941b6e8914b2b995599b93891e03bb7fc2da4e7b71615f8b5783456e9f5f5367",
       "stable_sha256": "9d697d8dac507de652e46b7eaf0d50dd7d0322a35c71d123e64541c9b0e3663a"
     },
     {
@@ -174,7 +174,7 @@
       ],
       "present": true,
       "bytes": 4887,
-      "sha256": "159c17aa5d94a59fbafa075f5ad6485480eb2c11709dd5a37350e39a59fbb211",
+      "sha256": "70e9848fc4e8e50f53a7ca781532c2a873865d4ec0ec3319edbf3fb6113036a5",
       "stable_sha256": "aa6327157ceebd7cce03d2cd65d302307f0029898d043efbe04fa81f5d81db05"
     },
     {
@@ -258,14 +258,19 @@
       "bytes": 35347
     },
     {
-      "path": "services/ledger/ledger.py",
-      "sha256": null,
-      "bytes": null
+      "path": "services/ledger/hash_chain.py",
+      "sha256": "3bb7df5947da431e8379329b584753ee9f35e08880e3dbdd322a43894511c0c1",
+      "bytes": 8695
+    },
+    {
+      "path": "services/ledger/database.py",
+      "sha256": "359036116533f93989af4dc7958b4bbdfb39ee0b6c3edf08c77b7c0bb7ffe572",
+      "bytes": 4345
     },
     {
       "path": "scripts/capability_calibration.py",
-      "sha256": "adce3f4abcdf0726db4ae10ac5c3b41294ec636dd0881c8fae10e3bd5abe798e",
-      "bytes": 60142
+      "sha256": "df5004a1b2f9847fc775dc6a5df9f3b8a544d5b3336f575c2d03a3c447067eae",
+      "bytes": 60818
     },
     {
       "path": "scripts/admission_recompute.py",

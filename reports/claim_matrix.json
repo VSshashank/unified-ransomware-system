@@ -1,6 +1,6 @@
 {
   "schema": "urds.claim_matrix.v1",
-  "generated_at": "2026-09-05T05:27:05.399506+00:00",
+  "generated_at": "2026-09-05T05:39:16.146269+00:00",
   "claims": [
     {
       "id": "C-01",
@@ -24,8 +24,7 @@
         "id": "C-01",
         "status": "ok",
         "detail": "totals.contributors = 4"
-      },
-      "test_run": null
+      }
     },
     {
       "id": "C-02",
@@ -52,12 +51,6 @@
         "id": "C-02",
         "status": "ok",
         "detail": "by_population.ungoverned.adjudicated = 0"
-      },
-      "test_run": {
-        "services/monitor/tests/test_tc18_admission_matrix.py": {
-          "returncode": 0,
-          "summary": "21 passed in 0.02s"
-        }
       }
     },
     {
@@ -84,12 +77,6 @@
         "id": "C-03",
         "status": "ok",
         "detail": "summary.levels_measured = 10"
-      },
-      "test_run": {
-        "services/monitor/tests/test_tc14_unvalidated_closure.py": {
-          "returncode": 0,
-          "summary": "24 passed in 0.14s"
-        }
       }
     },
     {
@@ -111,17 +98,11 @@
       "tests": [
         "services/monitor/tests/test_tc18_admission_matrix.py"
       ],
-      "note": "10 of 10 levels carry an empirical source trail; none is derived from source alone. Both ladders are recorded per strategy, because the level depends on which ladder is asked.",
+      "note": "10 of 10 levels carry an empirical source trail; none is derived from source alone. Both ladders are recorded per strategy, because the level depends on which ladder is asked. The figure is 10 with models/behavioral_model.pkl present. On a clean checkout - models/ is gitignored - the ml_confidence_gate level is recorded unresolved under D2 and the count is 9. That is D2 working as designed; the other nine levels reproduce anywhere. See docs/REPRODUCIBILITY_APPENDIX.md section 6.",
       "verification": {
         "id": "C-04",
         "status": "ok",
         "detail": "summary.with_empirical_source_trail = 10"
-      },
-      "test_run": {
-        "services/monitor/tests/test_tc18_admission_matrix.py": {
-          "returncode": 0,
-          "summary": "21 passed in 0.02s"
-        }
       }
     },
     {
@@ -152,12 +133,6 @@
         "id": "C-05",
         "status": "ok",
         "detail": "per_arm.C.attack.by_family.A1_header_over_ciphertext.flagged = 21"
-      },
-      "test_run": {
-        "services/monitor/tests/test_tc14_unvalidated_closure.py": {
-          "returncode": 0,
-          "summary": "24 passed in 0.14s"
-        }
       }
     },
     {
@@ -186,12 +161,6 @@
         "id": "C-06",
         "status": "ok",
         "detail": "bound_1.by_arm.C.upper_limit_pp = 25.3235"
-      },
-      "test_run": {
-        "services/monitor/tests/test_tc19_benign_bound.py": {
-          "returncode": 0,
-          "summary": "18 passed in 0.14s"
-        }
       }
     },
     {
@@ -219,16 +188,6 @@
         "id": "C-07",
         "status": "ok",
         "detail": "record_completeness.complete_blocks = 36"
-      },
-      "test_run": {
-        "services/monitor/tests/test_tc23_chained_record.py": {
-          "returncode": 0,
-          "summary": "6 passed in 1.50s"
-        },
-        "services/gateway/tests/test_tc25_full_traverse.py": {
-          "returncode": 0,
-          "summary": "8 passed in 0.03s"
-        }
       }
     },
     {
@@ -246,8 +205,7 @@
         "id": "C-08",
         "status": "ok",
         "detail": "not claimed"
-      },
-      "test_run": null
+      }
     },
     {
       "id": "C-09",
@@ -264,8 +222,7 @@
         "id": "C-09",
         "status": "ok",
         "detail": "not claimed"
-      },
-      "test_run": null
+      }
     },
     {
       "id": "C-10",
@@ -290,12 +247,6 @@
         "id": "C-10",
         "status": "ok",
         "detail": "flip_count = 16"
-      },
-      "test_run": {
-        "services/monitor/tests/test_tc18_admission_matrix.py": {
-          "returncode": 0,
-          "summary": "21 passed in 0.02s"
-        }
       }
     },
     {
@@ -321,8 +272,7 @@
         "id": "C-11",
         "status": "ok",
         "detail": "levels.4.measured_name = 'negligible'"
-      },
-      "test_run": null
+      }
     },
     {
       "id": "C-12",
@@ -348,12 +298,6 @@
         "id": "C-12",
         "status": "ok",
         "detail": "structural.detected = 0"
-      },
-      "test_run": {
-        "services/ledger/tests/test_tamper_sweep.py": {
-          "returncode": 0,
-          "summary": "25 passed in 2.01s"
-        }
       }
     },
     {
@@ -379,8 +323,7 @@
         "id": "C-13",
         "status": "ok",
         "detail": "concurrent_detection.latency.p99_ms = 110.55"
-      },
-      "test_run": null
+      }
     },
     {
       "id": "C-14",
@@ -406,12 +349,6 @@
         "id": "C-14",
         "status": "ok",
         "detail": "platform_status.elevated = False"
-      },
-      "test_run": {
-        "services/response/recovery/tests": {
-          "returncode": 0,
-          "summary": "57 passed in 6.89s"
-        }
       }
     }
   ],

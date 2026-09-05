@@ -33,6 +33,10 @@ on, and a reproduction class:
 - `timing-dependent` - the stable digest is *not* expected to match; the numbers
   are wall-clock measurements. What a reader checks instead is recorded in
   `tolerance`.
+- `environment-dependent` - the stable digest is not expected to match because
+  part of the artefact depends on something the repository does not carry, such
+  as a gitignored trained model. `tolerance` names exactly which part, so the
+  rest is still read as a result.
 
 Usage:
 
@@ -92,10 +96,21 @@ ARTEFACTS: list[dict] = [
         "backs": "10 capability levels on two ladders; the base64 finding",
         "command": "URDS_WRITE_REPORTS=1 python scripts/capability_calibration.py",
         "seed": "none - every strategy is built from fixed bytes",
-        "reproduction": "deterministic",
+        "reproduction": "environment-dependent",
         "volatile": COMMON_VOLATILE,
         "verify_command": None,
-        "tolerance": None,
+        "tolerance": "Nine of the ten strategies are built from fixed bytes and "
+                     "reproduce exactly anywhere. The tenth, "
+                     "Cforge(ml_confidence_gate), scores a feature vector "
+                     "against models/behavioral_model.pkl, which is gitignored: "
+                     "on a clean checkout that level is recorded unresolved "
+                     "under D2 instead of measured, and four summary counters "
+                     "move with it - levels_measured stays 10 while "
+                     "with_empirical_source_trail and reproduced fall to 9 and "
+                     "unresolved_under_d2 rises to 1. That is D2 behaving as "
+                     "designed, not a failure. Every other level, both ladders, "
+                     "the base64 finding and the disagreement list are "
+                     "unaffected",
     },
     {
         "path": "reports/admission_recompute.json",
@@ -304,7 +319,8 @@ SOURCE_FILES = [
     "services/monitor/containers.py",
     "services/monitor/pipeline.py",
     "services/monitor/app.py",
-    "services/ledger/ledger.py",
+    "services/ledger/hash_chain.py",
+    "services/ledger/database.py",
     "scripts/capability_calibration.py",
     "scripts/admission_recompute.py",
     "scripts/three_arm_experiment.py",
@@ -375,6 +391,8 @@ def verify() -> int:
             result = "match"
         elif row["reproduction"] == "timing-dependent":
             result = "expected-drift (timing)"
+        elif row["reproduction"] == "environment-dependent":
+            result = "expected-drift (environment)"
         else:
             result = f"DRIFT {row['stable_sha256'][:12]} -> {now[:12]}"
             drift += 1

@@ -1318,10 +1318,19 @@ def main() -> int:
         "summary": {
             "levels_measured": len(levels),
             "with_empirical_source_trail": len(empirical),
+            # `.get` throughout, because a derived-only record is exactly the
+            # record that never reached the code building the full shape. The
+            # ml_confidence_gate strategy returns such a record whenever
+            # models/behavioral_model.pkl is absent - which is every clean
+            # checkout, since models/ is gitignored - and indexing `attack`
+            # here crashed the whole script for a reader who had done nothing
+            # wrong. Found by scripts/verify_reproduction.py, 5 September 2026.
             "derived_from_source_only": [
                 {
-                    "strategy": r["strategy"],
-                    "why": r["attack"].get("why_it_is_not_run_here", "attack not built"),
+                    "strategy": r.get("strategy", "(unnamed)"),
+                    "why": r.get("attack", {}).get(
+                        "why_it_is_not_run_here",
+                        r.get("measurement", {}).get("basis", "attack not built")),
                 }
                 for r in derived_only
             ],
@@ -1329,9 +1338,9 @@ def main() -> int:
             "unresolved_under_d2": len(unresolved),
             "disagree_with_the_declared_cost_table": [
                 {
-                    "strategy": r["strategy"],
-                    "declared": r["declared_name"],
-                    "measured": r["measured_name"],
+                    "strategy": r.get("strategy", "(unnamed)"),
+                    "declared": r.get("declared_name"),
+                    "measured": r.get("measured_name"),
                 }
                 for r in disagreements
             ],

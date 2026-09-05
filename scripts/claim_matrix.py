@@ -121,7 +121,13 @@ CLAIMS: list[dict] = [
         "tests": ["services/monitor/tests/test_tc18_admission_matrix.py"],
         "note": "10 of 10 levels carry an empirical source trail; none is "
                 "derived from source alone. Both ladders are recorded per "
-                "strategy, because the level depends on which ladder is asked.",
+                "strategy, because the level depends on which ladder is asked. "
+                "The figure is 10 with models/behavioral_model.pkl present. On "
+                "a clean checkout - models/ is gitignored - the "
+                "ml_confidence_gate level is recorded unresolved under D2 and "
+                "the count is 9. That is D2 working as designed; the other "
+                "nine levels reproduce anywhere. See "
+                "docs/REPRODUCIBILITY_APPENDIX.md section 6.",
     },
     {
         "id": "C-05",

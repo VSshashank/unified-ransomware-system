@@ -146,6 +146,17 @@ def stage_venv(target: Path, skip: bool) -> tuple[Path, list[dict]]:
         step["stage"] = f"dependencies: {service}"
         steps.append(step)
 
+    # The measurement scripts' own dependencies. This file exists because the
+    # first run of this script failed here: Pillow was installed on the author's
+    # machine and declared nowhere, so the corpus rebuild - and every benign
+    # figure downstream of it - could not be reproduced by anyone else.
+    step = run([str(python), "-m", "pip", "install", "--quiet",
+                "--disable-pip-version-check",
+                "-r", str(target / "scripts" / "requirements.txt")],
+               cwd=target, timeout=900)
+    step["stage"] = "dependencies: measurement scripts"
+    steps.append(step)
+
     # Test-only, declared by no service's requirements.txt because no service
     # imports them at runtime. The CI matrix installs the same three.
     step = run([str(python), "-m", "pip", "install", "--quiet",
