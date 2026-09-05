@@ -1,7 +1,7 @@
 {
   "schema": "urds.reproduction_check.v1",
-  "generated_at": "2026-09-05T10:15:15.353379+00:00",
-  "source_commit": "2c0815d96317db13b08df33944ac24327c22162a",
+  "generated_at": "2026-09-05T12:21:39.647470+00:00",
+  "source_commit": "07dfdacd881b6802505bcf0d5f05df8e31ed05a6",
   "clone_path": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone",
   "gate": "NOVELTY_PROOF_PLAN.md \u00a79, Week 32: an independent reader can reproduce every headline figure from the repository and the appendix alone, verified by re-running the appendix commands from a clean checkout",
   "services_installed": [
@@ -20,18 +20,18 @@
       "command": "git clone --quiet D:\\Unified_Ransomware_Project C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone",
       "returncode": 0,
       "ok": true,
-      "seconds": 2.32,
+      "seconds": 1.8,
       "last_line": "",
       "stderr_tail": [],
       "stage": "clean checkout",
-      "cloned_commit": "2c0815d96317db13b08df33944ac24327c22162a",
+      "cloned_commit": "07dfdacd881b6802505bcf0d5f05df8e31ed05a6",
       "tracked_files": 222
     },
     {
       "command": "D:\\Unified_Ransomware_Project\\.venv\\Scripts\\python.exe -m venv C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv",
       "returncode": 0,
       "ok": true,
-      "seconds": 3.65,
+      "seconds": 4.37,
       "last_line": "",
       "stderr_tail": [],
       "stage": "dependencies"
@@ -40,7 +40,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe -m pip install --quiet --disable-pip-version-check -r C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\services\\gateway\\requirements.txt",
       "returncode": 0,
       "ok": true,
-      "seconds": 9.7,
+      "seconds": 9.03,
       "last_line": "",
       "stderr_tail": [],
       "stage": "dependencies: gateway"
@@ -49,7 +49,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe -m pip install --quiet --disable-pip-version-check -r C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\services\\ledger\\requirements.txt",
       "returncode": 0,
       "ok": true,
-      "seconds": 2.16,
+      "seconds": 2.26,
       "last_line": "",
       "stderr_tail": [],
       "stage": "dependencies: ledger"
@@ -58,7 +58,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe -m pip install --quiet --disable-pip-version-check -r C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\services\\monitor\\requirements.txt",
       "returncode": 0,
       "ok": true,
-      "seconds": 1.38,
+      "seconds": 1.45,
       "last_line": "",
       "stderr_tail": [],
       "stage": "dependencies: monitor"
@@ -67,7 +67,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe -m pip install --quiet --disable-pip-version-check -r C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\services\\ml-engine\\requirements.txt",
       "returncode": 0,
       "ok": true,
-      "seconds": 13.39,
+      "seconds": 14.37,
       "last_line": "",
       "stderr_tail": [],
       "stage": "dependencies: ml-engine"
@@ -76,7 +76,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe -m pip install --quiet --disable-pip-version-check -r C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\services\\response\\requirements.txt",
       "returncode": 0,
       "ok": true,
-      "seconds": 184.3,
+      "seconds": 5.44,
       "last_line": "",
       "stderr_tail": [],
       "stage": "dependencies: response"
@@ -85,7 +85,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe -m pip install --quiet --disable-pip-version-check -r C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\scripts\\requirements.txt",
       "returncode": 0,
       "ok": true,
-      "seconds": 12.65,
+      "seconds": 10.17,
       "last_line": "",
       "stderr_tail": [],
       "stage": "dependencies: measurement scripts"
@@ -94,7 +94,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe -m pip install --quiet --disable-pip-version-check pytest pytest-asyncio httpx psutil",
       "returncode": 0,
       "ok": true,
-      "seconds": 0.99,
+      "seconds": 1.01,
       "last_line": "",
       "stderr_tail": [],
       "stage": "dependencies: test-only"
@@ -103,7 +103,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe scripts/build_benign_corpus.py",
       "returncode": 0,
       "ok": true,
-      "seconds": 17.11,
+      "seconds": 15.85,
       "last_line": "wrote C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\reports\\benign_corpus_manifest.json",
       "stderr_tail": [],
       "stage": "corpus: rebuild from seed"
@@ -112,7 +112,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe scripts/build_benign_corpus.py --verify",
       "returncode": 0,
       "ok": true,
-      "seconds": 7.45,
+      "seconds": 7.53,
       "last_line": "}",
       "stderr_tail": [],
       "stage": "corpus: verify every file hash"
@@ -121,7 +121,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe scripts/capability_calibration.py",
       "returncode": 0,
       "ok": true,
-      "seconds": 0.36,
+      "seconds": 0.37,
       "last_line": "wrote C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\reports\\capability_calibration.json",
       "stderr_tail": [],
       "stage": "regenerate: capability_calibration.py"
@@ -130,7 +130,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe scripts/admission_recompute.py",
       "returncode": 0,
       "ok": true,
-      "seconds": 0.15,
+      "seconds": 0.18,
       "last_line": "wrote C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\docs\\ADMISSION_RECOMPUTE.md",
       "stderr_tail": [],
       "stage": "regenerate: admission_recompute.py"
@@ -139,7 +139,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe scripts/three_arm_experiment.py",
       "returncode": 0,
       "ok": true,
-      "seconds": 3.41,
+      "seconds": 3.42,
       "last_line": "wrote C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\reports\\three_arm_experiment.json",
       "stderr_tail": [],
       "stage": "regenerate: three_arm_experiment.py"
@@ -148,7 +148,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe scripts/benign_tradeoff.py",
       "returncode": 0,
       "ok": true,
-      "seconds": 2.57,
+      "seconds": 2.31,
       "last_line": "wrote C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\reports\\benign_tradeoff.json",
       "stderr_tail": [],
       "stage": "regenerate: benign_tradeoff.py"
@@ -166,7 +166,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe scripts/pipeline_governance.py",
       "returncode": 0,
       "ok": true,
-      "seconds": 1.89,
+      "seconds": 1.83,
       "last_line": "wrote C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\reports\\pipeline_governance.json",
       "stderr_tail": [],
       "stage": "regenerate: pipeline_governance.py"
@@ -175,7 +175,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe scripts/tamper_sweep.py",
       "returncode": 0,
       "ok": true,
-      "seconds": 7.34,
+      "seconds": 7.1,
       "last_line": "wrote C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\reports\\tamper_sweep.json",
       "stderr_tail": [],
       "stage": "regenerate: tamper_sweep.py"
@@ -184,10 +184,10 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe scripts/failure_injection.py",
       "returncode": 0,
       "ok": true,
-      "seconds": 0.79,
+      "seconds": 1.92,
       "last_line": "wrote C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\reports\\failure_injection.json",
       "stderr_tail": [
-        "Failed to restore C:\\Users\\nikhi\\AppData\\Local\\Temp\\failure_injection_vopdzpca\\corrupted_snapshot\\quarterly.docx: C:\\Users\\nikhi\\AppData\\Local\\Temp\\failure_injection_vopdzpca\\corrupted_snapshot\\quarterly.docx is not present in the snapshot"
+        "Failed to restore C:\\Users\\nikhi\\AppData\\Local\\Temp\\failure_injection_sbeclyqv\\corrupted_snapshot\\quarterly.docx: C:\\Users\\nikhi\\AppData\\Local\\Temp\\failure_injection_sbeclyqv\\corrupted_snapshot\\quarterly.docx is not present in the snapshot"
       ],
       "stage": "regenerate: failure_injection.py"
     },
@@ -195,7 +195,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe scripts/simulator_sweep.py",
       "returncode": 0,
       "ok": true,
-      "seconds": 60.21,
+      "seconds": 7277.46,
       "last_line": "wrote C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\reports\\simulator_families.json",
       "stderr_tail": [],
       "stage": "regenerate: simulator_sweep.py"
@@ -204,7 +204,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe scripts/artefact_manifest.py --verify",
       "returncode": 0,
       "ok": true,
-      "seconds": 0.16,
+      "seconds": 0.13,
       "last_line": "every deterministic artefact matches its recorded stable digest",
       "stderr_tail": [],
       "stage": "compare every stable digest"
@@ -213,7 +213,7 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe scripts/claim_matrix.py",
       "returncode": 0,
       "ok": true,
-      "seconds": 0.14,
+      "seconds": 0.11,
       "last_line": "wrote C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\reports\\claim_matrix.json",
       "stderr_tail": [],
       "stage": "re-check every claim"
@@ -222,8 +222,8 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe -m pytest -q --no-header",
       "returncode": 0,
       "ok": true,
-      "seconds": 7.95,
-      "last_line": "86 passed, 1049 warnings in 6.59s",
+      "seconds": 5.97,
+      "last_line": "86 passed, 1049 warnings in 4.82s",
       "stderr_tail": [
         "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Lib\\site-packages\\pytest_asyncio\\plugin.py:207: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.",
         "The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: \"function\", \"class\", \"module\", \"package\", \"session\"",
@@ -236,8 +236,8 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe -m pytest -q --no-header",
       "returncode": 0,
       "ok": true,
-      "seconds": 18.7,
-      "last_line": "67 passed, 1 warning in 17.86s",
+      "seconds": 15.44,
+      "last_line": "67 passed, 1 warning in 15.02s",
       "stderr_tail": [
         "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Lib\\site-packages\\pytest_asyncio\\plugin.py:207: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.",
         "The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: \"function\", \"class\", \"module\", \"package\", \"session\"",
@@ -248,41 +248,15 @@
     },
     {
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe -m pytest -q --no-header",
-      "returncode": 1,
-      "ok": false,
-      "seconds": 489.29,
-      "last_line": "1 failed, 381 passed, 1 warning in 488.07s (0:08:08)",
+      "returncode": 0,
+      "ok": true,
+      "seconds": 64.32,
+      "last_line": "381 passed, 1 skipped, 1 warning in 63.75s (0:01:03)",
       "stderr_tail": [
         "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Lib\\site-packages\\pytest_asyncio\\plugin.py:207: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.",
         "The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: \"function\", \"class\", \"module\", \"package\", \"session\"",
         "",
         "  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))"
-      ],
-      "failures": [
-        "E       KeyError: 'monitor_floor_makes_gate_unreachable'",
-        "FAILED tests/test_tc22_confidence_gate_record.py::test_tc22_the_calibration_recorded_the_same_conclusion"
-      ],
-      "stdout_tail": [
-        "        \"\"\"Cross-check against the artefact that measured it, if it is present.\"\"\"",
-        "        from pathlib import Path",
-        "        report = Path(__file__).resolve().parents[3] / \"reports\" / \"capability_calibration.json\"",
-        "        if not report.exists():",
-        "            pytest.skip(\"reports/capability_calibration.json is absent\")",
-        "        levels = json.loads(report.read_text(encoding=\"utf-8\"))[\"levels\"]",
-        "        gate = [e for e in levels if \"ml_confidence_gate\" in e[\"strategy\"]]",
-        "        assert gate, \"the ML gate strategy is no longer measured\"",
-        "        measurement = gate[0][\"measurement\"]",
-        ">       assert measurement[\"monitor_floor_makes_gate_unreachable\"] is True",
-        "E       KeyError: 'monitor_floor_makes_gate_unreachable'",
-        "tests\\test_tc22_confidence_gate_record.py:212: KeyError",
-        "============================== warnings summary ===============================",
-        "..\\..\\.venv\\Lib\\site-packages\\starlette\\testclient.py:40",
-        "  C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Lib\\site-packages\\starlette\\testclient.py:40: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.",
-        "    _PortalFactoryType = typing.Callable[[], typing.ContextManager[anyio.abc.BlockingPortal]]",
-        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
-        "=========================== short test summary info ===========================",
-        "FAILED tests/test_tc22_confidence_gate_record.py::test_tc22_the_calibration_recorded_the_same_conclusion",
-        "1 failed, 381 passed, 1 warning in 488.07s (0:08:08)"
       ],
       "stage": "suite: monitor"
     },
@@ -290,8 +264,8 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe -m pytest -q --no-header",
       "returncode": 0,
       "ok": true,
-      "seconds": 7.81,
-      "last_line": "30 passed, 18 skipped, 1 warning in 6.87s",
+      "seconds": 6.44,
+      "last_line": "30 passed, 18 skipped, 1 warning in 5.94s",
       "stderr_tail": [
         "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Lib\\site-packages\\pytest_asyncio\\plugin.py:207: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.",
         "The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: \"function\", \"class\", \"module\", \"package\", \"session\"",
@@ -304,8 +278,8 @@
       "command": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Scripts\\python.exe -m pytest -q --no-header",
       "returncode": 0,
       "ok": true,
-      "seconds": 35.38,
-      "last_line": "95 passed, 2 skipped, 1 warning in 34.92s",
+      "seconds": 33.97,
+      "last_line": "95 passed, 2 skipped, 1 warning in 33.52s",
       "stderr_tail": [
         "C:\\Users\\nikhi\\AppData\\Local\\Temp\\u\\urds_reproduction\\clone\\.venv\\Lib\\site-packages\\pytest_asyncio\\plugin.py:207: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.",
         "The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: \"function\", \"class\", \"module\", \"package\", \"session\"",
@@ -317,10 +291,8 @@
   ],
   "summary": {
     "stages_run": 27,
-    "failed": 1,
-    "failed_stages": [
-      "suite: monitor"
-    ],
-    "total_seconds": 893.0
+    "failed": 0,
+    "failed_stages": [],
+    "total_seconds": 7496.0
   }
 }
