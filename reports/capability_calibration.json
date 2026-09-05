@@ -1,7 +1,7 @@
 {
   "schema": "urds.capability_calibration/1",
-  "generated_at": "2026-09-05T05:17:46.589685Z",
-  "commit": "429f1231eaf48f49c2b7b47dc8360cb5b1149b8c",
+  "generated_at": "2026-09-05T05:45:12.564015Z",
+  "commit": "97da6fdfd41283026df8f97b53ec34f447234549",
   "branch": "feat/admissibility-governance-novelty-v2",
   "ladder": {
     "0": "negligible",
@@ -475,7 +475,7 @@
       "measurement": {
         "rule_matched": {
           "rule": "path",
-          "value": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\capability_yys43qh3\\approved\\*"
+          "value": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\capability_iwtd9zs9\\approved\\*"
         },
         "adjudication_outcome": "cancelled",
         "admitted": true,
@@ -594,14 +594,14 @@
             ".zip": {
               "entropy_ceiling": 8.0,
               "directories": [
-                "c:/users/nikhi/appdata/local/temp/capability_yys43qh3/watched"
+                "c:/users/nikhi/appdata/local/temp/capability_iwtd9zs9/watched"
               ],
               "profiles": [
                 {
                   "structure": "container:zip",
                   "entropy_ceiling": 8.0,
                   "directories": [
-                    "c:/users/nikhi/appdata/local/temp/capability_yys43qh3/watched"
+                    "c:/users/nikhi/appdata/local/temp/capability_iwtd9zs9/watched"
                   ]
                 }
               ]
@@ -615,7 +615,7 @@
         "attack_signal": null,
         "rule_matched": {
           "rule": "training_mode",
-          "value": ".zip (container:zip) in c:/users/nikhi/appdata/local/temp/capability_yys43qh3/watched at or below 8.0 bits/byte"
+          "value": ".zip (container:zip) in c:/users/nikhi/appdata/local/temp/capability_iwtd9zs9/watched at or below 8.0 bits/byte"
         },
         "adjudication_outcome": "cancelled",
         "admitted": true,

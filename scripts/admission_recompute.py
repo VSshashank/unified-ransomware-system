@@ -89,9 +89,20 @@ def calibrated_levels() -> tuple[dict[str, int], dict[str, int]]:
     code: dict[str, int] = {}
     plan: dict[str, int] = {}
     for entry in report["levels"]:
-        key = entry["cost_table_key"]
-        code[key] = min(code.get(key, entry["measured_level"]), entry["measured_level"])
-        level = entry["plan_level"]["level"]
+        # A level the calibration could not measure carries no cost_table_key,
+        # no measured_level and no plan_level - it is a record saying why it was
+        # not measured. Skipping it is correct: this matrix compares costs, and
+        # an unmeasured cost is not a cheaper one. The only such record today is
+        # Cforge(ml_confidence_gate) when models/behavioral_model.pkl is absent,
+        # which is every clean checkout, and indexing straight into it crashed
+        # this script for anyone who was not the author. Found by
+        # scripts/verify_reproduction.py, 5 September 2026.
+        key = entry.get("cost_table_key")
+        measured = entry.get("measured_level")
+        level = (entry.get("plan_level") or {}).get("level")
+        if key is None or measured is None or level is None:
+            continue
+        code[key] = min(code.get(key, measured), measured)
         plan[key] = min(plan.get(key, level), level)
     return code, plan
 

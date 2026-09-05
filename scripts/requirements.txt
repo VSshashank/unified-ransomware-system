@@ -6,16 +6,20 @@
 #
 # This file was added in Phase 8 because scripts/verify_reproduction.py ran the
 # reproducibility appendix from a clean checkout and the corpus rebuild failed
-# with ModuleNotFoundError: No module named 'PIL'. Pillow was installed on the
-# author's machine and declared nowhere, so every benign-cost figure in the
-# thesis rested on a dependency a reader had no way to discover.
+# on imports that were installed on the author's machine and declared nowhere.
+# Every benign-cost figure in the thesis is downstream of that rebuild, so a
+# reader had no way to reproduce any of them.
+#
+# Versions are pinned, not floated. The corpus manifest's per-file hashes are
+# hashes of these encoders' output: a different Pillow or fpdf2 writes different
+# bytes and `build_benign_corpus.py --verify` would correctly reject the
+# rebuild. A pin here is part of the evidence, not housekeeping.
 
-Pillow==12.3.0      # scripts/build_benign_corpus.py - the photographic and
-                    # noise-image corpus cells. The corpus manifest's per-file
-                    # hashes are hashes of Pillow's output, so the version is
-                    # pinned: a different encoder writes different bytes and
-                    # --verify would correctly reject the rebuild.
-
-psutil==7.2.2       # scripts/load_test.py - process and memory sampling.
-                    # Pinned to the same version services/response declares, so
-                    # a single environment can run both.
+Pillow==12.3.0      # build_benign_corpus.py - photographic and noise image cells
+fpdf2==2.8.8        # build_benign_corpus.py - the PDF corpus cells
+scipy==1.18.0       # benign_tradeoff.py - Clopper-Pearson interval limits.
+                    # Declared explicitly even though scikit-learn pulls it in
+                    # for services/ml-engine: a measurement script should not
+                    # depend on another component's transitive dependency.
+psutil==7.2.2       # load_test.py - process and memory sampling. Same version
+                    # services/response declares, so one environment runs both.

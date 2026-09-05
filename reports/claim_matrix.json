@@ -1,6 +1,6 @@
 {
   "schema": "urds.claim_matrix.v1",
-  "generated_at": "2026-09-05T05:39:16.146269+00:00",
+  "generated_at": "2026-09-05T05:45:27.451952+00:00",
   "claims": [
     {
       "id": "C-01",
@@ -90,10 +90,11 @@
       "check": [
         "reports/capability_calibration.json",
         [
-          "summary",
-          "with_empirical_source_trail"
+          "levels",
+          0,
+          "measured_name"
         ],
-        10
+        "negligible"
       ],
       "tests": [
         "services/monitor/tests/test_tc18_admission_matrix.py"
@@ -101,6 +102,33 @@
       "note": "10 of 10 levels carry an empirical source trail; none is derived from source alone. Both ladders are recorded per strategy, because the level depends on which ladder is asked. The figure is 10 with models/behavioral_model.pkl present. On a clean checkout - models/ is gitignored - the ml_confidence_gate level is recorded unresolved under D2 and the count is 9. That is D2 working as designed; the other nine levels reproduce anywhere. See docs/REPRODUCIBILITY_APPENDIX.md section 6.",
       "verification": {
         "id": "C-04",
+        "status": "ok",
+        "detail": "levels.0.measured_name = 'negligible'"
+      }
+    },
+    {
+      "id": "C-15",
+      "table_9_9_row": "(beyond the table) calibration coverage",
+      "wording": null,
+      "wording_required": false,
+      "claim": "Every capability level that could be measured carries an empirical source trail: 10 of 10 with the trained model present, 9 of 10 on a clean checkout where the tenth is recorded unresolved under D2 rather than assumed.",
+      "requires": "Calibration record",
+      "artefact": "reports/capability_calibration.json",
+      "check": [
+        "reports/capability_calibration.json",
+        [
+          "summary",
+          "with_empirical_source_trail"
+        ],
+        [
+          10,
+          9
+        ]
+      ],
+      "tests": [],
+      "note": "The two acceptable values are not a weakened check. Cforge(ml_confidence_gate) scores a feature vector against models/behavioral_model.pkl, which is gitignored because it is a trained artefact derived from EMBER. With the model the level is measured; without it D2's unresolved branch is taken, which is the designed behaviour and is recorded as such. Any other value means a level stopped being measurable. See docs/REPRODUCIBILITY_APPENDIX.md section 6 and thesis 11.6.",
+      "verification": {
+        "id": "C-15",
         "status": "ok",
         "detail": "summary.with_empirical_source_trail = 10"
       }
@@ -353,8 +381,8 @@
     }
   ],
   "summary": {
-    "total": 14,
-    "made": 12,
+    "total": 15,
+    "made": 13,
     "not_claimed": 2,
     "mandatory_wording": 9,
     "failed_verification": 0

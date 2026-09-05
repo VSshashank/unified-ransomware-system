@@ -1,7 +1,7 @@
 {
   "schema": "urds.artefact_manifest.v1",
-  "generated_at": "2026-09-05T05:39:08.222812+00:00",
-  "commit": "bcb865f6ed188b7537d083ac4093e59f254360c5",
+  "generated_at": "2026-09-05T05:45:13.042524+00:00",
+  "commit": "97da6fdfd41283026df8f97b53ec34f447234549",
   "branch": "feat/admissibility-governance-novelty-v2",
   "what_the_two_digests_mean": {
     "sha256": "over the committed bytes; detects an edited artefact",
@@ -47,7 +47,7 @@
       ],
       "present": true,
       "bytes": 39210,
-      "sha256": "319e64f9706977444a9b218cb6ba19c3c23230fb6ddf5adbfb321de64f9a3b2a",
+      "sha256": "34113f0f85eb46aea4e2de71c4e6bf40a58d83ef1d00c2dc38a38ff05f17f25f",
       "stable_sha256": "b0296920f85d90327b1bf0e4255904aeddac4320d45c62920fea5cb8e23174b4"
     },
     {
@@ -65,7 +65,7 @@
       ],
       "present": true,
       "bytes": 38549,
-      "sha256": "74fc8a115e123c48ed2c3d5b504331f0812b6a464eff5f9461d40a23bce25aed",
+      "sha256": "733b59d4f0a42a05cefab1484f989aef8277cf8172ded4664d1b5a971d8eb573",
       "stable_sha256": "220fb244be80e4b1c8d3fdcd370bbe1e591972d533c41bb1bb3bb23cb9e23df0"
     },
     {
@@ -274,8 +274,8 @@
     },
     {
       "path": "scripts/admission_recompute.py",
-      "sha256": "77211d80526a768b464306cc95a3ecaf3e2f15f5a2a3cfb54d86f3cac99b7858",
-      "bytes": 29498
+      "sha256": "56432a07eb02e4c96fe5086b996283ac5746987b954831d7a160c529aa6d74a4",
+      "bytes": 30224
     },
     {
       "path": "scripts/three_arm_experiment.py",
