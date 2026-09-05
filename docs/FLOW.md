@@ -585,9 +585,11 @@ isolation; the flake reproduces with the Phase 6 changes stashed. Both assert a
 wall-clock threshold, so an unrelated test holding the CPU fails them. The skips assert a POSIX SIGTERM guarantee with no Windows
 equivalent; a Windows-specific test covers the same ground.
 
-> **Test-ID collision to resolve before Phase 7.** `test_tc13_suppression_e2e.py`
-> already labels its training-mode cases **TC-14**. Chapter 9 Table 9.7 assigns
-> TC-14 to the unvalidated-format witness. The two must not both be TC-14.
+> **Test-ID collision — resolved in Phase 7.** `test_tc13_suppression_e2e.py`
+> labelled its training-mode cases **TC-14**, and Chapter 9 Table 9.7 assigns
+> TC-14 to the unvalidated-format witness. The local cases are now **TC-13b**;
+> Table 9.7's TC-14 is `test_tc14_unvalidated_closure.py`. Nothing about what
+> either asserts changed - only which identifier maps to which evidence.
 
 Run everything:
 

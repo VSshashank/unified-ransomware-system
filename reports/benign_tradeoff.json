@@ -1,11 +1,11 @@
 {
   "schema": "urds.benign_tradeoff/1",
-  "generated_at": "2026-09-03T06:05:20.437675Z",
-  "commit": "d45ddad0838bbb4a6308c734c479aef81bd253d5",
+  "generated_at": "2026-09-05T04:06:42.322929Z",
+  "commit": "4afb37e82309587d6f7fd66ba55dca81fcb6ca11",
   "branch": "feat/admissibility-governance-novelty-v2",
   "source_experiment": {
     "file": "reports/three_arm_experiment.json",
-    "commit": "5e6d635d8a665aa744cdb48c7e5e70422012c5c3",
+    "commit": "f7098e3cc9c4620a95a9436d8eb25620691d05eb",
     "benign_corpus_tag": "corpus-frozen-week21",
     "files": 275
   },

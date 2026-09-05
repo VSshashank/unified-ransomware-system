@@ -1,4 +1,10 @@
-"""TC-13/TC-14: whitelist and training mode against the real detection path.
+"""TC-13 / TC-13b: whitelist and training mode against the real detection path.
+
+The training-mode cases below were labelled TC-14 until Phase 7. **Chapter 9
+Table 9.7 owns TC-14** - the unvalidated-format witness, now in
+`test_tc14_unvalidated_closure.py` - and two different cases cannot share an
+identifier that a table maps to evidence. These keep the story they belong to
+and become TC-13b; nothing about what they assert has changed.
 
 `test_suppression.py` tests the rules in isolation. This file drives the same
 rules through `handle_event`, which is the function the watchdog calls, so what
@@ -31,7 +37,7 @@ def clean_state():
     reading only becomes a ceiling once its file has been watched for
     TRAINING_DWELL_SECONDS, which is what stops a file created during the window
     from lifting the ceiling to its own entropy - see
-    `test_tc14_a_file_created_during_training_cannot_poison_the_ceiling`, which
+    `test_tc13b_a_file_created_during_training_cannot_poison_the_ceiling`, which
     keeps the real value. Every other test here is about what a learned baseline
     then does, and would otherwise spend 30 seconds proving it.
     """
@@ -119,10 +125,10 @@ def test_tc13_whitelisted_path_still_alerts_when_the_file_is_encrypted_in_place(
     assert encrypted["suspicious"] is True
 
 
-# ----------------------------------------------------- TC-14: training mode
+# ---------------------------------------------------- TC-13b: training mode
 
 
-def test_tc14_training_mode_learns_a_workload_then_declines_to_alert(tmp_path):
+def test_tc13b_training_mode_learns_a_workload_then_declines_to_alert(tmp_path):
     """Learn a legitimate high-entropy workload, then stop alerting on it."""
     workspace = tmp_path / "renders"
     workspace.mkdir()
@@ -149,7 +155,7 @@ def test_tc14_training_mode_learns_a_workload_then_declines_to_alert(tmp_path):
     assert after["suppressed_by"]["rule"] == "training_mode"
 
 
-def test_tc14_training_mode_still_catches_the_simulator(tmp_path):
+def test_tc13b_training_mode_still_catches_the_simulator(tmp_path):
     """The other half: learning a workload must not blind the detector.
 
     The learned workload is `.rndr` files in one directory. The simulated attack
@@ -182,7 +188,7 @@ def test_tc14_training_mode_still_catches_the_simulator(tmp_path):
     assert event["suppressed_by"] is None
 
 
-def test_tc14_training_mode_does_not_learn_an_attack_that_is_already_running(tmp_path):
+def test_tc13b_training_mode_does_not_learn_an_attack_that_is_already_running(tmp_path):
     """If the encryptor started first, the baseline must refuse to learn it."""
     documents = tmp_path / "documents"
     documents.mkdir()
@@ -278,7 +284,7 @@ def test_the_same_corpus_with_forged_headers_is_caught_in_full(tmp_path):
     assert missed == [], f"{len(missed)}/{len(forged)} forged containers went undetected"
 
 
-def test_tc14_a_file_created_during_training_cannot_poison_the_ceiling(tmp_path):
+def test_tc13b_a_file_created_during_training_cannot_poison_the_ceiling(tmp_path):
     """D3, through the real detection path and with the production dwell.
 
     Write one file at ciphertext entropy while training is learning, finish
