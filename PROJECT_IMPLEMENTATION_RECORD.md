@@ -153,12 +153,16 @@ From §9.15, and what the repository shows of it:
   across four contributors; the generator verifies each contributor against it.
 - **Freeze commits.** Four, tagged, and their hashes are quoted in the thesis:
 
-  | Tag | Commit | Date | What it froze |
-  |---|---|---|---|
-  | `corpus-frozen-week19` | `2175d9c` | 2026-09-02 | the benign corpus manifest |
-  | `cost-table-frozen-week20` | `9a4269b` | 2026-09-02 | the declared capability cost table |
-  | `corpus-frozen-week21` | `38f32ed` | 2026-09-03 | the corpus as re-frozen for the experiment |
-  | `repair-accepted-week24` | `a230245` | 2026-09-03 | the Week 24 gate decision |
+  | Tag | Commit | Tag object | Date | What it froze |
+  |---|---|---|---|---|
+  | `corpus-frozen-week19` | `2c242d6` | `2175d9c` | 2026-09-02 | the benign corpus manifest |
+  | `cost-table-frozen-week20` | `0354d8f` | `9a4269b` | 2026-09-02 | the declared capability cost table |
+  | `corpus-frozen-week21` | `9a40bc6` | `38f32ed` | 2026-09-03 | the corpus as re-frozen for the experiment |
+  | `repair-accepted-week24` | `e69bb3a` | `a230245` | 2026-09-03 | the Week 24 gate decision |
+
+  §9.15 asks for the *commit* hashes, which is the first column. All four tags
+  are annotated, so `git rev-parse <tag>` returns the tag object in the second
+  column and `git rev-list -n 1 <tag>` returns the commit.
 
 - **Reproduction pairs.** §9.15 sets the ring AS↔NI and SI↔SH, with the
   reproducing member recording their result before seeing the original
