@@ -1,0 +1,129 @@
+name: tests
+
+# P7.2. The full suite on every pull request, from a clean checkout.
+#
+# One job per service, and that is not an arrangement of convenience. The five
+# services use flat module names that match their container layout - each has its
+# own `app.py`, and `services/gateway` and `services/response` both have a
+# `main.py` - so a single pytest process over `services/` imports whichever
+# `app` reached `sys.path` first and every later service tests the wrong module.
+# Measured: 19 failed and 113 collection errors in one pass, against 632 passed
+# across five per-service runs. Restructuring the imports so one process works
+# would mean changing how the containers themselves load, for no gain a matrix
+# does not already give.
+#
+# Each job installs from the service's own requirements.txt, so a dependency a
+# service forgot to declare fails here rather than on a machine where it happens
+# to be installed for some other reason. `psutil` in the Monitor is exactly that
+# case: its benchmarks import it and its requirements.txt does not list it,
+# because it is a test-only dependency of a service that does not use it at
+# runtime. It is installed below as one, and named as one.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Reports are gated on this. CI measures nothing and must write nothing into
+  # reports/: a green run that regenerated an artefact would silently replace
+  # something a frozen tag is supposed to pin.
+  URDS_WRITE_REPORTS: ""
+
+jobs:
+  suite:
+    name: ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: gateway
+            extras: ""
+          - service: ledger
+            extras: ""
+          - service: monitor
+            # Test-only. `test_benchmarks.py` measures CPU and RSS against
+            # Table 5.9's targets; nothing the container runs imports psutil.
+            extras: "psutil"
+          - service: ml-engine
+            extras: ""
+          - service: response
+            extras: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/${{ matrix.service }}/requirements.txt
+
+      - name: Install
+        working-directory: services/${{ matrix.service }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pytest pytest-asyncio httpx ${{ matrix.extras }}
+
+      - name: Run
+        working-directory: services/${{ matrix.service }}
+        run: python -m pytest -q --durations=10
+
+  # Table 9.7's acceptance rows, named on their own so a pull request shows at a
+  # glance whether they still hold. These same tests run inside the matrix above;
+  # this job exists so the answer is a line in the checks list rather than
+  # something a reviewer has to go and find in a log.
+  #
+  # It installs every service's requirements because the rows cross services:
+  # TC-25 drives the Monitor's pipeline and the Response service's
+  # RecoveryManager in one test, and TC-20 rebuilds the training corpus from
+  # `src/train_behavioral_model.py`, which imports both the Monitor's detection
+  # module and the scientific stack the ml-engine ships.
+  acceptance-rows:
+    name: TC-14 … TC-25
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install every service
+        run: |
+          python -m pip install --upgrade pip
+          for service in gateway ledger monitor ml-engine response; do
+            python -m pip install -r "services/$service/requirements.txt"
+          done
+          python -m pip install pytest pytest-asyncio httpx psutil
+
+      - name: AS rows - TC-14 … TC-19
+        working-directory: services/monitor
+        run: python -m pytest -q tests/test_tc1[4-9]*.py
+
+      - name: NI row - TC-22
+        working-directory: services/monitor
+        run: python -m pytest -q tests/test_tc22*.py
+
+      - name: SI row - TC-23
+        working-directory: services/monitor
+        run: python -m pytest -q tests/test_tc23*.py
+
+      - name: NI rows - TC-20, TC-21
+        working-directory: services/ml-engine
+        run: python -m pytest -q tests/test_tc2[01]*.py
+
+      - name: SI row - TC-24
+        working-directory: services/response
+        run: python -m pytest -q tests/test_tc24*.py
+
+      - name: SH row - TC-25
+        working-directory: services/gateway
+        run: python -m pytest -q tests/test_tc25*.py

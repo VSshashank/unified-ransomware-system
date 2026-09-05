@@ -597,6 +597,22 @@ Run everything:
 foreach ($s in "gateway","ledger","monitor","ml-engine","response") { Push-Location "services\$s"; python -m pytest -q; Pop-Location }
 ```
 
+**Per service, and it has to be.** A single pytest process over `services/` does
+not work and cannot be made to without changing how the containers load. The five
+services use flat module names matching their container layout - each has its own
+`app.py`, and gateway and response both have a `main.py` - so one process imports
+whichever `app` reached `sys.path` first and every later service then tests the
+wrong module. Measured on 5 September 2026: **19 failed and 113 collection errors
+in one pass, against 632 passed across five per-service runs.** Basename
+collisions between test files (`test_api.py` in three services) are a separate
+and smaller instance of the same thing.
+
+`.github/workflows/tests.yml` runs the five as a matrix on every pull request,
+plus a named job for Table 9.7's TC-14 … TC-25 so the acceptance rows appear as
+their own line in the checks list. `URDS_WRITE_REPORTS` is empty there: CI
+measures nothing, and a green run that regenerated an artefact would silently
+replace something a frozen tag is meant to pin.
+
 ---
 
 ## 11. Configuration
