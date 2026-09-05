@@ -76,6 +76,8 @@ novelty are never inferred from this work.
 | E | Decision rules D1–D6, and how each was answered |
 | F | Test inventory |
 | G | Glossary |
+| H | The full admission matrix, all 120 cells |
+| I | The benign corpus, cell by cell |
 
 Every numeric claim in this thesis carries a pointer to a report, a test or a
 stated assumption. A sentence with no pointer is framing rather than result. If a
@@ -1594,6 +1596,101 @@ after the fact.
 Row 12 is the only integration row still partial, and Chapter 11 says what it
 would take to close.
 
+## 8.6 The hop matrix, three populations by six hops
+
+`scripts/pipeline_governance.py` drives real `handle_event`, the real pipeline
+and a real `RecoveryManager`. **Only the network transport is replaced, and it
+records rather than answers**, so every payload a service would have received is
+captured and can be inspected for whether the governance record travelled with
+it. The deferred population holds a genuine exclusive Win32 handle rather than a
+simulated one.
+
+Three populations of six events each — a *cancelled* decision (a hash-whitelist
+suppression that was admitted), an *attenuated* one, and a *deferred* one — and
+the payloads each produced:
+
+| Hop | cancelled | attenuated | deferred |
+|---|---|---|---|
+| `monitor_event` | 6/6 | 6/6 | 0/6 |
+| `ml_predict` | — | 0/6 | — |
+| `ledger_file_event` | — | 6/6 | — |
+| `ledger_suppression_decision` | **6/6** | — | — |
+| `response_trigger` | — | 6/6 | — |
+| `ledger_response_action` | — | 6/6 | — |
+
+`n/m` is *payloads carrying an intact governance record* over *payloads sent*; a
+dash means the hop did not occur for that population, which for most of these is
+the correct behaviour rather than a gap.
+
+**Read the rows, not the totals.** Three of them say something the summary
+does not.
+
+**`ml_predict` is 0 of 6 and that is correct.** The ML request carries the
+feature vector and nothing else. The model scores bytes; handing it the
+adjudication would let a suppression move a prediction, which is the failure
+mode the separation exists to prevent. The report records this as *not carrying
+the record* with a note saying why, rather than as a pass — because the honest
+statement is that **the record does not literally traverse this hop**, and a
+reader deserves to see the one hop where the answer is "by design" written as
+such rather than folded into a green count.
+
+**A cancelled decision produces no file event and no response trigger.** That is
+what cancelling means: the alert is suppressed, so nothing downstream acts. What
+it *does* produce is `ledger_suppression_decision`, 6 of 6 — **the suppression
+itself is chained**. That row is finding S-11 closed: before this work a
+cancelled suppression left no chained record at all, so the audit log recorded
+the alerts that fired and was silent about the ones that were suppressed. An
+audit log that only records what happened, and not what was decided not to
+happen, is not an audit log of the decisions.
+
+**The deferred population reaches no hop at all — 0 of 6 at `monitor_event`.**
+The file is held under an exclusive Win32 handle, `open_for_read` exhausts its
+40 ms retry budget, and the event is not classified. This is not a governance
+failure and it is not a bug; it is the read-retry budget of §3.2 doing what it
+is for. It is in the table because **a population that produces no payloads
+would otherwise be invisible**, and the difference between "the record did not
+travel" and "there was nothing to travel" is exactly the difference this chapter
+exists to measure.
+
+## 8.7 Recovery, the dashboard, and D6
+
+Two hops sit outside the six-by-three grid.
+
+**Recovery.** One payload, carrying the record intact, and carrying the incident
+identifier the decision belongs to — so a restore can be attributed to the
+adjudication that authorised it rather than merely coinciding with it. The
+recovery itself returned `status: success` with one file restored.
+
+**`integrity_verified` is false on that restore, and the reason is worth
+stating.** The manager had no expected hash to compare against — `expected_hash`
+is null — so it restored the file and declined to claim it verified the result.
+That is the correct behaviour and it is also a limit: **the recovery hop proves
+the record reaches recovery, not that recovery is correct.** §11.5 says what the
+recovery claim rests on, which is the thirteen simulator round-trips and not
+this hop.
+
+**The dashboard.** `GOVERNANCE_OUTCOMES`, `governance_outcome` and
+`governance_chip` are lifted from `services/dashboard/app.py` by AST and
+executed, so what is measured is the deployed code rather than a description of
+it. Three outcomes read back distinctly, three display labels are distinct,
+three chips render, and `no_rule_applied` reads back as `None` rather than
+collapsing into one of the three. One check is separate and deliberate:
+`cancelled_is_not_read_from_suspicious` — the dashboard must derive "cancelled"
+from the governance outcome and not from the suspicion flag, because those two
+agree in the common case and diverge in exactly the case that matters.
+
+**D6 does not fire.** All six gates pass: the adjudication reaches the chain for
+a cancelled decision and for an attenuated one, travels to the Response service
+and into its own chained entry, reaches recovery with the incident it answers,
+and the dashboard tells the three outcomes apart.
+
+The wording that follows is narrow and it is the wording used: **in the evaluated
+URDS pipeline, the governance decision reaches the hops that act on it.** Not
+that the pipeline is verified end to end — the transport is in-process (§11.3),
+the ML hop does not receive the record by design, and one population never
+produced a payload to begin with.
+
+
 ---
 
 # 9. What this system does not stop
@@ -2589,3 +2686,127 @@ plan's strict rule are used *together*: policy E — the plan's ladder with the
 permissive rule — leaves all four admitted, and policy B — the strict rule with
 declared costs — leaves all four admitted too. §6.3 works through the single rung
 that produces them, and §6.5 records that policy F is not deployed.
+
+---
+
+# Appendix I — The benign corpus, cell by cell
+
+275 files, seed `20260902`, 15 per (format, construction) cell.
+Generated from `reports/benign_corpus_manifest.json`; 270 of the 275 rebuild
+byte-identically from the seed and the manifest records the SHA-256 of every
+one. The other five carry repository provenance instead and are marked
+`rebuildable: false`.
+
+**Every file is produced by a real encoder for its format and is structurally
+genuine.** The content is synthetic — generated images, prose and audio — and the
+manifest does not claim these are files taken from anyone's disk. §11.1 is about
+what that costs.
+
+## I.1 The four strata
+
+The axes are measured, not declared. *Validated* means
+`containers._VALIDATORS` holds a structural validator for the detected format.
+*Incompressible* means `detection.measure` reports whole-file entropy at or above
+the detector's own 7.5 threshold — so a file lands in the incompressible column
+because the detector thinks it is high-entropy, not because the author decided it
+was.
+
+| Stratum | Files | Arm A false positives |
+|---|---|---|
+| `unvalidated_x_compressible` | 30 | 0 |
+| `unvalidated_x_incompressible` | 90 | 0 |
+| `validated_x_compressible` | 60 | 0 |
+| `validated_x_incompressible` | 95 | 0 |
+| **total** | **275** | **0** |
+
+**Arm A flags nothing on any of the 275.** That is the baseline every bound in
+Chapter 7 is measured against, and it is why *c* = 0 in every cell and every
+Clopper–Pearson limit is computed (§2.6).
+
+## I.2 Every construction
+
+Nineteen constructions across nine formats. The entropy range is the measured
+minimum and maximum over the fifteen files in the cell, which is worth reading:
+the strata are separated by a real gap, not by a threshold cutting through a
+cluster.
+
+| Stratum | Construction | Files | Entropy range |
+|---|---|---|---|
+| `unvalidated × compressible` | GIF of photographic content - dithered to 256 colours, high entropy | 15 | 7.32 – 7.33 |
+| `unvalidated × compressible` | WAV of a pure tone - a real RIFF/WAVE header and PCM frames | 15 | 5.71 – 6.88 |
+| `unvalidated × incompressible` | GIF of a flat-colour image - a real GIF89a with an LZW-coded image block | 15 | 7.93 – 7.97 |
+| `unvalidated × incompressible` | WAV of white noise - a real RIFF whose samples look like ciphertext | 15 | 7.98 – 7.98 |
+| `unvalidated × incompressible` | bzip2 of a JPEG - already-compressed input, so the output is flat | 15 | 7.99 – 7.99 |
+| `unvalidated × incompressible` | bzip2 of prose - a real bzip2 stream over compressible input | 15 | 7.84 – 7.87 |
+| `unvalidated × incompressible` | xz of a JPEG - already-compressed input | 15 | 7.99 – 7.99 |
+| `unvalidated × incompressible` | xz of prose - a real LZMA2 stream over compressible input | 15 | 7.99 – 8.00 |
+| `validated × compressible` | JPEG of a smooth gradient - a real JPEG that compresses hard | 15 | 6.88 – 7.14 |
+| `validated × compressible` | PDF of prose - real indirect objects, a real xref and %%EOF | 15 | 6.96 – 7.15 |
+| `validated × compressible` | PNG of a smooth gradient - a real IHDR, IDAT and IEND | 15 | 5.41 – 5.43 |
+| `validated × compressible` | ZIP_STORED archive of prose - a real archive, low-entropy content | 15 | 4.13 – 4.14 |
+| `validated × incompressible` | JPEG of photographic content - a real marker chain to SOS and EOI | 15 | 7.93 – 7.94 |
+| `validated × incompressible` | PNG of photographic content - lossless over noise, so high entropy | 15 | 8.00 – 8.00 |
+| `validated × incompressible` | ZIP_DEFLATED archive of a JPEG - a backup of an already-compressed file | 15 | 7.98 – 7.99 |
+| `validated × incompressible` | ZIP_DEFLATED archive of prose - real deflate over compressible input | 15 | 7.98 – 7.99 |
+| `validated × incompressible` | gzip of a JPEG - the shape a nightly backup of a photo directory has | 15 | 7.99 – 7.99 |
+| `validated × incompressible` | gzip of prose - a real deflate stream over compressible input | 15 | 7.99 – 7.99 |
+| `validated × incompressible` | produced by this project during Phases 1-4; not synthesised | 5 | 7.71 – 7.98 |
+
+## I.3 Formats present, and formats absent
+
+| Detected format | Files | Validator |
+|---|---|---|
+| `bzip2` | 30 | no |
+| `gif` | 30 | no |
+| `gzip` | 30 | yes |
+| `jpeg` | 30 | yes |
+| `pdf` | 16 | yes |
+| `png` | 34 | yes |
+| `riff` | 30 | no |
+| `xz` | 30 | no |
+| `zip` | 45 | yes |
+
+**Nine of the seventeen recognised formats are represented, and the manifest
+says so rather than implying coverage it does not have.** The eight absent
+ones are absent for one reason each:
+
+| Format | Why no file exists here |
+|---|---|
+| `iso-bmff` | no ffmpeg or MP4 muxer in this environment |
+| `rar` | RAR is a proprietary format with no free encoder |
+| `7z` | py7zr not installed |
+| `lz4` | lz4 not installed |
+| `zstd` | zstandard not installed |
+| `mp3` | no LAME or MP3 encoder available |
+| `ogg` | no Vorbis encoder available |
+| `flac` | no FLAC encoder available |
+
+The pattern is worth naming. **Every absent format is one with no free encoder
+available in this environment, and six of the eight are also formats with no
+structural validator.** So the stratum that costs the repair most — unvalidated ×
+incompressible, where D5 fires at 100 pp — is represented by four formats
+(`bzip2`, `xz`, `gif`, `riff`) rather than by the eleven that would be in it if
+encoders existed. §11.1 records this as a limit on the benign-cost figures:
+the direction of the bias is not known, and no claim is made that it is small.
+
+## I.4 The five files that are not synthetic
+
+Five files carry repository provenance instead of a seed: they were produced by
+this project during Phases 1–4 and are included because a corpus of entirely
+self-generated content is a corpus with one author's idea of what a file looks
+like. They are marked `rebuildable: false`, they are excluded from the
+byte-identity check (which is why it reports 270 of 270 rather than 275), and
+they all fall in the validated × incompressible stratum.
+
+| File | Bytes | Entropy | Detected format |
+|---|---|---|---|
+| `repo_confusion_matrix.png` | 21,040 | 7.85 | `png` |
+| `repo_entropy_distribution.png` | 24,593 | 7.74 | `png` |
+| `repo_shap_summary_plot.png` | 113,344 | 7.98 | `png` |
+| `repo_class_balance_chart.png` | 16,196 | 7.71 | `png` |
+| `repo_Phase1-4_Team_Explainer.pdf` | 127,561 | 7.87 | `pdf` |
+
+**They are five files out of 275 and they are not a sample of real user data.**
+Nothing in this thesis treats them as one. They are named here because the
+byte-identity figure would otherwise read as a failure of five files rather than
+as a deliberate exclusion of five.
