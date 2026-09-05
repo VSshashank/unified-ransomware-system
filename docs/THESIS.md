@@ -492,11 +492,12 @@ work of the same project, with its own report named.
 The table in §3.1 is the shape of the system; this section is the part of it a
 reader needs in order to follow Chapters 7 and 8, and no more than that. Sizes
 are measured from the tree at the freeze commit; test counts are from the
-clean-checkout run recorded in `reports/reproduction_check.json`.
+clean-checkout run recorded in `reports/reproduction_check.json`, which is why
+monitor reads 381 and not the 382 a working tree with `models/` gives.
 
-| Service | Source lines | Test files | Tests passing | Published port |
+| Service | Source lines | Test files | Tests passing (clean checkout) | Published port |
 |---|---|---|---|---|
-| monitor | 3,746 | 20 | 382 | `127.0.0.1:8001` |
+| monitor | 3,746 | 20 | 381 (+1 skipped) | `127.0.0.1:8001` |
 | ml-engine | 492 | 5 | 30 (+18 skipped) | `127.0.0.1::8002` (ephemeral) |
 | ledger | 568 | 3 | 67 | `127.0.0.1:8003` |
 | response | 520 | 4 | 95 (+2 skipped) | `127.0.0.1:8004` |
@@ -2509,13 +2510,13 @@ favourable to the project.
 
 # Appendix F — Test inventory
 
-**659 passed, 20 skipped, 0 failed** from a clean checkout; 677 passed, 2 skipped
-in a working tree that also has `models/`. The 18-test difference is ml-engine's
-`skipif`-gated model tests.
+**659 passed, 21 skipped, 0 failed** from a clean checkout; 678 passed, 2 skipped
+in a working tree that also has `models/`. The 19-test difference is ml-engine's
+18 `skipif`-gated model tests plus TC-22's calibration cross-check in monitor.
 
 | Service | Tests |
 |---|---|
-| monitor | 381 |
+| monitor | 381 + 1 skipped |
 | response (incl. `recovery/`) | 95 + 2 skipped |
 | gateway | 86 |
 | ledger | 67 |

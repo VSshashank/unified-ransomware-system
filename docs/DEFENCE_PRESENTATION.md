@@ -265,12 +265,18 @@ measurement. We measured rather than guessed."
 
 ## Slide 19 — What the reproducibility gate found in our own work
 
-> Running the appendix instead of writing it found **four defects in ninety
-> seconds**: two undeclared dependencies, a crash on every clean checkout, and a
-> headline figure that needed a gitignored file.
+> Running the appendix instead of writing it took **six attempts** and found
+> **ten defects in our own work**. Undeclared dependencies. A crash on every
+> clean checkout. A headline figure that needed a gitignored file. And the one
+> that matters: **the appendix's own corpus command built the wrong corpus** —
+> 149 files where every benign figure is about 275 — so Bound 1 came out
+> 27.1752 pp instead of 25.3235, and nothing said so.
 
-*Say:* "Three of the four were invisible to inspection. An appendix that is
-written and not run is a description of a reproduction, not a reproduction."
+*Say:* "That command ran without error and exited zero. A document that was
+accurate, a command that ran, and an exit status of zero together produced the
+wrong number. **An appendix that is written and not run is a description of a
+reproduction, not a reproduction.** The sixth run passed: 27 stages, every
+digest matched, every claim re-checked, 659 tests green."
 
 ---
 

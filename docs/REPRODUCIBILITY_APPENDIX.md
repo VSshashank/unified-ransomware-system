@@ -172,13 +172,17 @@ cd services/ml-engine && python -m pytest -q && cd ../..
 cd services/response  && python -m pytest -q && cd ../..
 ```
 
-Expected from a clean checkout: **659 passed, 20 skipped, 0 failed**
-— gateway 86, ledger 67, monitor 381, ml-engine 30 + 18 skipped, response 95 + 2
-skipped. In a working tree that also has `models/`, 677 passed and 2 skipped. The
-18-test difference is `services/ml-engine`, whose tests are `skipif`-gated on a
-trained model file; `models/` is gitignored, so a clean checkout skips them. That
-is a real gap and it is reported as one rather than hidden by committing a large
-pickle whose provenance is EMBER.
+Expected from a clean checkout: **659 passed, 21 skipped, 0 failed**
+— gateway 86, ledger 67, monitor 381 + 1 skipped, ml-engine 30 + 18 skipped,
+response 95 + 2 skipped. In a working tree that also has `models/`, 678 passed
+and 2 skipped.
+
+The 19-test difference is the trained model: 18 tests in `services/ml-engine` and
+TC-22's calibration cross-check in `services/monitor` are `skipif`-gated on a
+model file under `models/`, which is gitignored, so a clean checkout skips them.
+That is a real gap and it is reported as one rather than hidden by committing a
+large pickle whose provenance is EMBER. The remaining 2 skips need an elevated
+shell and are the same in both trees.
 
 ---
 
