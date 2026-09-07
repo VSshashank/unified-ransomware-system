@@ -1,6 +1,8 @@
 import os
 from datetime import datetime, timedelta, timezone
 
+from collections import Counter
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -65,6 +67,51 @@ def status_label(raw_status: str | None) -> str:
     if not raw_status:
         return "Unknown"
     return raw_status.replace("_", " ").title()
+
+
+# The three outcomes an operator rule can have, and how each reads on screen.
+# P5.1 found this vocabulary absent from the dashboard entirely: an alert that a
+# whitelist had cancelled and an alert that was never raised looked identical
+# here, which is the one distinction the governance layer exists to make.
+#
+#   cancelled   a rule matched and was expensive enough to fake that it was
+#               allowed to remove the alert. The detection happened.
+#   attenuated  a rule matched and was outranked. The alert stands, and the
+#               operator should see that their rule was consulted and lost.
+#   deferred    no verdict was reached now - an unreadable file, a first
+#               sighting with no entropy history. Not a benign finding.
+GOVERNANCE_OUTCOMES = {
+    "cancelled": ("Cancelled", "#f59e0b", "an operator rule removed this alert"),
+    "attenuated": ("Attenuated", "#38bdf8", "a rule matched and was outranked; the alert stands"),
+    "deferred": ("Deferred", "#a78bfa", "no verdict was reached on this event"),
+}
+
+
+def governance_outcome(event: dict) -> str | None:
+    """`cancelled`, `attenuated`, `deferred`, or None when no rule was involved.
+
+    Read from the adjudication record the Monitor puts on the event, never
+    inferred from `suspicious` - a cancelled alert and a benign file both report
+    `suspicious: false`, and telling them apart from that field is exactly the
+    mistake this function exists to stop.
+    """
+    adjudication = event.get("admissibility")
+    if isinstance(adjudication, dict) and adjudication.get("outcome"):
+        return adjudication["outcome"]
+    if event.get("verdict") in {"unreadable", "deferred"}:
+        return "deferred"
+    return None
+
+
+def governance_chip(outcome: str | None) -> str:
+    if outcome not in GOVERNANCE_OUTCOMES:
+        return ""
+    label, colour, _ = GOVERNANCE_OUTCOMES[outcome]
+    return (
+        f'<span style="background:{colour}22;color:{colour};border:1px solid {colour}66;'
+        f'border-radius:6px;padding:2px 8px;font-size:0.78rem;font-weight:600;">'
+        f"{label}</span>"
+    )
 
 
 def service_status(health: dict, name: str) -> str:
@@ -153,14 +200,52 @@ latest_block = ledger_entries[0] if ledger_entries else {}
 
 latest_prediction = None
 if latest_event:
+    # Every value here is read off the event the Monitor actually measured.
+    # These used to be the reference document's illustrative constants, which
+    # meant the banner was scoring a file that did not exist: magic_bytes pinned
+    # to 4D5A held has_container_header - the model's highest-importance feature
+    # - at 0 for everything, so a ZIP the Monitor had correctly cleared as
+    # benign_compressed could still be rendered as a threat.
+    entropy = latest_event.get("entropy") or 0
     feature_payload = {
         "features": {
-            "shannon_entropy": latest_event.get("entropy", 0),
-            "file_size": 1048576,
-            "magic_bytes": "4D5A",
-            "modification_rate": min(1.0, latest_event.get("entropy", 0) / 8.2),
-            "pe_imports_count": 45,
-            "api_calls": ["CreateFile", "WriteFile", "CryptEncrypt"],
+            "shannon_entropy": entropy,
+            "file_size": latest_event.get("file_size", 0),
+            "magic_bytes": latest_event.get("magic_bytes", "UNKNOWN"),
+            # /8.0 to match the Monitor's own normalisation in extract_features.
+            "modification_rate": round(min(1.0, entropy / 8.0), 2),
+            "container_format": latest_event.get("container_format"),
+            # Tri-state and passed through as one. `.get` with no default so an
+            # event that predates the field arrives as null - "not checked" -
+            # rather than as False, which is the model's highest-importance
+            # column saying the container was examined and found forged.
+            "container_valid": latest_event.get("container_valid"),
+            "ransom_extension": latest_event.get("ransom_extension", False),
+            # The measured statistics, forwarded rather than left to be
+            # interpolated. Omitting them makes features_to_vector estimate them
+            # from entropy, which is what rendered a legitimate ZIP as a threat:
+            # measured and estimated byte statistics diverge most on exactly the
+            # compressed-versus-encrypted case the banner exists to tell apart.
+            # The block scalars are here for the same reason - interpolation
+            # assumes a uniform file, which is precisely what a partially
+            # encrypted one is not.
+            **{
+                key: latest_event[key]
+                for key in (
+                    "printable_ratio",
+                    "byte_value_std",
+                    "chi_square_uniformity",
+                    "entropy_max_block",
+                    "entropy_block_spread",
+                    "high_entropy_block_fraction",
+                )
+                if key in latest_event
+            },
+            # Required by the FeatureSet contract, and PE-only. A file event
+            # carries no PE parse, so these report nothing rather than inventing
+            # a count - the same convention extract_features uses for a .docx.
+            "pe_imports_count": 0,
+            "api_calls": [],
         }
     }
     try:
@@ -168,14 +253,35 @@ if latest_event:
     except Exception:
         latest_prediction = None
 
-threat_level = (latest_prediction or {}).get("threat_level", "low")
+THREAT_LEVEL_ORDER = ("low", "medium", "high", "critical")
+
 prediction = (latest_prediction or {}).get("prediction", "benign")
 confidence = (latest_prediction or {}).get("confidence")
-is_threat = prediction == "ransomware"
+model_threat_level = (latest_prediction or {}).get("threat_level", "low")
+
+# The banner reports what the *system* decided, which is the Monitor's verdict
+# and the model's score together - the same rule services/monitor/pipeline.py
+# applies when it decides whether to fire a response. Showing only the model
+# score made the banner disagree with the system standing behind it: the
+# behavioural classifier is not confident on ciphertext under about 40KB, so a
+# small file encrypted in place read "System Secure" on screen while the
+# Monitor had already flagged it and the Response engine had acted on it.
+monitor_flagged = bool(latest_event.get("suspicious"))
+# A cancelled alert reads `suspicious: false`, so the banner would call it
+# "System Secure" and say nothing about the detection an operator rule removed.
+# The outcome is read from the adjudication record instead.
+latest_outcome = governance_outcome(latest_event)
+is_threat = prediction == "ransomware" or monitor_flagged
+threat_level = max(
+    model_threat_level,
+    "high" if monitor_flagged else "low",
+    key=lambda level: THREAT_LEVEL_ORDER.index(level) if level in THREAT_LEVEL_ORDER else 0,
+)
+
 banner_color = "#fff1f2" if is_threat else "#ecfdf3"
 border_color = "#fda4af" if is_threat else "#86efac"
 text_color = "#9f1239" if is_threat else "#166534"
-banner_text = "Threat Detected" if prediction == "ransomware" else "System Secure"
+banner_text = "Threat Detected" if is_threat else "System Secure"
 latest_path = latest_event.get("file_path", "Waiting for file event")
 latest_entropy = latest_event.get("entropy", 0)
 event_type = latest_event.get("event_type", "none")
@@ -186,6 +292,8 @@ st.markdown(
       <div class="status-title">{banner_text}</div>
       <div class="status-line">
         Latest event: <strong>{event_type}</strong> on <strong>{latest_path}</strong><br>
+        Monitor verdict: <strong>{status_label(latest_event.get("verdict"))}</strong> |
+        Governance: <strong>{GOVERNANCE_OUTCOMES.get(latest_outcome, ("None applied",))[0]}</strong> |
         Model decision: <strong>{prediction}</strong> | Threat level: <strong>{threat_level.upper()}</strong> |
         Confidence: <strong>{pct(confidence)}</strong> | Entropy: <strong>{latest_entropy}</strong>
       </div>
@@ -242,6 +350,34 @@ with summary_left:
             ]
         )
         st.dataframe(event_summary, use_container_width=True, hide_index=True)
+
+        # The adjudication, in full, when a rule was involved. Both costs are
+        # shown because the outcome is a comparison between them and an operator
+        # who can only see the verdict cannot tell whether their rule won on
+        # merit or on a tie.
+        adjudication = latest_event.get("admissibility")
+        if latest_outcome:
+            label, colour, meaning = GOVERNANCE_OUTCOMES[latest_outcome]
+            st.markdown(
+                f"{governance_chip(latest_outcome)} &nbsp;<span style='opacity:0.8'>{meaning}</span>",
+                unsafe_allow_html=True,
+            )
+        if isinstance(adjudication, dict):
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {"Field": "Rule", "Value": adjudication.get("rule")},
+                        {"Field": "Matched value", "Value": adjudication.get("value")},
+                        {"Field": "Signal it would cancel", "Value": adjudication.get("signal")},
+                        {"Field": "Cost to forge the rule", "Value": adjudication.get("forgery_cost")},
+                        {"Field": "Cost to avoid the signal", "Value": adjudication.get("avoidance_cost")},
+                        {"Field": "Outcome", "Value": adjudication.get("outcome")},
+                        {"Field": "Why", "Value": adjudication.get("reason")},
+                    ]
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
     else:
         st.info("Waiting for the monitor service to report a file event.")
 
@@ -312,6 +448,29 @@ with ledger_col:
         st.info("No ledger entries yet.")
 
 st.subheader("Service Health")
+
+# Keys that are not health detail. Everything else a service reports about
+# itself is shown, so the table stays truthful as services add fields.
+_HEALTH_METADATA_KEYS = {"status", "service"}
+
+
+def health_detail(service_data: dict) -> str:
+    """What a service reports about itself, beyond up/down.
+
+    This column used to read `service_data.get("placeholder", name != "gateway")`.
+    No backend /health returns a `placeholder` key, so the default always won and
+    the dashboard labelled monitor, ml_engine, ledger and response as
+    placeholders on every load - contradicting the README, and on screen during
+    the demo. The services do report real detail; this shows that instead.
+    """
+    details = [
+        f"{key.replace('_', ' ')}: {value}"
+        for key, value in service_data.items()
+        if key not in _HEALTH_METADATA_KEYS
+    ]
+    return " | ".join(details) if details else "-"
+
+
 health_rows = []
 for service_name in ["gateway", "monitor", "ml_engine", "ledger", "response"]:
     service_data = health.get("services", {}).get(service_name, {"status": health.get("status") if service_name == "gateway" else "unknown"})
@@ -319,7 +478,7 @@ for service_name in ["gateway", "monitor", "ml_engine", "ledger", "response"]:
         {
             "Service": service_name.replace("_", " ").title(),
             "Status": status_label(service_data.get("status")),
-            "Placeholder": service_data.get("placeholder", service_name != "gateway"),
+            "Reported": health_detail(service_data),
         }
     )
 st.dataframe(pd.DataFrame(health_rows), use_container_width=True, hide_index=True)
@@ -339,11 +498,31 @@ with details_left:
                 "user": "User",
             }
         )
+        # One column per row saying which of the three outcomes applied. Without
+        # it a cancelled detection is indistinguishable from a file that was
+        # never suspicious, which is the row an auditor most needs to find.
+        table_df["Governance"] = [
+            GOVERNANCE_OUTCOMES.get(governance_outcome(event), ("-",))[0] for event in events
+        ]
         st.dataframe(
-            table_df[["Timestamp", "Event", "File", "Entropy", "Process ID", "User"]],
+            table_df[
+                ["Timestamp", "Event", "File", "Entropy", "Governance", "Process ID", "User"]
+            ],
             use_container_width=True,
             hide_index=True,
         )
+        counts = Counter(
+            governance_outcome(event) for event in events if governance_outcome(event)
+        )
+        if counts:
+            st.caption(
+                "Governance outcomes in view: "
+                + ", ".join(
+                    f"{GOVERNANCE_OUTCOMES[key][0]} {value}"
+                    for key, value in counts.items()
+                    if key in GOVERNANCE_OUTCOMES
+                )
+            )
     else:
         st.info("No events reported yet.")
 

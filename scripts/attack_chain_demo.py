@@ -68,6 +68,11 @@ def main() -> int:
     parser.add_argument("--ledger", default="http://localhost:8003")
     parser.add_argument("--response", default="http://localhost:8004")
     parser.add_argument("--dashboard", default="http://localhost:8501")
+    parser.add_argument(
+        "--bootstrap-secret",
+        default=os.getenv("DEV_TOKEN_BOOTSTRAP_SECRET", "dev-bootstrap-change-me"),
+        help="Shared secret /auth/token requires to issue an admin token.",
+    )
     # Host path, and the path the same directory has inside the containers.
     parser.add_argument("--watch-host", default=str(REPO_ROOT / "watched_files"))
     parser.add_argument("--watch-container", default="/watch")
@@ -97,7 +102,20 @@ def main() -> int:
     results["all_services_healthy"] = health.get("status") == "healthy"
     say()
 
-    token = client.post(f"{args.gateway}/auth/token", json={"sub": "demo", "role": "admin", "tier": "enterprise"}).json()["access_token"]
+    # The demo drives admin-only routes (/monitor/start, /response/terminate),
+    # and /auth/token no longer hands out admin to an anonymous caller. The
+    # bootstrap secret has to match the gateway's DEV_TOKEN_BOOTSTRAP_SECRET;
+    # the default matches docker-compose.yml so the demo runs unconfigured.
+    token_response = client.post(
+        f"{args.gateway}/auth/token",
+        json={"sub": "demo", "role": "admin", "tier": "enterprise"},
+        headers={"X-Bootstrap-Secret": args.bootstrap_secret},
+    )
+    if token_response.status_code == 403:
+        say(f"  /auth/token refused an admin token: {token_response.text}")
+        say("  Pass --bootstrap-secret to match the gateway's DEV_TOKEN_BOOTSTRAP_SECRET.")
+        return 2
+    token = token_response.json()["access_token"]
     auth = {"Authorization": f"Bearer {token}"}
 
     # --- 1. start monitoring -------------------------------------------------
@@ -340,8 +358,18 @@ def finish(client, args, started_at) -> int:
         say(f"  {name:38s} {label}")
     say()
 
+    # Skips are None, not False, so subtracting only the failures counted every
+    # skip as a pass and headlined "18/18" over a list showing 16 PASS + 2 SKIP.
     failures = [k for k, v in results.items() if v is False]
-    say(f"{len(results) - len(failures)}/{len(results)} checks passed")
+    skipped = [k for k, v in results.items() if v is None]
+    passed = [k for k, v in results.items() if v is True]
+
+    summary = f"{len(passed)}/{len(results)} checks passed"
+    if skipped:
+        summary += f", {len(skipped)} skipped"
+    say(summary)
+    if skipped:
+        say(f"skipped: {', '.join(skipped)}")
     if failures:
         say(f"failed: {', '.join(failures)}")
 

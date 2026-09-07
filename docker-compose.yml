@@ -1,11 +1,19 @@
 version: "3.8"
 
+# Port publication: the four backend services bind to 127.0.0.1 only. They carry
+# no authentication of their own - POST :8003/ledger/log with no token appends to
+# the audit trail, and :8004/response/isolate is reachable the same way - so
+# publishing them on 0.0.0.0 exposed every one of those routes to the LAN.
+# Loopback keeps the host-side tooling working (scripts/si_demo.py and
+# scripts/verify_vss.py talk to :8003 and :8004 directly) while removing remote
+# reach. Gateway :8000 and dashboard :8501 stay published: they are the intended
+# front doors, and the gateway is the only service that authenticates.
 services:
   monitor:
     build: ./services/monitor
     container_name: ransomware_monitor
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     volumes:
       - ./watched_files:/watch
       - ./logs:/app/logs
@@ -30,11 +38,22 @@ services:
       retries: 5
       start_period: 10s
 
+  # No container_name, and no fixed host port. Listing 3.21 documents
+  #   docker compose up -d --scale ml_engine=3
+  # as a supported command, and both of those settings block it: Docker requires
+  # a unique name per container, and three replicas cannot all bind host 8002.
+  # Listing 3.20's own compose file sets both, so the document contradicts
+  # itself - the deployment it specifies cannot run the command it specifies.
+  #
+  # An ephemeral host mapping keeps a loopback port available per replica for
+  # host-side tooling (`docker compose port ml_engine 8002` reports it) while
+  # letting the count vary. Nothing needs the fixed 8002: the gateway and the
+  # monitor both reach this service as http://ml_engine:8002 over the compose
+  # network, where Docker's embedded DNS returns every replica's address.
   ml_engine:
     build: ./services/ml-engine
-    container_name: ransomware_ml
     ports:
-      - "8002:8002"
+      - "127.0.0.1::8002"
     volumes:
       - ./models:/models
       - ./logs:/app/logs
@@ -60,7 +79,7 @@ services:
     build: ./services/ledger
     container_name: ransomware_ledger
     ports:
-      - "8003:8003"
+      - "127.0.0.1:8003:8003"
     volumes:
       # The hash chain must outlive the container - a wiped ledger is a wiped
       # audit trail.
@@ -83,7 +102,7 @@ services:
     build: ./services/response
     container_name: ransomware_response
     ports:
-      - "8004:8004"
+      - "127.0.0.1:8004:8004"
     volumes:
       # Recovery restores files back to the paths the monitor watches.
       - ./watched_files:/watch
@@ -121,6 +140,16 @@ services:
       - JWT_SECRET=${JWT_SECRET:-dev-only-change-me}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-120}
+      # Development, so the committed JWT_SECRET above is a loud warning rather
+      # than a refusal to start. Set URDS_ENV=production and the gateway will
+      # not boot until JWT_SECRET is a real secret.
+      - URDS_ENV=${URDS_ENV:-development}
+      # POST /auth/token verifies no identity. It stays on for local work, but
+      # the flag is explicit here so it can be turned off without a code change.
+      - ALLOW_DEV_TOKENS=${ALLOW_DEV_TOKENS:-true}
+      # Required to mint anything above a "free" token. Change it alongside
+      # JWT_SECRET for any deployment that is not a laptop.
+      - DEV_TOKEN_BOOTSTRAP_SECRET=${DEV_TOKEN_BOOTSTRAP_SECRET:-dev-bootstrap-change-me}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       monitor:

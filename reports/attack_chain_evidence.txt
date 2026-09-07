@@ -1,6 +1,6 @@
 ==========================================================================
 URDS end-to-end attack chain
-started 2026-08-08T05:50:14.397340Z
+started 2026-08-16T07:37:27.077802Z
 ==========================================================================
 
 --- 0. SERVICE HEALTH -----------------------------------------------------
@@ -12,7 +12,7 @@ started 2026-08-08T05:50:14.397340Z
     response     healthy
 
 --- 1. START MONITORING ---------------------------------------------------
-  monitor_id : mon_53f865
+  monitor_id : mon_0ad37d
   watch_path : /watch
   events so far: 0
 
@@ -23,41 +23,41 @@ started 2026-08-08T05:50:14.397340Z
 
 --- 3. ATTACK: high-entropy write into the watched path -------------------
   wrote annual_report.docx.locked (400000 bytes, entropy 8.000)
-  sha256     : cbb13eea48b900cc4249694390175a99083ba0e0d8ec654388cb9968f02392ac
+  sha256     : e0d8e776532c1efd861972ffef60b85bf4c92861b63d8d00deebb15b81f6cffa
 
 --- 4. MONITOR DETECTION --------------------------------------------------
-  event_id          : evt_9264d894f8
+  event_id          : evt_7d80d08449
   entropy           : 8.0
   verdict           : suspected_encryption
   reason            : entropy 8.0 >= 7.5 with no recognised container header and a known ransomware extension
   suspicious        : True
-  file_hash         : cbb13eea48b900cc4249694390175a99083ba0e0d8ec654388cb9968f02392ac
-  detection latency : 22.929 ms (target <100ms)
+  file_hash         : e0d8e776532c1efd861972ffef60b85bf4c92861b63d8d00deebb15b81f6cffa
+  detection latency : 31.928 ms (target <100ms)
 
 --- 5. ML -> LEDGER -> RESPONSE -------------------------------------------
   stages completed : ['ml_predicted', 'ledger_logged', 'response_triggered']
   ML prediction    : ransomware (critical)
-  ledger block     : #45
+  ledger block     : #277
 
 --- 6. LEDGER EVIDENCE (via gateway :8000) --------------------------------
-  block_id      : 45
+  block_id      : 277
   event_type    : file_event
-  current_hash  : 9a30b8fd82061e0f195cd1629cc7eb237cebf8f316869e8a13b744e8140c5338  (len 64)
-  previous_hash : fddd54fcb4815261d5e96d4ac9ee2b93abc97e9ec1d31649e88bd3f58df72a06
-  file_hash     : cbb13eea48b900cc4249694390175a99083ba0e0d8ec654388cb9968f02392ac
+  current_hash  : 3839069e55527e3b714f4e56be8a7e1e636a0c3d3c7c0b53427471aa84fb1ac0  (len 64)
+  previous_hash : b2df5d8b0b4ed285470bad1e9b8d3f08becf1ddad36610987cd80bff9d202ed2
+  file_hash     : e0d8e776532c1efd861972ffef60b85bf4c92861b63d8d00deebb15b81f6cffa
   verdict       : suspected_encryption
-  chain valid   : True (47 blocks in 7.353ms, target <50ms)
+  chain valid   : True (279 blocks in 46.843ms, target <50ms)
 
 --- 7. RESPONSE ACTIONS ---------------------------------------------------
-  block #47: action=None outcome=['network_isolation_planned', 'admin_notified']
-  block #46: action=trigger outcome=['network_isolation_planned', 'admin_notified']
-  block #44: action=None outcome=['network_isolation_planned', 'admin_notified']
-  terminate returned 409: {"error":{"code":"DOWNSTREAM_ERROR","message":"Downstream service returned HTTP 409","timestamp":"2026-08-08T05:50:17.194028Z","request_id":"req_7151a4e970f5"},"details":{"error":{"code":"TERMINATION_
+  block #279: action=None outcome=['network_isolation_planned', 'admin_notified']
+  block #278: action=trigger outcome=['network_isolation_planned', 'admin_notified']
+  block #276: action=None outcome=['network_isolation_planned', 'admin_notified']
+  terminate returned 409: {"error":{"code":"DOWNSTREAM_ERROR","message":"Downstream service returned HTTP 409","timestamp":"2026-08-16T07:37:30.399327Z","request_id":"req_14c81fae678f"},"details":{"error":{"code":"TERMINATION_
   (expected on macOS/Windows hosts: the response service runs in a Linux
    container and cannot see host PIDs. Covered by services/response tests.)
 
 --- 8. DASHBOARD FRESHNESS (TC-09) ----------------------------------------
-  event queryable through the gateway 442ms after the write
+  event queryable through the gateway 86ms after the write
   dashboard auto-refresh interval: 1000ms (services/dashboard/app.py)
   dashboard health: HTTP 200
 
@@ -85,4 +85,5 @@ started 2026-08-08T05:50:14.397340Z
   tc09_dashboard_within_1s               PASS
   tc10_auth_rejects                      PASS
 
-18/18 checks passed
+16/18 checks passed, 2 skipped
+skipped: tc07_process_terminated, kill_time_under_2s

@@ -18,21 +18,62 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app as monitor_app
-from detection import calculate_entropy, classify, read_magic
+import synthetic_corpus
+from containers import validate_container
+from detection import (
+    calculate_entropy,
+    classify,
+    identify_container,
+    measure,
+    read_magic,
+    sample_file,
+)
 
 REPORTS = Path(__file__).resolve().parents[3] / "reports"
 MEASUREMENTS: dict = {}
 
+# Recording is opt-in. These tests always measure and always assert; what this
+# gates is whether the numbers are written back to reports/, which is committed
+# evidence. Without the gate a plain `pytest -q` left three report files
+# modified in the working tree, so anyone running the suite could commit
+# re-measured numbers by accident and silently move the figures the write-up
+# cites. Set URDS_WRITE_REPORTS=1 to refresh them deliberately.
+WRITE_REPORTS = os.getenv("URDS_WRITE_REPORTS", "").lower() in {"1", "true", "yes"}
+
 DETECTION_LATENCY_TARGET_MS = 100.0
 FALSE_POSITIVE_TARGET = 0.05
 CPU_TARGET_PERCENT = 15.0
+# Table 5.8 TC-08 pairs this with the CPU target; Table 5.9 defines it as peak
+# memory during a stress test, which is what the test below measures.
+MEMORY_TARGET_MB = 500.0
+# Table 5.9, "Dashboard Update Latency": time from event to dashboard display.
+DASHBOARD_LATENCY_TARGET_S = 1.0
 
 
 @pytest.fixture(scope="module", autouse=True)
 def write_measurements():
+    """Merge, do not overwrite.
+
+    as_benchmarks.json is AS's evidence file and two suites write to it: this
+    one and services/response/tests/test_actions.py, which contributes
+    process_kill_time_s. This used to replace the whole file, so running the
+    Monitor benchmarks on their own silently deleted the Response measurement.
+    It only looked harmless because the documented run order puts monitor before
+    response, which rewrote its key afterwards.
+    """
     yield
+    if not WRITE_REPORTS:
+        return
     REPORTS.mkdir(exist_ok=True)
-    (REPORTS / "as_benchmarks.json").write_text(json.dumps(MEASUREMENTS, indent=2))
+    path = REPORTS / "as_benchmarks.json"
+    existing = {}
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text())
+        except (OSError, ValueError):
+            existing = {}
+    existing.update(MEASUREMENTS)
+    path.write_text(json.dumps(existing, indent=2))
 
 
 # ------------------------------------------------------- detection latency
@@ -73,7 +114,22 @@ def test_detection_latency_under_100ms(tmp_path):
 
 
 def _benign_corpus(root: Path) -> list[Path]:
-    """Legitimate files a normal user has, including high-entropy ones."""
+    """Legitimate files a normal user has, including high-entropy ones.
+
+    Seven of these forty used to be a magic number followed by `os.urandom`, and
+    the detector this benchmark was written for could not tell that from a
+    photograph - so it scored them benign and the corpus looked sound. Against a
+    detector that checks structure they are forgeries, and reporting 0/40 on
+    them would have meant reporting a false-positive rate over files no user has
+    ever had. They are built properly now: a real IHDR with a correct CRC and an
+    IDAT that inflates, a real JFIF marker chain, a real cross-reference table,
+    a real ISO box chain. The payloads are still noise, because a benign PNG of
+    a photograph *is* high entropy and that is the case worth testing.
+
+    `verdict_for` scores them the way `handle_event` does, structural check
+    included. Passing this benchmark now requires the detector to tell a real
+    container from a claimed one, rather than to trust four bytes.
+    """
     files = []
 
     for index in range(8):
@@ -83,38 +139,55 @@ def _benign_corpus(root: Path) -> list[Path]:
 
     for index in range(6):
         path = root / f"archive_{index}.zip"
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr("data.bin", os.urandom(120000))
-        path.write_bytes(buffer.getvalue())
+        path.write_bytes(synthetic_corpus.build_zip(120000))
         files.append(path)
 
     for index in range(6):
         path = root / f"backup_{index}.gz"
-        path.write_bytes(gzip.compress(os.urandom(120000)))
+        path.write_bytes(synthetic_corpus.build_gzip(400000))
         files.append(path)
 
     for index in range(6):
         path = root / f"photo_{index}.png"
-        path.write_bytes(b"\x89PNG\r\n\x1a\n" + os.urandom(120000))
+        path.write_bytes(synthetic_corpus.build_png(120000))
         files.append(path)
 
     for index in range(6):
         path = root / f"scan_{index}.jpg"
-        path.write_bytes(b"\xff\xd8\xff\xe0" + os.urandom(120000))
+        path.write_bytes(synthetic_corpus.build_jpeg(120000))
         files.append(path)
 
     for index in range(4):
         path = root / f"manual_{index}.pdf"
-        path.write_bytes(b"%PDF-1.7\n" + os.urandom(80000))
+        path.write_bytes(synthetic_corpus.build_pdf(80000))
         files.append(path)
 
     for index in range(4):
         path = root / f"clip_{index}.mp4"
-        path.write_bytes(b"\x00\x00\x00\x18ftypmp42" + os.urandom(120000))
+        path.write_bytes(synthetic_corpus.build_mp4(120000))
         files.append(path)
 
     return files
+
+
+def verdict_for(path: Path) -> dict:
+    """Classify one file the way the detection path does.
+
+    Split out so the benchmarks and `handle_event` cannot drift apart: a
+    benchmark that scored files with a weaker call than production would be
+    measuring a detector nobody runs.
+    """
+    size = path.stat().st_size
+    head, tail = sample_file(str(path), size)
+    entropy, statistics = measure(head)
+    magic = read_magic(str(path))
+    return classify(
+        str(path),
+        entropy,
+        magic,
+        container_valid=validate_container(head, tail, identify_container(magic), size),
+        statistics=statistics,
+    )
 
 
 @pytest.mark.benchmark
@@ -125,10 +198,9 @@ def test_false_positive_rate_under_5_percent(tmp_path):
     false_positives = []
 
     for path in files:
-        entropy = calculate_entropy(str(path))
-        verdict = classify(str(path), entropy, read_magic(str(path)))
+        verdict = verdict_for(path)
         if verdict["suspicious"]:
-            false_positives.append((path.name, entropy, verdict["verdict"]))
+            false_positives.append((path.name, verdict["entropy"], verdict["verdict"]))
 
     rate = len(false_positives) / len(files)
     high_entropy = sum(1 for p in files if calculate_entropy(str(p)) >= 7.5)
@@ -150,6 +222,37 @@ def test_false_positive_rate_under_5_percent(tmp_path):
 
 
 @pytest.mark.benchmark
+def test_forged_container_detection_rate(tmp_path):
+    """The measurement the false-positive rate is only half of.
+
+    Any false-positive rate can be driven to zero by detecting nothing, and
+    until structural validation existed this pair of numbers was 0/40 and 0/48 -
+    the second one silently. These are the same headers as the benign corpus
+    with random payloads behind them, which is what `spoofer` writes and what
+    the malicious half of the training corpus is made of.
+    """
+    forged = []
+    for index in range(8):
+        for magic, extension in synthetic_corpus.SPOOF_TARGETS:
+            path = tmp_path / f"spoofed_{index}{extension}"
+            path.write_bytes(synthetic_corpus.spoof(magic, 120000))
+            forged.append(path)
+
+    detected = [path.name for path in forged if verdict_for(path)["suspicious"]]
+
+    rate = len(detected) / len(forged)
+    MEASUREMENTS["forged_container_detection_rate"] = {
+        "samples": len(forged),
+        "detected": len(detected),
+        "rate": round(rate, 4),
+        "formats": sorted({extension for _, extension in synthetic_corpus.SPOOF_TARGETS}),
+    }
+    print(f"\nforged containers detected: {len(detected)}/{len(forged)} = {rate:.1%}")
+
+    assert rate == 1.0, f"missed {len(forged) - len(detected)} forged containers"
+
+
+@pytest.mark.benchmark
 def test_true_positive_rate_on_encrypted_corpus(tmp_path):
     """The mitigation must not be so lenient that it misses actual encryption."""
     detected = 0
@@ -157,8 +260,7 @@ def test_true_positive_rate_on_encrypted_corpus(tmp_path):
     for index in range(total):
         path = tmp_path / f"victim_{index}.docx"
         path.write_bytes(os.urandom(120000))
-        entropy = calculate_entropy(str(path))
-        if classify(str(path), entropy, read_magic(str(path)))["suspicious"]:
+        if verdict_for(path)["suspicious"]:
             detected += 1
 
     rate = detected / total
@@ -172,8 +274,9 @@ def test_true_positive_rate_on_encrypted_corpus(tmp_path):
 
 
 @pytest.mark.benchmark
-def test_cpu_usage_under_15_percent_while_monitoring(tmp_path):
-    """CPU attributable to this process while the watcher runs. Target: <15%."""
+def test_tc08_cpu_usage_under_15_percent_while_monitoring(tmp_path):
+    """TC-08, first half. CPU attributable to this process while the watcher
+    runs. Target: <15%."""
     process = psutil.Process()
 
     with TestClient(monitor_app.app) as client:
@@ -207,3 +310,102 @@ def test_cpu_usage_under_15_percent_while_monitoring(tmp_path):
     )
 
     assert normalised < CPU_TARGET_PERCENT, f"CPU {normalised:.1f}% exceeds 15%"
+
+
+# ------------------------------------------------------------------ memory
+
+
+@pytest.mark.benchmark
+def test_tc08_memory_usage_under_500mb_during_stress(tmp_path):
+    """TC-08, second half. Target: peak RSS <500MB during a stress test.
+
+    Stressed deliberately harder than the CPU test: larger files and no sleep,
+    so the entropy reader and the bounded event buffer are both under pressure.
+    A leak in either - the buffer used to grow without limit - shows up here as
+    RSS that climbs with the file count instead of levelling off.
+    """
+    process = psutil.Process()
+    baseline_mb = process.memory_info().rss / (1024 * 1024)
+    peak_mb = baseline_mb
+
+    with TestClient(monitor_app.app) as client:
+        client.post("/monitor/start", json={"watch_path": str(tmp_path), "recursive": True})
+
+        written = 0
+        started = time.time()
+        while time.time() - started < 5.0:
+            target = tmp_path / f"stress_{written}.bin"
+            target.write_bytes(os.urandom(512 * 1024))
+            monitor_app.handle_event(str(target), "created")
+            written += 1
+            peak_mb = max(peak_mb, process.memory_info().rss / (1024 * 1024))
+
+        client.post("/monitor/stop")
+
+    MEASUREMENTS["memory_mb"] = {
+        "files_processed": written,
+        "baseline_mb": round(baseline_mb, 2),
+        "peak_mb": round(peak_mb, 2),
+        "growth_mb": round(peak_mb - baseline_mb, 2),
+        "target": MEMORY_TARGET_MB,
+    }
+    print(
+        f"\nmemory over {written} x 512KB events: baseline {baseline_mb:.1f}MB, "
+        f"peak {peak_mb:.1f}MB (+{peak_mb - baseline_mb:.1f}MB) (target <500MB)"
+    )
+
+    assert peak_mb < MEMORY_TARGET_MB, f"peak RSS {peak_mb:.1f}MB exceeds 500MB"
+
+
+# ------------------------------------------------------- dashboard freshness
+
+
+@pytest.mark.benchmark
+def test_tc09_detection_is_queryable_within_one_second(tmp_path):
+    """TC-09 / Table 5.9: an alert must reach the dashboard within 1 second.
+
+    The dashboard renders whatever `GET /monitor/events` returns, so what the
+    system actually controls is how quickly a write becomes visible on that
+    endpoint. That is what this measures: the clock starts before the file is
+    written and stops when the event can be read back through the API. The
+    dashboard's own 1s auto-refresh sits on top of this and is a display cadence,
+    not detection latency, so it is deliberately not counted here.
+
+    Until this existed the only evidence for TC-09 was
+    `scripts/attack_chain_demo.py`, which needs the whole Compose stack up - so
+    the one Table 5.8 case with no automated coverage was the one whose target
+    is measured in wall-clock time.
+    """
+    with TestClient(monitor_app.app) as client:
+        client.post("/monitor/start", json={"watch_path": str(tmp_path), "recursive": True})
+
+        lags = []
+        for index in range(5):
+            target = tmp_path / f"alert_{index}.docx"
+            started = time.perf_counter()
+            target.write_bytes(os.urandom(64 * 1024))
+            monitor_app.handle_event(str(target), "created")
+
+            deadline = started + DASHBOARD_LATENCY_TARGET_S
+            seen = None
+            while time.perf_counter() < deadline:
+                events = client.get("/monitor/events", params={"limit": 50}).json()["events"]
+                if any(e["file_path"].endswith(f"alert_{index}.docx") for e in events):
+                    seen = time.perf_counter()
+                    break
+            assert seen is not None, f"alert_{index}.docx was not queryable within 1s"
+            lags.append((seen - started) * 1000)
+
+        client.post("/monitor/stop")
+
+    worst = max(lags)
+    mean = sum(lags) / len(lags)
+    MEASUREMENTS["dashboard_update_latency_ms"] = {
+        "samples": len(lags),
+        "mean": round(mean, 3),
+        "max": round(worst, 3),
+        "target": DASHBOARD_LATENCY_TARGET_S * 1000,
+    }
+    print(f"\ndashboard freshness: mean={mean:.1f}ms max={worst:.1f}ms (target <1000ms)")
+
+    assert worst < DASHBOARD_LATENCY_TARGET_S * 1000, f"worst lag {worst:.1f}ms exceeds 1s"

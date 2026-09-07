@@ -1,0 +1,152 @@
+{
+  "schema": "urds.ledger_coverage/1",
+  "generated_at": "2026-09-05T05:17:48.374998Z",
+  "commit": "429f1231eaf48f49c2b7b47dc8360cb5b1149b8c",
+  "branch": "feat/admissibility-governance-novelty-v2",
+  "table_9_8_row": "Mitigation decisions reaching the ledger",
+  "target": "100%",
+  "measured_coverage": 1.0,
+  "meets_target": true,
+  "adjudications_made": 24,
+  "adjudications_reaching_ledger": 24,
+  "record_completeness": {
+    "required_fields": [
+      "capability_levels",
+      "mitigation_id",
+      "policy_version",
+      "reason",
+      "validation_state"
+    ],
+    "source": "NOVELTY_PROOF_PLAN.md \u00a79 row 10; regression TC-23",
+    "chained_blocks": 36,
+    "complete_blocks": 36,
+    "fraction_complete": 1.0,
+    "present_by_field": {
+      "mitigation_id": 36,
+      "validation_state": 36,
+      "capability_levels": 36,
+      "policy_version": 36,
+      "reason": 36
+    },
+    "meets_target": true
+  },
+  "by_population": {
+    "cancelled": {
+      "events": 12,
+      "adjudicated": 12,
+      "outcomes": [
+        "cancelled"
+      ],
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "static_entropy"
+      ],
+      "suspicious_after_suppression": 0,
+      "ledger_writes": 12,
+      "ledger_event_types": [
+        "suppression_decision"
+      ],
+      "adjudication_writes": 12,
+      "adjudications_reaching_ledger": 12,
+      "ledger_block_types": {
+        "suppression_decision": 12
+      },
+      "record_completeness": {
+        "blocks": 12,
+        "present": {
+          "mitigation_id": 12,
+          "validation_state": 12,
+          "capability_levels": 12,
+          "policy_version": 12,
+          "reason": 12
+        },
+        "complete": 12,
+        "example": {
+          "mitigation_id": "hash",
+          "validation_state": "unvalidated",
+          "capability_levels": "negligible",
+          "policy_version": "legacy",
+          "reason": "forging the hash rule costs high; avoiding the static_entropy signal costs negligible - the suppression is strictly more expensive, so it applies"
+        }
+      }
+    },
+    "attenuated": {
+      "events": 12,
+      "adjudicated": 12,
+      "outcomes": [
+        "attenuated"
+      ],
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "structural_mismatch"
+      ],
+      "suspicious_after_suppression": 12,
+      "ledger_writes": 24,
+      "ledger_event_types": [
+        "file_event",
+        "response_action"
+      ],
+      "adjudication_writes": 24,
+      "adjudications_reaching_ledger": 12,
+      "ledger_block_types": {
+        "file_event": 12,
+        "response_action": 12
+      },
+      "record_completeness": {
+        "blocks": 24,
+        "present": {
+          "mitigation_id": 24,
+          "validation_state": 24,
+          "capability_levels": 24,
+          "policy_version": 24,
+          "reason": 24
+        },
+        "complete": 24,
+        "example": {
+          "mitigation_id": "path",
+          "validation_state": "forged",
+          "capability_levels": "moderate",
+          "policy_version": "legacy",
+          "reason": "forging the path rule costs low; avoiding the structural_mismatch signal costs moderate - the suppression is cheaper than the evidence, so the alert stands"
+        }
+      }
+    },
+    "ungoverned": {
+      "events": 12,
+      "adjudicated": 0,
+      "outcomes": [],
+      "verdicts": [
+        "benign_compressed"
+      ],
+      "signals": [],
+      "suspicious_after_suppression": 0,
+      "ledger_writes": 12,
+      "ledger_event_types": [
+        "file_baseline"
+      ],
+      "adjudication_writes": 0,
+      "adjudications_reaching_ledger": 0,
+      "ledger_block_types": {
+        "file_baseline": 12
+      },
+      "record_completeness": {
+        "blocks": 0,
+        "present": {
+          "mitigation_id": 0,
+          "validation_state": 0,
+          "capability_levels": 0,
+          "policy_version": 0,
+          "reason": 0
+        },
+        "complete": 0,
+        "example": null
+      }
+    }
+  },
+  "mechanism": "The detection fan-out is still gated on `suppression is None`, and it still must be: a cancelled alert must not fire a response, or the operator's own rule would be pointless. What changed in P6.4 is that the *decision* no longer travels only on that path. A cancelled suppression now queues a `governance` work item of its own, and pipeline.log_governance_decision chains it as a `suppression_decision` block carrying the adjudication, the verdict it silenced and both costs - with no prediction and no response. An attenuated one is chained as before, in event_data.admissibility on the `file_event` block, and now a second time on the `response_action` block. The container exemption still produces no adjudication at all: app.py only adjudicates a verdict that is already suspicious, and benign_compressed is not - so it remains outside the governance layer entirely and this measurement counts no decision for it, because none was made.",
+  "what_this_row_does_not_cover": "100% of the decisions the governance layer *makes*. The ungoverned population makes none, so it contributes nothing to either side of the ratio. The container exemption cancels evidence on every one of those twelve events and the chain holds no record of it. That gap is the subject of the P6.1 repair, not of this row, and reading this 100% as 'every evidence-cancelling path is audited' would be wrong."
+}

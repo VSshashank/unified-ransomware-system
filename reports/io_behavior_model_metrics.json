@@ -1,0 +1,159 @@
+{
+  "accuracy": 0.8816120906801007,
+  "precision": 0.8756756756756757,
+  "recall": 0.9969230769230769,
+  "f1_score": 0.9323741007194245,
+  "samples": 397,
+  "roc_auc": 0.9412393162393162,
+  "train_class_balance": {
+    "1": 1509,
+    "0": 328
+  },
+  "deployability": {
+    "deployable": false,
+    "reason": "leave-one-source-out accuracy is 0.0015 over only 6 independent runs, against a held-out temporal score of 0.8816. The gap is the finding: with one substantial run per class, removing it removes the entire class from the feature space and the model confidently assigns the remaining label. That is memorisation of a recording, not learning of a behaviour, so this model is a research artefact and is NOT wired into the detection path.",
+    "leave_one_source_out_accuracy": 0.0015232292460015233,
+    "held_out_temporal_accuracy": 0.8816120906801007,
+    "independent_runs": 6
+  },
+  "leave_one_source_out": {
+    "folds": {
+      "clear_MRT.exe": {
+        "accuracy": 1.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "samples": 3,
+        "roc_auc": null,
+        "true_label": 0,
+        "correct": 3
+      },
+      "clear_SearchFilterHost.exe": {
+        "accuracy": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "samples": 2,
+        "roc_auc": null,
+        "true_label": 0,
+        "correct": 0
+      },
+      "clear_System": {
+        "accuracy": 0.3333333333333333,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "samples": 3,
+        "roc_auc": null,
+        "true_label": 0,
+        "correct": 1
+      },
+      "clear_sample_BlackMatter_e4fd.bin": {
+        "accuracy": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "samples": 6,
+        "roc_auc": null,
+        "true_label": 1,
+        "correct": 0
+      },
+      "ransap_firefox": {
+        "accuracy": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "samples": 463,
+        "roc_auc": null,
+        "true_label": 0,
+        "correct": 0
+      },
+      "ransap_wannacry": {
+        "accuracy": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "samples": 2149,
+        "roc_auc": null,
+        "true_label": 1,
+        "correct": 0
+      }
+    },
+    "aggregate": {
+      "accuracy": 0.0015232292460015233,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "samples": 2626,
+      "roc_auc": null
+    }
+  },
+  "feature_names": [
+    "write_fraction",
+    "ops_per_second",
+    "mean_size",
+    "size_4k_fraction",
+    "size_std",
+    "sequential_fraction",
+    "distinct_offset_ratio",
+    "offset_span_log",
+    "entropy_mean",
+    "entropy_std",
+    "entropy_high_fraction",
+    "entropy_low_fraction",
+    "war_mean",
+    "rar_mean",
+    "raw_mean",
+    "waw_mean"
+  ],
+  "optional_features": [
+    "entropy_high_fraction",
+    "entropy_low_fraction",
+    "entropy_mean",
+    "entropy_std",
+    "rar_mean",
+    "raw_mean",
+    "war_mean",
+    "waw_mean"
+  ],
+  "feature_importance": {
+    "write_fraction": 0.5269737839698792,
+    "ops_per_second": 0.06226889044046402,
+    "mean_size": 0.027448365464806557,
+    "size_4k_fraction": 0.04517693072557449,
+    "size_std": 0.02614498883485794,
+    "sequential_fraction": 0.0,
+    "distinct_offset_ratio": 0.12361429631710052,
+    "offset_span_log": 0.06477032601833344,
+    "entropy_mean": 0.03490918502211571,
+    "entropy_std": 0.03717369586229324,
+    "entropy_high_fraction": 0.010904235765337944,
+    "entropy_low_fraction": 0.04061533138155937,
+    "war_mean": 0.0,
+    "rar_mean": 0.0,
+    "raw_mean": 0.0,
+    "waw_mean": 0.0
+  },
+  "window_operations": 256,
+  "windows_total": 2626,
+  "class_balance": {
+    "benign_0": 469,
+    "ransomware_1": 2157
+  },
+  "imbalance_ratio": 0.2174,
+  "smote": false,
+  "sources": [
+    "clear_MRT.exe",
+    "clear_SearchFilterHost.exe",
+    "clear_System",
+    "clear_sample_BlackMatter_e4fd.bin",
+    "ransap_firefox",
+    "ransap_wannacry"
+  ],
+  "datasets": [
+    "CLEAR",
+    "RanSAP"
+  ],
+  "split": "70/15/15 per source, time-ordered, never shuffled",
+  "trained_at": "2026-08-12T16:56:28.955394Z"
+}

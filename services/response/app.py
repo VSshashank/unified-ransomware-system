@@ -70,6 +70,10 @@ class TriggerRequest(BaseModel):
     process_id: int
     threat_level: str
     action_required: str
+    # The Monitor's adjudication, carried through so the Response service's own
+    # ledger entry records why the alert survived to reach it. Optional, so a
+    # caller that predates the governance layer still validates.
+    admissibility: dict | None = None
 
 
 def utc_now() -> str:
@@ -229,6 +233,7 @@ def trigger(payload: TriggerRequest) -> JSONResponse:
             "threat_level": payload.threat_level,
             "action_required": payload.action_required,
             "actions_taken": actions_taken,
+            "admissibility": payload.admissibility,
             "timestamp": utc_now(),
         },
     )

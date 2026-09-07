@@ -1,0 +1,288 @@
+{
+  "schema": "urds.pipeline_governance/1",
+  "generated_at": "2026-09-05T05:17:57.845933Z",
+  "commit": "429f1231eaf48f49c2b7b47dc8360cb5b1149b8c",
+  "branch": "feat/admissibility-governance-novelty-v2",
+  "method": "Real handle_event, real pipeline, real RecoveryManager. Only the network transport is replaced, and it records rather than answers. The deferred population holds a genuine exclusive Win32 handle.",
+  "reference_decision": {
+    "rule": "hash",
+    "value": "d5992476caf50bf7da065b58406a497a7088a200ff5bff6a81f2f6586ec3c0e2",
+    "admitted": true,
+    "outcome": "cancelled",
+    "signal": "static_entropy",
+    "forgery_cost": "high",
+    "avoidance_cost": "negligible",
+    "reason": "forging the hash rule costs high; avoiding the static_entropy signal costs negligible - the suppression is strictly more expensive, so it applies"
+  },
+  "per_population": {
+    "cancelled": {
+      "events": 6,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "outcomes": [
+        "cancelled"
+      ],
+      "hops": {
+        "monitor_event": {
+          "hop_occurred": true,
+          "payloads": 6,
+          "carrying_the_record": 6,
+          "record_intact": 6,
+          "all_intact": true,
+          "note": "the origin of the record; intact by definition"
+        },
+        "ml_predict": {
+          "hop_occurred": false,
+          "payloads": 0,
+          "carrying_the_record": 0,
+          "record_intact": 0,
+          "matched_by_path": 0,
+          "matched_by_set_membership": 0,
+          "all_intact": false,
+          "note": "The ML request carries the feature vector and nothing else, by design: the model scores bytes, not policy, and handing it the adjudication would let a suppression move a prediction. Recorded as not carrying the record, which is correct behaviour rather than a gap - but it does mean the record does not literally traverse this hop."
+        },
+        "ledger_file_event": {
+          "hop_occurred": false,
+          "payloads": 0,
+          "carrying_the_record": 0,
+          "record_intact": 0,
+          "matched_by_path": 0,
+          "matched_by_set_membership": 0,
+          "all_intact": false
+        },
+        "ledger_suppression_decision": {
+          "hop_occurred": true,
+          "payloads": 6,
+          "carrying_the_record": 6,
+          "record_intact": 6,
+          "matched_by_path": 6,
+          "matched_by_set_membership": 0,
+          "all_intact": true
+        },
+        "response_trigger": {
+          "hop_occurred": false,
+          "payloads": 0,
+          "carrying_the_record": 0,
+          "record_intact": 0,
+          "matched_by_path": 0,
+          "matched_by_set_membership": 0,
+          "all_intact": false
+        },
+        "ledger_response_action": {
+          "hop_occurred": false,
+          "payloads": 0,
+          "carrying_the_record": 0,
+          "record_intact": 0,
+          "matched_by_path": 0,
+          "matched_by_set_membership": 0,
+          "all_intact": false
+        },
+        "_population": "cancelled",
+        "_decisions_made": 6
+      },
+      "hop_paths_seen": [
+        "/ledger/log"
+      ]
+    },
+    "attenuated": {
+      "events": 6,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "outcomes": [
+        "attenuated"
+      ],
+      "hops": {
+        "monitor_event": {
+          "hop_occurred": true,
+          "payloads": 6,
+          "carrying_the_record": 6,
+          "record_intact": 6,
+          "all_intact": true,
+          "note": "the origin of the record; intact by definition"
+        },
+        "ml_predict": {
+          "hop_occurred": true,
+          "payloads": 6,
+          "carrying_the_record": 0,
+          "record_intact": 0,
+          "matched_by_path": 0,
+          "matched_by_set_membership": 0,
+          "all_intact": false,
+          "note": "The ML request carries the feature vector and nothing else, by design: the model scores bytes, not policy, and handing it the adjudication would let a suppression move a prediction. Recorded as not carrying the record, which is correct behaviour rather than a gap - but it does mean the record does not literally traverse this hop."
+        },
+        "ledger_file_event": {
+          "hop_occurred": true,
+          "payloads": 6,
+          "carrying_the_record": 6,
+          "record_intact": 6,
+          "matched_by_path": 6,
+          "matched_by_set_membership": 0,
+          "all_intact": true
+        },
+        "ledger_suppression_decision": {
+          "hop_occurred": false,
+          "payloads": 0,
+          "carrying_the_record": 0,
+          "record_intact": 0,
+          "matched_by_path": 0,
+          "matched_by_set_membership": 0,
+          "all_intact": false
+        },
+        "response_trigger": {
+          "hop_occurred": true,
+          "payloads": 6,
+          "carrying_the_record": 6,
+          "record_intact": 6,
+          "matched_by_path": 0,
+          "matched_by_set_membership": 6,
+          "all_intact": true
+        },
+        "ledger_response_action": {
+          "hop_occurred": true,
+          "payloads": 6,
+          "carrying_the_record": 6,
+          "record_intact": 6,
+          "matched_by_path": 6,
+          "matched_by_set_membership": 0,
+          "all_intact": true
+        },
+        "_population": "attenuated",
+        "_decisions_made": 6
+      },
+      "hop_paths_seen": [
+        "/ledger/log",
+        "/predict",
+        "/response/trigger"
+      ]
+    },
+    "deferred": {
+      "events": 6,
+      "verdicts": [
+        "unreadable"
+      ],
+      "outcomes": [],
+      "hops": {
+        "monitor_event": {
+          "hop_occurred": true,
+          "payloads": 6,
+          "carrying_the_record": 0,
+          "record_intact": 0,
+          "all_intact": false,
+          "note": "the origin of the record; intact by definition"
+        },
+        "ml_predict": {
+          "hop_occurred": false,
+          "payloads": 0,
+          "carrying_the_record": 0,
+          "record_intact": 0,
+          "matched_by_path": 0,
+          "matched_by_set_membership": 0,
+          "all_intact": false,
+          "note": "The ML request carries the feature vector and nothing else, by design: the model scores bytes, not policy, and handing it the adjudication would let a suppression move a prediction. Recorded as not carrying the record, which is correct behaviour rather than a gap - but it does mean the record does not literally traverse this hop."
+        },
+        "ledger_file_event": {
+          "hop_occurred": false,
+          "payloads": 0,
+          "carrying_the_record": 0,
+          "record_intact": 0,
+          "matched_by_path": 0,
+          "matched_by_set_membership": 0,
+          "all_intact": false
+        },
+        "ledger_suppression_decision": {
+          "hop_occurred": false,
+          "payloads": 0,
+          "carrying_the_record": 0,
+          "record_intact": 0,
+          "matched_by_path": 0,
+          "matched_by_set_membership": 0,
+          "all_intact": false
+        },
+        "response_trigger": {
+          "hop_occurred": false,
+          "payloads": 0,
+          "carrying_the_record": 0,
+          "record_intact": 0,
+          "matched_by_path": 0,
+          "matched_by_set_membership": 0,
+          "all_intact": false
+        },
+        "ledger_response_action": {
+          "hop_occurred": false,
+          "payloads": 0,
+          "carrying_the_record": 0,
+          "record_intact": 0,
+          "matched_by_path": 0,
+          "matched_by_set_membership": 0,
+          "all_intact": false
+        },
+        "_population": "deferred",
+        "_decisions_made": 0
+      },
+      "hop_paths_seen": []
+    }
+  },
+  "recovery_hop": {
+    "hop_occurred": true,
+    "payloads": 1,
+    "carrying_the_record": 1,
+    "record_intact": 1,
+    "all_intact": true,
+    "carries_incident_id": true,
+    "recover_result": {
+      "status": "success",
+      "files_recovered": 1,
+      "integrity_verified": false,
+      "timestamp": "2026-09-05T05:17:57.842245Z",
+      "files": [
+        {
+          "file_path": "C:\\Users\\nikhi\\AppData\\Local\\Temp\\recovery_hop_gi7mvbru\\document.docx",
+          "restored": true,
+          "integrity_verified": false,
+          "restored_hash": "10383af0c7af4db6a455d2f5bb93a00b186e01daf195ba09409ba412d4d23c85",
+          "expected_hash": null,
+          "reason": null
+        }
+      ]
+    }
+  },
+  "dashboard": {
+    "surfaces_distinctly": true,
+    "outcome_read_back": {
+      "cancelled": "cancelled",
+      "attenuated": "attenuated",
+      "deferred": "deferred",
+      "no_rule_applied": null
+    },
+    "display_labels": {
+      "cancelled": "Cancelled",
+      "attenuated": "Attenuated",
+      "deferred": "Deferred"
+    },
+    "labels_are_distinct": true,
+    "chips_render": {
+      "cancelled": true,
+      "attenuated": true,
+      "deferred": true
+    },
+    "cancelled_is_not_read_from_suspicious": true,
+    "method": "GOVERNANCE_OUTCOMES, governance_outcome and governance_chip lifted from services/dashboard/app.py by AST and executed"
+  },
+  "gates": {
+    "cancelled_decision_reaches_the_ledger": true,
+    "attenuated_decision_reaches_the_ledger": true,
+    "decision_reaches_the_response_service": true,
+    "response_action_is_chained_with_the_decision": true,
+    "decision_reaches_recovery": true,
+    "dashboard_surfaces_the_three_outcomes_distinctly": true
+  },
+  "d6": {
+    "rule": "D6 - if any pipeline gate fails, the final claim is reduced to 'URDS Monitor' scope, the word unified is not used for evidence that was not collected, and the reduction is written down.",
+    "gates_evaluated": 6,
+    "gates_failed": [],
+    "fires": false,
+    "decision": "D6 does not fire. Every gate passes: the adjudication reaches the chain for a cancelled decision and an attenuated one, travels to the Response service and into its own ledger entry, reaches recovery with the incident it answers, and the dashboard tells the three outcomes apart. The word `unified` is carried by measurement at each of these hops. It is not carried by the ML hop, which does not receive the record and should not."
+  }
+}

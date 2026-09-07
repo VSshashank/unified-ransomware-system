@@ -1,0 +1,390 @@
+{
+  "schema": "urds.claim_matrix.v1",
+  "generated_at": "2026-09-05T05:45:27.451952+00:00",
+  "claims": [
+    {
+      "id": "C-01",
+      "table_9_9_row": "The team built the system",
+      "wording": "The project team designed and implemented...",
+      "wording_required": true,
+      "claim": "The project team designed and implemented a six-service ransomware detection and recovery system.",
+      "requires": "PROJECT_IMPLEMENTATION_RECORD.md",
+      "artefact": "PROJECT_IMPLEMENTATION_RECORD.md",
+      "check": [
+        "reports/implementation_record.json",
+        [
+          "totals",
+          "contributors"
+        ],
+        4
+      ],
+      "tests": [],
+      "note": "The record also states that 82 of 92 commits on HEAD are AI-assisted and that the contribution is lopsided. The claim is made with those facts published, not around them.",
+      "verification": {
+        "id": "C-01",
+        "status": "ok",
+        "detail": "totals.contributors = 4"
+      }
+    },
+    {
+      "id": "C-02",
+      "table_9_9_row": "The exemption is ungoverned",
+      "wording": "In the reviewed URDS Monitor...",
+      "wording_required": true,
+      "claim": "In the reviewed URDS Monitor, the container exemption cancels a high-entropy alert without reaching the governance layer that prices every other mitigation.",
+      "requires": "Source audit and evidence report",
+      "artefact": "docs/CAPABILITY_GOVERNED_EXCEPTIONS.md",
+      "check": [
+        "reports/ledger_coverage.json",
+        [
+          "by_population",
+          "ungoverned",
+          "adjudicated"
+        ],
+        0
+      ],
+      "tests": [
+        "services/monitor/tests/test_tc18_admission_matrix.py"
+      ],
+      "note": "0 adjudications from the ungoverned population. The exemption returns benign_compressed, and app.handle_event adjudicates only a verdict that is already suspicious.",
+      "verification": {
+        "id": "C-02",
+        "status": "ok",
+        "detail": "by_population.ungoverned.adjudicated = 0"
+      }
+    },
+    {
+      "id": "C-03",
+      "table_9_9_row": "11 of 16 formats are unvalidated",
+      "wording": "The current registry contains...",
+      "wording_required": true,
+      "claim": "The current registry contains seventeen recognised container formats and structural validators for six of them; eleven are accepted on their header alone.",
+      "requires": "Registry and evidence report",
+      "artefact": "services/monitor/containers.py",
+      "check": [
+        "reports/capability_calibration.json",
+        [
+          "summary",
+          "levels_measured"
+        ],
+        10
+      ],
+      "tests": [
+        "services/monitor/tests/test_tc14_unvalidated_closure.py"
+      ],
+      "note": "Table 9.9 states 11 of 16. The code recognises seventeen: sixteen names in detection._CONTAINER_SIGNATURES plus iso-bmff, which identify_container matches on a separate ftyp branch. The unvalidated count of eleven is the same either way; the difference is one validated format the plan's total omits, and the claim uses the code's number.",
+      "verification": {
+        "id": "C-03",
+        "status": "ok",
+        "detail": "summary.levels_measured = 10"
+      }
+    },
+    {
+      "id": "C-04",
+      "table_9_9_row": "Structural validation is low-capability",
+      "wording": "Under the declared capability model...",
+      "wording_required": true,
+      "claim": "Under the declared capability model, forging the container exemption is negligible-cost: four bytes for an unvalidated format, one standard-library call for a validated one.",
+      "requires": "Calibration record",
+      "artefact": "reports/capability_calibration.json",
+      "check": [
+        "reports/capability_calibration.json",
+        [
+          "levels",
+          0,
+          "measured_name"
+        ],
+        "negligible"
+      ],
+      "tests": [
+        "services/monitor/tests/test_tc18_admission_matrix.py"
+      ],
+      "note": "10 of 10 levels carry an empirical source trail; none is derived from source alone. Both ladders are recorded per strategy, because the level depends on which ladder is asked. The figure is 10 with models/behavioral_model.pkl present. On a clean checkout - models/ is gitignored - the ml_confidence_gate level is recorded unresolved under D2 and the count is 9. That is D2 working as designed; the other nine levels reproduce anywhere. See docs/REPRODUCIBILITY_APPENDIX.md section 6.",
+      "verification": {
+        "id": "C-04",
+        "status": "ok",
+        "detail": "levels.0.measured_name = 'negligible'"
+      }
+    },
+    {
+      "id": "C-15",
+      "table_9_9_row": "(beyond the table) calibration coverage",
+      "wording": null,
+      "wording_required": false,
+      "claim": "Every capability level that could be measured carries an empirical source trail: 10 of 10 with the trained model present, 9 of 10 on a clean checkout where the tenth is recorded unresolved under D2 rather than assumed.",
+      "requires": "Calibration record",
+      "artefact": "reports/capability_calibration.json",
+      "check": [
+        "reports/capability_calibration.json",
+        [
+          "summary",
+          "with_empirical_source_trail"
+        ],
+        [
+          10,
+          9
+        ]
+      ],
+      "tests": [],
+      "note": "The two acceptable values are not a weakened check. Cforge(ml_confidence_gate) scores a feature vector against models/behavioral_model.pkl, which is gitignored because it is a trained artefact derived from EMBER. With the model the level is measured; without it D2's unresolved branch is taken, which is the designed behaviour and is recorded as such. Any other value means a level stopped being measurable. See docs/REPRODUCIBILITY_APPENDIX.md section 6 and thesis 11.6.",
+      "verification": {
+        "id": "C-15",
+        "status": "ok",
+        "detail": "summary.with_empirical_source_trail = 10"
+      }
+    },
+    {
+      "id": "C-05",
+      "table_9_9_row": "The repair closes the bypass",
+      "wording": "The repair closed the evaluated bypass...",
+      "wording_required": true,
+      "claim": "The repair closed the evaluated bypass: Arm C flags 21/21 of family A1, 3/3 of A2, 2/2 of A3, 3/3 of A4 and 3/3 of A7.",
+      "requires": "Arms A/B/C and regression",
+      "artefact": "reports/three_arm_experiment.json",
+      "check": [
+        "reports/three_arm_experiment.json",
+        [
+          "per_arm",
+          "C",
+          "attack",
+          "by_family",
+          "A1_header_over_ciphertext",
+          "flagged"
+        ],
+        21
+      ],
+      "tests": [
+        "services/monitor/tests/test_tc14_unvalidated_closure.py"
+      ],
+      "note": "'evaluated' is doing work in this sentence. It closed the seven families built for it, on one frozen corpus. Family A7 shows Arm D defeated by a prepended JPEG marker chain, so the family list is not a proof of closure in general.",
+      "verification": {
+        "id": "C-05",
+        "status": "ok",
+        "detail": "per_arm.C.attack.by_family.A1_header_over_ciphertext.flagged = 21"
+      }
+    },
+    {
+      "id": "C-06",
+      "table_9_9_row": "Benign cost is acceptable",
+      "wording": "On the evaluated corpus...",
+      "wording_required": true,
+      "claim": "NOT MADE. On the evaluated corpus the benign cost is NOT acceptable: the one-sided 95% upper limit on the false-positive difference for validated formats is 25.323 percentage points against a predeclared tolerance of 2.00.",
+      "requires": "Stratified corpus and paired statistics",
+      "artefact": "reports/benign_tradeoff.json",
+      "check": [
+        "reports/benign_tradeoff.json",
+        [
+          "bound_1",
+          "by_arm",
+          "C",
+          "upper_limit_pp"
+        ],
+        25.3235
+      ],
+      "tests": [
+        "services/monitor/tests/test_tc19_benign_bound.py"
+      ],
+      "note": "The Table 9.9 row exists for a claim this work does not get to make. The bound was predeclared before the corpus was built, it failed, and the repair does not ship. Reported as the primary finding rather than retuned until it passed.",
+      "verification": {
+        "id": "C-06",
+        "status": "ok",
+        "detail": "bound_1.by_arm.C.upper_limit_pp = 25.3235"
+      }
+    },
+    {
+      "id": "C-07",
+      "table_9_9_row": "The pipeline preserves trust",
+      "wording": "In the evaluated URDS pipeline...",
+      "wording_required": true,
+      "claim": "In the evaluated URDS pipeline, one adjudication travels Monitor to ML to Ledger to Response to Recovery, and every chained block carries all five required fields - 36 of 36.",
+      "requires": "TC-23 ... TC-25",
+      "artefact": "reports/ledger_coverage.json",
+      "check": [
+        "reports/ledger_coverage.json",
+        [
+          "record_completeness",
+          "complete_blocks"
+        ],
+        36
+      ],
+      "tests": [
+        "services/monitor/tests/test_tc23_chained_record.py",
+        "services/gateway/tests/test_tc25_full_traverse.py"
+      ],
+      "note": "The ML hop deliberately does not receive the adjudication - the model scores bytes, not policy - and TC-25 asserts that absence so it stays a recorded decision rather than a gap.",
+      "verification": {
+        "id": "C-07",
+        "status": "ok",
+        "detail": "record_completeness.complete_blocks = 36"
+      }
+    },
+    {
+      "id": "C-08",
+      "table_9_9_row": "Ransomware detection improved generally",
+      "wording": "NOT CLAIMED",
+      "wording_required": true,
+      "claim": "NOT CLAIMED",
+      "requires": "External detector comparison",
+      "artefact": null,
+      "check": null,
+      "tests": [],
+      "note": "No external-detector comparison was run; \u00a79.13 places it out of scope. No sentence in the thesis, the paper or the defence material claims general improvement, and the repair that was measured does not ship.",
+      "verification": {
+        "id": "C-08",
+        "status": "ok",
+        "detail": "not claimed"
+      }
+    },
+    {
+      "id": "C-09",
+      "table_9_9_row": "Patentability or legal novelty",
+      "wording": "NOT CLAIMED",
+      "wording_required": true,
+      "claim": "NOT CLAIMED",
+      "requires": "Formal legal and prior-art review",
+      "artefact": null,
+      "check": null,
+      "tests": [],
+      "note": "Never inferred from this work. No prior-art or legal review was conducted, so the question is not one this project is in a position to answer either way.",
+      "verification": {
+        "id": "C-09",
+        "status": "ok",
+        "detail": "not claimed"
+      }
+    },
+    {
+      "id": "C-10",
+      "table_9_9_row": "(beyond the table) the methodological result",
+      "wording": null,
+      "wording_required": false,
+      "claim": "Decision rule D1 fires on NOVELTY_PROOF_PLAN.md \u00a75.2's five-level ladder and does not fire on admissibility.py's four-point one. Sixteen of twenty cells flip across the six policies.",
+      "requires": "Admission-recompute matrix on both ladders",
+      "artefact": "docs/ADMISSION_RECOMPUTE.md",
+      "check": [
+        "reports/admission_recompute.json",
+        [
+          "flip_count"
+        ],
+        16
+      ],
+      "tests": [
+        "services/monitor/tests/test_tc18_admission_matrix.py"
+      ],
+      "note": "Phase 5 answered D1 'no cells flip'. That is correct on the scale it used and wrong on the scale \u00a79.1 makes governing. Policy F is the computation and is not deployed.",
+      "verification": {
+        "id": "C-10",
+        "status": "ok",
+        "detail": "flip_count = 16"
+      }
+    },
+    {
+      "id": "C-11",
+      "table_9_9_row": "(beyond the table) the cheapest attack found",
+      "wording": null,
+      "wording_required": false,
+      "claim": "base64.b64encode(ciphertext) lands at exactly 6.000 bits/byte and is below all three of the Monitor's entropy thresholds, so static_entropy, partial_entropy and entropy_rise all fail to fire.",
+      "requires": "Calibration record",
+      "artefact": "reports/capability_calibration.json",
+      "check": [
+        "reports/capability_calibration.json",
+        [
+          "levels",
+          4,
+          "measured_name"
+        ],
+        "negligible"
+      ],
+      "tests": [],
+      "note": "S-1 in the security audit. No detector is written for it: the obvious counter fires on PEM, .eml, JWT and data-URI content whose benign cost has not been measured, and this project's rule is that a mitigation is not proposed until it has been.",
+      "verification": {
+        "id": "C-11",
+        "status": "ok",
+        "detail": "levels.4.measured_name = 'negligible'"
+      }
+    },
+    {
+      "id": "C-12",
+      "table_9_9_row": "(beyond the table) what the ledger is evidence of",
+      "wording": null,
+      "wording_required": false,
+      "claim": "The hash chain detects in-place tampering 20 times out of 20 and structural rewriting 0 times out of 8. 'Tamper-evident' means tamper-evident against an attacker who does not recompute.",
+      "requires": "Tamper sweep and its regression",
+      "artefact": "reports/tamper_sweep.json",
+      "check": [
+        "reports/tamper_sweep.json",
+        [
+          "structural",
+          "detected"
+        ],
+        0
+      ],
+      "tests": [
+        "services/ledger/tests/test_tamper_sweep.py"
+      ],
+      "note": "The chain is unkeyed SHA-256 over public inputs, so an attacker who can write the database recomputes exactly what the verifier recomputes. The four undetected cases are asserted as undetected, so the boundary cannot move quietly.",
+      "verification": {
+        "id": "C-12",
+        "status": "ok",
+        "detail": "structural.detected = 0"
+      }
+    },
+    {
+      "id": "C-13",
+      "table_9_9_row": "(beyond the table) the latency claim",
+      "wording": null,
+      "wording_required": false,
+      "claim": "Detection latency holds the 100 ms budget at p95 (94.650 ms) and misses it at p99 (110.550 ms) under 16-way concurrency.",
+      "requires": "Load test",
+      "artefact": "reports/load_test.json",
+      "check": [
+        "reports/load_test.json",
+        [
+          "concurrent_detection",
+          "latency",
+          "p99_ms"
+        ],
+        110.55
+      ],
+      "tests": [],
+      "note": "Say 'within 100 ms at p95 under 16-way concurrency', never 'under 100 ms'. The figure is wall-clock on one host and the report records which; the reproducible part is the shape, not the digits.",
+      "verification": {
+        "id": "C-13",
+        "status": "ok",
+        "detail": "concurrent_detection.latency.p99_ms = 110.55"
+      }
+    },
+    {
+      "id": "C-14",
+      "table_9_9_row": "(beyond the table) the recovery scope",
+      "wording": null,
+      "wording_required": false,
+      "claim": "Local snapshot restore is verified 13/13 and five injected failure modes are each reported distinctly, none as verified. VSS-backed restore is NOT measured.",
+      "requires": "Failure injection and VSS status",
+      "artefact": "reports/vss_status.json",
+      "check": [
+        "reports/vss_status.json",
+        [
+          "platform_status",
+          "elevated"
+        ],
+        false
+      ],
+      "tests": [
+        "services/response/recovery/tests"
+      ],
+      "note": "Acceptance row 12, still partial. The blocker is measured rather than asserted: the host reports VSS supported, the shell is not elevated, and both operations refuse for that one reason.",
+      "verification": {
+        "id": "C-14",
+        "status": "ok",
+        "detail": "platform_status.elevated = False"
+      }
+    }
+  ],
+  "summary": {
+    "total": 15,
+    "made": 13,
+    "not_claimed": 2,
+    "mandatory_wording": 9,
+    "failed_verification": 0
+  }
+}

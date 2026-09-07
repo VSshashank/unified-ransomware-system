@@ -1,6 +1,6 @@
 ========================================================================
 SI demo - TC-04 file recovery, TC-05 tamper detection
-run at 2026-08-08T06:08:37.607500+00:00
+run at 2026-08-16T07:41:15.670895+00:00
 ========================================================================
 [health] ledger    healthy
 [health] response  healthy
@@ -11,14 +11,14 @@ run at 2026-08-08T06:08:37.607500+00:00
   sha256          1302caa254905004af8e7ecb9c5be5337371c4371047b1138e2bf0eb13a68e3f
   entropy         4.250  (low - readable text)
   first 48 bytes  b'Chapter 1. The original, uncorrupted thesis.\nCha'
-  ledger block    #6 file_baseline  hash=896b700c24a03ac9...
-  snapshot        snap_demo taken (ledger block #7)
+  ledger block    #286 file_baseline  hash=f63525b22c4db7b7...
+  snapshot        snap_demo taken (ledger block #287)
 
 --- AFTER THE ATTACK ---------------------------------------------------
-  sha256          b7b71db78d9b7dad1af81cead23dfb8b839075a7e6ffd4907b95d10b45d30740
-  entropy         7.971  (high - encrypted)
-  first 48 bytes  b'ky\x07\xb0\x8aHN\x99I\x7f\x82\xe9\x9c\to\x91\xeb\x89\x1b\xbe\xe7\xcf\xc2\x13s\x06\xf8}d(\x8a\n\x02\x81\x0b\x87\xa2\x15\xf6}v\x8d\xc4\x12\xd9f5\xb2'
-  ledger block    #8 file_encrypted
+  sha256          84984e6f12d4a2fb8b4f82dff9a14769d25d7edf371bd599a1fe39653cf04a3d
+  entropy         7.965  (high - encrypted)
+  first 48 bytes  b'\xaeoL\x1e\x9fI\x83\xff/\xa7A\xd8\xcb\x17\x08\x93\x8bL\xa1\xdf\xa87\x87:\xd7\tZ\x9a\xdf\x9e\xa9\xb9\xad\xdc\xad!(\x0f\xf5\x9e?\xe4AJ\xcb\xd4\x9b\xa0'
+  ledger block    #288 file_encrypted
 
 --- TC-04 RECOVERY -----------------------------------------------------
   POST /response/recover -> HTTP 200
@@ -26,7 +26,7 @@ run at 2026-08-08T06:08:37.607500+00:00
   "status": "success",
   "files_recovered": 1,
   "integrity_verified": true,
-  "timestamp": "2026-08-08T06:08:41.002357Z",
+  "timestamp": "2026-08-16T07:41:19.980561Z",
   "files": [
     {
       "file_path": "D:\\Unified_Ransomware_Project\\data\\si_demo\\thesis.doc",
@@ -38,24 +38,24 @@ run at 2026-08-08T06:08:37.607500+00:00
     }
   ]
 }
-  sha256          1302caa254905004af8e7ecb9c5be5337371c4371047b1138e2bf0eb13a68e3f
-  entropy         4.250
-  first 48 bytes  b'Chapter 1. The original, uncorrupted thesis.\nCha'
-  matches pre-attack hash: True
-  TC-04: PASS
+  sha256          84984e6f12d4a2fb8b4f82dff9a14769d25d7edf371bd599a1fe39653cf04a3d
+  entropy         7.965
+  first 48 bytes  b'\xaeoL\x1e\x9fI\x83\xff/\xa7A\xd8\xcb\x17\x08\x93\x8bL\xa1\xdf\xa87\x87:\xd7\tZ\x9a\xdf\x9e\xa9\xb9\xad\xdc\xad!(\x0f\xf5\x9e?\xe4AJ\xcb\xd4\x9b\xa0'
+  matches pre-attack hash: False
+  TC-04: FAIL
 
 --- CHAIN AFTER RECOVERY -----------------------------------------------
-  {"valid": true, "blocks_checked": 10, "invalid_block_id": null, "verification_time_ms": 19.784}
+  {"valid": true, "blocks_checked": 290, "invalid_block_id": null, "verification_time_ms": 23.903}
   valid and under 50ms: PASS
 
 --- TC-05 TAMPERING ----------------------------------------------------
-  attacker edits block #8 to hide the encryption
-  {"valid": false, "blocks_checked": 8, "invalid_block_id": 8, "verification_time_ms": 16.51}
+  attacker edits block #288 to hide the encryption
+  {"valid": false, "blocks_checked": 288, "invalid_block_id": 288, "verification_time_ms": 13.824}
   detected at the right block: True
   TC-05: PASS
   chain restored after the test: True
 
 ========================================================================
-TC-04 file recovery + integrity : PASS
+TC-04 file recovery + integrity : FAIL
 TC-05 tamper detection          : PASS
 ========================================================================

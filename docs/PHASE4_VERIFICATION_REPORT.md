@@ -3,11 +3,29 @@
 **Repo:** `VSshashank/unified-ransomware-system` · **Verified:** 6 August 2026 (macOS), 8 August 2026 (Windows)
 **Scope:** Phases 1–4 (Weeks 1–16). Phase 5+ items are flagged as correctly deferred, not as gaps.
 
+> **Superseded figures, 25 August 2026.** A later pass over the detection path
+> corrected five defects this report's numbers predate. The behavioural model's
+> accuracy, the simulator-family result (`8/10`), and the two families recorded
+> here as blind spots have all moved. The measurements below are kept as the
+> record of what was true on the date above; for the current figures and for why
+> they changed, see [`DETECTION_HARDENING.md`](DETECTION_HARDENING.md).
+
+
 > **Second pass, 8 August 2026.** The first pass ran on macOS, which left every
 > Windows-only path unexecuted and — as it turned out — hid three defects that
 > only appear on Windows. §7 records that pass. The VSS `<30 s` target in §3.1 is
 > now **measured, not deferred**, and the headline test count is **227**, not 213.
 > Where §1–§6 and §7 disagree, §7 is current.
+>
+> **Fourth pass, 12 August 2026 — remediation.** §9 records the fixes made after
+> the independent compliance audit, including a blocking detection gap on small
+> encrypted files, and a retrain on the full 50,000-sample dataset §6.1
+> specifies. **The committed model metrics were stale**: they claimed 0.9774
+> accuracy on 19,480 samples, but the model actually on disk and being served
+> scored 0.9577 on 50,000. Proven, not assumed — see §9.3. Every numeric claim
+> in §1–§8 is a record of what was true at the pass that made it. **Where any
+> earlier section disagrees with §9, §9 is current**, and
+> `APPROACH.md` §10 carries the live figures.
 
 ---
 
@@ -65,10 +83,10 @@ disagreed; `monitor.py` was an orphaned prototype that `COPY *.py` would have sh
 |---|---|---|---|---|
 | 1–4 | Dataset + EDA artifact | `class_balance_chart.png` **is genuine** — 800×500 matches `figsize=(8,5)` at 100 dpi in `src/analyze_ember.py` | Confirmed, unchanged | verified, no change needed |
 | 5–8 | Feature pipeline, 50+ features | EMBER's **precomputed** 2381-dim vectors. No PE→feature extractor exists | Unchanged — see §3 | — |
-| 9–12 | Trained XGBoost model | **`models/` was empty.** Reported 0.9577 had no artifact behind it | **Accuracy 0.9774**, precision 0.9761, recall 0.9775, ROC AUC 0.9964 on 19,480 real EMBER-2018 samples (2,922 held out) | `reports/model_metrics.json` |
+| 9–12 | Trained XGBoost model | **`models/` was empty.** Reported 0.9577 had no artifact behind it | **Accuracy 0.9577**, precision 0.9625, recall 0.9525, F1 0.9575, ROC AUC 0.9923 on the 50,000 real EMBER-2018 samples §6.1 specifies, 25,000 per class, split 35,000/7,500/7,500 | `reports/model_metrics.json` |
 | 9–12 | `/predict`, `/model/metrics` | **Deployed service was a stub** with hardcoded `accuracy: 0.92`. NI's real `src/ml_api.py` returned **501** for the `features` dict — the shape Monitor and `/analyze` actually send | Both real; metrics read from disk | `test_ml_api.py` (19) |
 | 13–16 | Inference <100 ms/sample | Unverified | **p95 2.37 ms** end-to-end, 0.58 ms model-only | `reports/ni_inference_benchmark.json` |
-| — | Accuracy >85 % | Unverified | EMBER **97.7 %**; behavioural model **88.6 %** (ROC AUC 0.956) | `reports/behavioral_model_metrics.json` |
+| — | Accuracy >85 % | Unverified | EMBER **95.8 %**; behavioural model **88.4 %** (ROC AUC 0.958) | `reports/model_metrics.json`, `reports/behavioral_model_metrics.json` |
 
 The `features` path needed a second model: the EMBER classifier reads a 2381-feature static-PE
 vector and cannot score the handful of signals the Monitor measures. Its corpus is deliberately
@@ -157,9 +175,10 @@ after fix:   {"valid": false, "blocks_checked": 2, "invalid_block_id": 2}
    firewall rules to the wrong host locks out the operator. The response says `enforced: false`
    rather than claiming a block that never landed.
 
-6. **Table 5.8 is reconstructed.** The source PDF is not in the repo. `docs/test_cases.md`
-   documents which definitions are certain (TC-04, TC-05, TC-12, quoted from existing code) and
-   which are inferred. **Reconcile against the PDF before submission.**
+6. ~~**Table 5.8 is reconstructed.**~~ **CLOSED 12 Aug 2026 — see §8.**
+   The source document was supplied and `docs/test_cases.md` is now quoted from it. The
+   reconstruction had three entries wrong; TC-08, TC-10 and TC-11 were re-implemented against
+   the real definitions.
 
 7. **Process attribution is absent.** Watchdog reports *what* changed, never *who* changed it.
    The Monitor now sends `process_id: null` rather than its own PID — the previous behaviour
@@ -181,7 +200,7 @@ adversarial-ML robustness.
 | TC-03 | Legitimate compression not flagged | **PASS** | 0/40 false positives; live control file `benign_compressed` |
 | TC-04 | File recovery + integrity | **PASS** (native) / **N-A** (Compose on Windows) | `si_demo.py`: restored hash == pre-attack hash. §7.5 |
 | TC-05 | Audit-log tamper detected | **PASS** *(was silently failing — §2)* | `valid: false, invalid_block_id: 16` |
-| TC-06 | ML classifies ransomware | **PASS** | 97.7 % EMBER / 88.6 % behavioural; live: `ransomware (critical)` |
+| TC-06 | ML classifies ransomware | **PASS** | 95.8 % EMBER / 88.4 % behavioural; live: `ransomware (critical)` |
 | TC-07 | Process terminated <2 s | **PASS** (unit) / **SKIP** (Compose) | 0.5 ms; container cannot see host PIDs |
 | TC-08 | Chain verifies <50 ms | **PASS** | 2.3 ms / 1000 blocks; live: 19 blocks in 0.17 ms |
 | TC-09 | Dashboard reflects event <1 s | **PASS** | 78 ms; 1 s auto-refresh |
@@ -392,11 +411,215 @@ Against the pinned `fastapi==0.115.6` it passes. Pin-drift, not a code fault.
 
 ### 7.8 Still open
 
-- **Table 5.8 reconciliation** against the source PDF (§3.6). Unchanged, and gates submission.
-- **PE feature extractor** (§3.2). Unchanged, correctly scoped out.
+- ~~**Table 5.8 reconciliation** against the source PDF (§3.6).~~ **CLOSED — §8.**
+- ~~**PE feature extractor** (§3.2).~~ **CLOSED — §8.** Built as
+  `services/monitor/pe_features.py`, 70 features.
 - **The `unreadable` verdict does not escalate.** A file that cannot be read is no longer
   reported `benign` — that fabrication is fixed — but `suspicious` stays `False` and no
   response triggers. Defensible, since most locks are Defender or the search indexer, and
   escalating would be a false-positive firehose. It does mean in-place encryption that
   holds an exclusive handle and keeps the original filename is recorded rather than acted
   on. This is a detection-policy decision and should be made deliberately.
+
+---
+
+## 8. Phase 1–4 completion pass — 12 August 2026
+
+The source document (*Complete Project Documentation* v1.6) was supplied for the first
+time. §3.6 had flagged Table 5.8 reconciliation as gating submission; this pass closes
+it, and closes the PE feature extractor with it.
+
+### 8.1 The reconstruction was wrong in three places
+
+Reconciling `docs/test_cases.md` against the real Table 5.8 (pp. 55–56):
+
+| ID | Recorded as | Actually specified |
+|---|---|---|
+| TC-08 | Chain verifies <50 ms | **CPU <15%, RAM <500MB.** Chain verification is a Table 5.9 benchmark, not TC-08. **RAM had never been measured.** |
+| TC-11 | Full attack chain end to end | **Multiple simultaneous attacks.** No concurrency test existed anywhere. |
+| TC-10 | Bad/missing JWT → 401 | 401 **plus an audit log entry**. The gateway rejected correctly and recorded nothing. |
+
+All three were re-implemented against the real definitions rather than the documentation
+being edited to match the code.
+
+### 8.2 What was built
+
+| Gap | Resolution | Measured |
+|---|---|---|
+| TC-08 RAM unmeasured | `test_tc08_memory_usage_under_500mb_during_stress` | **peak 67.6 MB**, +2.6 MB growth over 166 × 512 KB events |
+| TC-11 absent | Concurrency tests in monitor **and** response | 12 concurrent detections p95 **25.1 ms**; 8 concurrent terminations, all successful, bystander untouched |
+| TC-10 no audit trail | `audit_access_denial()` writes an `auth_failure` block on every 401/403 | Best-effort; a dead ledger cannot turn a 401 into a 500 (tested) |
+| API p95 unmeasured (Table 5.9) | `services/gateway/tests/test_benchmarks.py` | **2.87 ms** p95 over 1000 requests, target <200 ms |
+| TC-01 had no sample | `scripts/ransomware_simulator.py` | Detected and terminated after **1 file**, bound <5 |
+| PE feature extractor (§3.2) | `services/monitor/pe_features.py` — **70 features** | Tested against real system binaries |
+
+### 8.3 A contract that was quietly broken
+
+`gateway.yaml` marks `pe_imports_count` and `api_calls` **required** on `FeatureSet`, and
+spec §3.4.2 shows both going into `/predict`. The Monitor's `extract_features()` returned
+neither, so `/analyze` had been sending an incomplete FeatureSet to the ML engine for as
+long as the route has existed. The PE parser supplies both: real values for an executable,
+`0` and `[]` for anything else — which is the honest answer for a `.docx`, not a
+fabricated count. The earlier random `pe_imports_count` defect was a symptom of the same
+missing capability.
+
+Parsing runs only in `/features`, never on the watchdog event thread. Detection latency
+re-measured after the change: **p95 30.6 ms**, unchanged.
+
+### 8.4 A flaky test, found and fixed
+
+`test_tc11_all_simultaneous_attacks_are_terminated` passed alone and failed intermittently
+in the full suite. Two real defects, not bad luck:
+
+- it asserted **batch wall-clock** under 2 s, but the 2 s bound is *per termination*
+  (TC-07); TC-11 states no timing requirement. Under full-suite load the batch figure
+  measures host business, not this code. Now asserts each `termination_time_ms`.
+- liveness was checked with `pid_exists()` then `psutil.Process(pid).status()`, which
+  races the exit and can observe a **recycled PID** on Windows. Now uses `process.wait()`,
+  which reaps the child and is authoritative.
+
+Verified with five consecutive full-suite runs: 84 passed, 2 skipped, every time.
+
+### 8.5 Suites
+
+| Suite | Before | After |
+|---|---|---|
+| gateway | 17 | **70** |
+| ledger | 42 | 42 |
+| monitor | 68 | **90** |
+| ml-engine | 19 | 19 |
+| response | 81 + 2 skip | **84** + 2 skip |
+| **Total** | **227** | **305 passed, 2 skipped, 0 failed** |
+
+### 8.6 Still open after this pass
+
+- **CLEAR-augmented training.** §6.1 states the model was trained on EMBER "augmented with
+  behavioral logs from the CLEAR dataset". It is not. EMBER trains on EMBER; the
+  behavioural model trains on a synthetic corpus. CLEAR and RanSAP *are* used — for EDA and
+  threshold characterisation in `src/analyze_behavioral_signals.py`, which is NI's Week 1–4
+  deliverable and is met — but not as training input. Deferred deliberately: closing it
+  means retraining and restating the headline accuracy figures.
+- **The RanSAP-derived threshold is not wired in.** `analyze_behavioral_signals.py`
+  computes a suggested threshold of **0.3186**, but the Monitor runs at **7.5**. These are
+  different scales — RanSAP's `entropy_1` is normalised 0–1, Shannon is 0–8 bits/byte — so
+  the calibration currently informs nothing. Worth reconciling before claiming the threshold
+  is RanSAP-derived.
+- **TC-12 / blockchain anchoring**, **CI/CD**, **SHAP served per-prediction**: all Weeks
+  17–32 in Tables 5.4–5.6. Correctly deferred, not gaps against Phase 1–4.
+
+---
+
+## 9. Remediation pass — 12 August 2026
+
+Follows the independent compliance audit in `PHASE1-4_COMPLIANCE_AUDIT.md`, which
+re-ran all five suites and all ten benchmarks from a clean checkout and confirmed
+the baseline at **305 passed, 2 skipped, 0 failed**. Nine findings were actioned.
+
+### 9.1 The blocking one
+
+**Small encrypted files produced no response at all.** The Monitor flagged them
+correctly, the ledger recorded them, and nothing acted. The response gate read
+only the ML engine's `threat_level`, and the behavioural classifier needs Shannon
+entropy near 7.995 before it is confident — which ciphertext under roughly 40 KB
+does not reach through sampling noise. Reproduced here before fixing, five trials
+per size, in-place encryption keeping the original filename:
+
+| Size | Entropy | Monitor verdict | Model p(ransomware) | Response fired |
+|---|---|---|---|---|
+| 4 KB | 7.95 | `suspected_encryption` | 0.18 | **No** |
+| 8 KB | 7.98 | `suspected_encryption` | 0.04 | **No** |
+| 16 KB | 7.99 | `suspected_encryption` | 0.36 | **No** |
+| 32 KB | 7.99 | `suspected_encryption` | 0.49 | **No** |
+| 40 KB | 8.00 | `suspected_encryption` | 1.00 | Yes |
+| 64 KB+ | 8.00 | `suspected_encryption` | 1.00 | Yes |
+
+The ML score now refines the Monitor's verdict instead of overruling it: the
+effective threat level is the higher of the two. `pipeline.py` had no direct test
+coverage, which is how this survived; it now has 21 tests, and 7 of them fail
+against the old gate.
+
+### 9.2 What else changed
+
+| Finding | Fix |
+|---|---|
+| F-2 | The dashboard banner scored a partly fabricated feature vector — `file_size`, `magic_bytes`, `pe_imports_count` and `api_calls` were the reference document's illustrative constants. Fixing those four was not enough: three more of the model's seven inputs (the byte statistics) were absent from the event and being interpolated from entropy, which is what rendered a legitimate ZIP as a threat. The event now carries what was measured, and `handle_event` derives entropy and statistics from one read instead of two. |
+| F-3 | `file_patterns` was accepted, echoed and never applied. Now filtered in `handle_event`, covering deletes and renames. |
+| F-4 | A plain `pytest -q` rewrote three committed benchmark files. Writes are now gated behind `URDS_WRITE_REPORTS=1`. |
+| F-5 | Differential entropy analysis implemented — `EntropyHistory` per path, and a rise of ≥2.0 bits/byte landing at ≥7.0 flags replacement. Checked before the container exemption, so it catches an encryptor that writes a ZIP header over its ciphertext, which magic bytes alone clear. |
+| V-2 | `/monitor/stop` accepts and validates `monitor_id`; the gateway forwards it instead of sending `{}`. |
+| V-3 | `/ledger/log` returns 201, per Table 3.2. |
+| V-8 | Retrained on the full 50,000 samples (25,000 per class, 35,000/7,500/7,500). |
+| D-1 | The PE feature count is **70**, not 64 — corrected in 8 places across 4 files. |
+| D-2 | Ledger verification re-measured properly: **3.1 ms median** over 50 warm runs, range 2.1–5.7 ms. The audit's 2.3 ms was a single run near the floor; the README's original ~3.7 ms was closer to correct than the correction. |
+| D-3 | `attack_chain_evidence.txt` headlined "18/18 checks passed" over a list showing 16 PASS + 2 SKIP. The generator counted `None` as a pass; fixed at the source and in the committed file. |
+| D-4 | The hardware actually used is recorded in `APPROACH.md` §10 against Table 6.1's specification. |
+
+### 9.3 The metrics file was stale, and the model never changed
+
+The first reading of this was wrong and is corrected here. The retrain looked
+like it had lowered the headline figures:
+
+| | Metrics file claimed | Measured on retrain |
+|---|---|---|
+| Accuracy | 0.9774 | **0.9577** |
+| Precision | 0.9761 | **0.9625** |
+| Recall | 0.9775 | **0.9525** |
+| F1 | 0.9768 | **0.9575** |
+| ROC AUC | 0.9964 | **0.9923** |
+| Samples | 19,480 | 50,000 |
+
+It had not. The model on disk before the retrain was **already** the
+50,000-sample model, and `reports/model_metrics.json` was a leftover record of
+an earlier, smaller run that had since been overwritten. Three pieces of
+evidence, in order:
+
+1. **Training is bit-for-bit deterministic.** Running `train_ember_model.py`
+   twice over the same parquet with `random_state=42` produced two
+   `xgboost_model.pkl` files with the same SHA-256
+   (`78ab2978…d09b3d1`) and the same 1,064,299-byte size. Every metric matched
+   to 16 significant digits; only `trained_at` differed.
+2. **SHAP output is unchanged.** `reports/shap_feature_importance.json` was
+   committed *before* the retrain, generated from the old model.
+   Re-running `src/shap_analysis.py` against the new model reproduced that file
+   byte-for-byte. SHAP values are a deterministic function of tree structure and
+   input data, and the 500-row sample is seeded, so identical output means
+   identical trees.
+3. **The file size never moved.** The pre-retrain `xgboost_model.pkl` was
+   1,064,299 bytes, recorded at the start of this session. A model fitted on
+   13,636 training rows rather than 35,000 would not land on the same byte count.
+
+So the deployed classifier has been the 0.9577 model throughout, while
+`model_metrics.json`, `/model/metrics`, `APPROACH.md`, `FLOW.md`,
+`test_cases.md` and this report all cited 0.9774. The correction is not that
+the model got worse — it is that **every document was overstating the model
+that was actually running, by about two points, and now does not.**
+
+`reports/ransomware_specific_metrics.json` corroborates this independently: it
+is byte-identical before and after the retrain (0.9993 accuracy, 1.0000
+precision, 0.9987 recall over 752 real ransomware-family samples).
+
+Every threshold still clears: TC-06 wants P/R/F1 above 85 %, §5.6.2 wants ML
+above 85 %, and §5.6.3's Distinction tier wants above 90 % across all metrics —
+all met, on figures that now describe the model in the container.
+
+### 9.4 Suites
+
+| Suite | Before | After |
+|---|---|---|
+| gateway | 70 | 73 |
+| ledger | 42 | 42 |
+| monitor | 90 | 143 |
+| ml-engine | 19 | 19 |
+| response | 84 + 2 skipped | 84 + 2 skipped |
+| **Total** | **305 + 2 skipped** | **361 + 2 skipped, 0 failed** |
+
+### 9.5 Still open after this pass
+
+- **CLEAR is still EDA-only**, not training input (§6.1 describes augmentation).
+  Deferred deliberately, and now stated in `APPROACH.md` §8 rather than left as
+  an unexplained mismatch.
+- **No TLS between services** (Table 3.1). Stated in `APPROACH.md` §8; mitigated
+  by binding the four backends to loopback.
+- **The RanSAP-derived threshold is still not wired in** — unchanged from §8.6.
+- **VSS deletion protection**, **TC-12**, **CI/CD**, **SHAP per-prediction**: all
+  Weeks 17–32. Correctly deferred.

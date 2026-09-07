@@ -89,6 +89,13 @@ class RecoverRequest(BaseModel):
     verify_integrity: bool = True
     # Optional: keep the damaged file alongside the restored one for forensics.
     preserve_damaged_copy: bool = False
+    # Which incident this restore answers, and the governance decision that let
+    # that incident stand. Both optional, so a manual restore still validates.
+    # Without them the `file_recovered` block is the one link in the chain that
+    # cannot be joined back to the detection that caused it, and an auditor
+    # reading the ledger has to match a restore to an alert on a timestamp.
+    incident_id: Optional[str] = None
+    admissibility: Optional[dict] = None
 
 
 class RecoveredFile(BaseModel):
@@ -195,13 +202,23 @@ class RecoveryManager:
         files: list,
         verify_integrity: bool = True,
         preserve_damaged_copy: bool = False,
+        incident_id: str | None = None,
+        admissibility: dict | None = None,
     ) -> dict:
         snapshot_root = self.resolve_snapshot_root(snapshot_id)
         results: list = []
 
         for file_path in files:
             results.append(
-                self._recover_one(snapshot_root, snapshot_id, file_path, verify_integrity, preserve_damaged_copy)
+                self._recover_one(
+                    snapshot_root,
+                    snapshot_id,
+                    file_path,
+                    verify_integrity,
+                    preserve_damaged_copy,
+                    incident_id,
+                    admissibility,
+                )
             )
 
         recovered = [r for r in results if r["restored"]]
@@ -243,6 +260,8 @@ class RecoveryManager:
         file_path: str,
         verify_integrity: bool,
         preserve_damaged_copy: bool,
+        incident_id: str | None = None,
+        admissibility: dict | None = None,
     ) -> dict:
         outcome = {
             "file_path": file_path,
@@ -287,6 +306,8 @@ class RecoveryManager:
                 "file_hash": restored_hash,
                 "integrity_verified": outcome["integrity_verified"],
                 "verification_requested": verify_integrity,
+                "incident_id": incident_id,
+                "admissibility": admissibility,
             },
         )
         return outcome
@@ -340,6 +361,8 @@ def recover_files(
             files=payload.files,
             verify_integrity=payload.verify_integrity,
             preserve_damaged_copy=payload.preserve_damaged_copy,
+            incident_id=payload.incident_id,
+            admissibility=payload.admissibility,
         )
     except RecoveryError as exc:
         return JSONResponse(

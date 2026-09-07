@@ -1,0 +1,81 @@
+{
+  "schema": "urds.load_test/1",
+  "generated_at": "2026-09-05T04:44:30.193922Z",
+  "commit": "09fab7508ce4dfc87624910f43a457f046eac630",
+  "branch": "feat/admissibility-governance-novelty-v2",
+  "requirement": "Phase 7 P7.3 - load testing, measured not asserted",
+  "host": {
+    "platform": "win32",
+    "python": "3.13.9",
+    "cpu_count": 14
+  },
+  "concurrent_detection": {
+    "events": 1200,
+    "concurrency": 16,
+    "wall_seconds": 4.767,
+    "throughput_events_per_second": 251.8,
+    "latency": {
+      "n": 1200,
+      "min_ms": 14.437,
+      "median_ms": 61.279,
+      "p95_ms": 94.65,
+      "p99_ms": 110.55,
+      "max_ms": 131.56,
+      "mean_ms": 62.998
+    },
+    "budget_ms": 100.0,
+    "over_budget": 36,
+    "p95_within_budget": true,
+    "errors": [],
+    "error_count": 0
+  },
+  "fan_out_queue": {
+    "seconds": 8.0,
+    "events_produced": 1723,
+    "production_rate_per_second": 215.4,
+    "queue_depth_peak": 1631,
+    "queue_depth_final": 1631,
+    "downstream_latency_ms_per_call": 20,
+    "calls_per_event": 3,
+    "projected_drain_seconds_at_measured_latency": 97.9,
+    "actual_drain_seconds_with_instant_transport": 0.02,
+    "queue_is_bounded": false,
+    "queue_maxsize": 0,
+    "backlog_grew_monotonically": true,
+    "depth_samples": [
+      1,
+      86,
+      167,
+      249,
+      330,
+      411,
+      492,
+      573,
+      655,
+      736,
+      817,
+      898,
+      980,
+      1061,
+      1142,
+      1223,
+      1305,
+      1385,
+      1467,
+      1548
+    ],
+    "what_this_means": "`app._work` is a queue.Queue with maxsize 0, which is unbounded. Producers are watchdog threads and the consumer is one worker making three HTTP calls per event, so any period where events arrive faster than the fan-out completes grows the backlog and nothing bounds it. The queue holds the full event dict, so the cost is per-event and real."
+  },
+  "seen_files_set": {
+    "entries_probed": 20000,
+    "set_bytes_empty": 216,
+    "set_container_bytes": 2097368,
+    "string_bytes": 2188890,
+    "total_bytes": 4286258,
+    "bytes_per_path": 214.3,
+    "monitor_seen_files_now": 2923,
+    "is_bounded": false,
+    "what_this_means": "`_SEEN_FILES` exists to answer 'is this the first time this path has been seen', which gates one ledger baseline write per path per monitor run. It is a plain set and nothing removes from it, so its size is the number of distinct paths the monitor has ever seen. On a build server or a large source tree that is unbounded in practice as well as in principle. The number above is what a million distinct paths would cost, and it is not large - which is the honest finding: this is a slow leak with a small constant, not an imminent failure."
+  },
+  "limits": "One machine, one process, synthetic files on a local disk. Nothing here measures the Compose stack, the network between containers, or a real filesystem under real load - the fan-out transport is stubbed in the queue measurement and disabled in the latency one, so these are Monitor-scoped numbers and are labelled as such."
+}

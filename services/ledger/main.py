@@ -95,7 +95,10 @@ def health(ledger: HashChainLedger = Depends(get_ledger)) -> JSONResponse:
     return JSONResponse(content={"status": "healthy", "service": "ledger", "blocks": blocks})
 
 
-@app.post("/ledger/log", response_model=LedgerLogResponse)
+# 201, not 200: Table 3.2 names a ledger entry as its example of Created, and
+# gateway.yaml already declared it. An append is a new resource on an append-only
+# chain, so the status code may as well say so.
+@app.post("/ledger/log", response_model=LedgerLogResponse, status_code=status.HTTP_201_CREATED)
 def log_event(payload: LedgerLogRequest, ledger: HashChainLedger = Depends(get_ledger)) -> LedgerLogResponse:
     block = ledger.add_block(payload.event_type, payload.event_data)
     return LedgerLogResponse(

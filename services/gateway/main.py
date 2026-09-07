@@ -1,3 +1,5 @@
+import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -6,14 +8,33 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from auth import create_access_token, get_current_user
+from auth import (
+    BOOTSTRAP_SECRET_HEADER,
+    bootstrap_secret_matches,
+    create_access_token,
+    dev_tokens_allowed,
+    get_current_user,
+    require_role,
+    requires_bootstrap_secret,
+    verify_jwt_secret_configuration,
+)
 from models import AnalyzeRequest, TokenRequest, TokenResponse
 from rate_limit import enforce_rate_limit
 from routers import ledger, ml, monitor, response
 from routers.proxy import LEDGER_URL, ML_URL, MONITOR_URL, SERVICE_URLS, call_downstream
 
 
-app = FastAPI(title="URDS API Gateway", version="1.0.0")
+logger = logging.getLogger("urds.gateway")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # Refuses to boot on a committed secret outside development, warns inside it.
+    verify_jwt_secret_configuration()
+    yield
+
+
+app = FastAPI(title="URDS API Gateway", version="1.0.0", lifespan=lifespan)
 app.include_router(monitor.router)
 app.include_router(ml.router)
 app.include_router(ledger.router)
@@ -57,6 +78,44 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+async def audit_access_denial(request: Request, status_code: int, code: str) -> None:
+    """TC-10: an authentication failure has to leave a trace in the audit trail.
+
+    A rejected request that vanishes without record is exactly what an attacker
+    probing for a working token wants. The entry goes into the same tamper-evident
+    chain as everything else, so credential probing is visible after the fact.
+
+    Best-effort by design: the ledger being down must not turn a clean 401 into a
+    500, and the caller is already being refused either way. The write is bounded
+    by call_downstream's timeout and any failure is swallowed.
+
+    Note for operations: this endpoint is unauthenticated by nature, so a caller
+    spamming bad tokens appends to an append-only chain. Bounding that - a
+    per-client suppression window - is worth doing before this faces a hostile
+    network, and is deliberately not attempted here.
+    """
+    try:
+        await call_downstream(
+            "POST",
+            LEDGER_URL,
+            "/ledger/log",
+            json_body={
+                "event_type": "auth_failure",
+                "event_data": {
+                    "code": code,
+                    "http_status": status_code,
+                    "path": request.url.path,
+                    "method": request.method,
+                    "request_id": getattr(request.state, "request_id", None),
+                    "client": request.client.host if request.client else None,
+                    "timestamp": utc_now(),
+                },
+            },
+        )
+    except Exception:  # noqa: BLE001 - auditing must never mask the original refusal
+        logger.warning("could not write auth_failure to the ledger for %s", request.url.path, exc_info=True)
+
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     detail = exc.detail if isinstance(exc.detail, dict) else {}
@@ -70,6 +129,10 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     }.get(exc.status_code, "REQUEST_FAILED")
     message = detail.get("message") if isinstance(detail, dict) else str(exc.detail)
     details = detail.get("details", {}) if isinstance(detail, dict) else {}
+
+    if exc.status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN):
+        await audit_access_denial(request, exc.status_code, code)
+
     return JSONResponse(status_code=exc.status_code, content=build_error(request, code, message, details))
 
 
@@ -98,13 +161,51 @@ async def health() -> JSONResponse:
 
 
 @app.post("/auth/token", response_model=TokenResponse)
-async def issue_dev_token(payload: TokenRequest | None = None) -> TokenResponse:
-    # Phase 4 placeholder only. Replace with real identity management before production.
+async def issue_dev_token(request: Request, payload: TokenRequest | None = None) -> TokenResponse:
+    # =====================================================================
+    # PHASE 4 PLACEHOLDER - THIS IS NOT AUTHENTICATION.
+    #
+    # This endpoint verifies no identity whatsoever. It exists so local
+    # development and the demo scripts can obtain a token without an
+    # identity provider standing behind them. It must be replaced with real
+    # identity management before this gateway is exposed to anyone.
+    #
+    # Two guards keep the blast radius small in the meantime:
+    #   * ALLOW_DEV_TOKENS=false switches the endpoint off entirely.
+    #   * Anything above the "free" floor requires the shared bootstrap
+    #     secret in the X-Bootstrap-Secret header. An empty POST yields a
+    #     free token, which can read but cannot act.
+    # =====================================================================
+    if not dev_tokens_allowed():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "DEV_TOKENS_DISABLED",
+                "message": "The development token endpoint is disabled on this deployment",
+                "details": {"env": "ALLOW_DEV_TOKENS"},
+            },
+        )
+
     payload = payload or TokenRequest()
+
+    if requires_bootstrap_secret(payload.role, payload.tier):
+        if not bootstrap_secret_matches(request.headers.get(BOOTSTRAP_SECRET_HEADER)):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "FORBIDDEN",
+                    "message": f"A valid {BOOTSTRAP_SECRET_HEADER} header is required to issue a token above 'free'",
+                    "details": {"requested_role": payload.role, "requested_tier": payload.tier},
+                },
+            )
+
     return TokenResponse(access_token=create_access_token(payload.sub, payload.role, payload.tier))
 
 
-@app.post("/analyze", dependencies=[Depends(get_current_user), Depends(enforce_rate_limit)])
+@app.post(
+    "/analyze",
+    dependencies=[Depends(get_current_user), Depends(require_role("admin", "enterprise")), Depends(enforce_rate_limit)],
+)
 async def analyze_file(payload: AnalyzeRequest, request: Request) -> JSONResponse:
     monitor_resp = await call_downstream("POST", MONITOR_URL, "/features", json_body={"path": payload.file_path})
     if monitor_resp.status_code >= 400:

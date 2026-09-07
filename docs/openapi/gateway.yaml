@@ -24,7 +24,20 @@ paths:
   /auth/token:
     post:
       summary: Development-only JWT token generator
+      description: >-
+        Phase 4 placeholder; verifies no identity and must be replaced with real
+        identity management. An empty body yields a `free` token, which can read
+        but cannot act. Any role or tier above `free` requires the shared secret
+        in the `X-Bootstrap-Secret` header. The whole endpoint returns 403
+        `DEV_TOKENS_DISABLED` when `ALLOW_DEV_TOKENS` is false.
       security: []
+      parameters:
+        - in: header
+          name: X-Bootstrap-Secret
+          required: false
+          schema:
+            type: string
+          description: Shared bootstrap secret. Required only for a role or tier above `free`.
       requestBody:
         required: false
         content:
@@ -38,9 +51,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /monitor/start:
     post:
       summary: Start file monitoring
+      description: "Requires role: admin or enterprise."
       requestBody:
         required: true
         content:
@@ -56,6 +72,8 @@ paths:
                 $ref: "#/components/schemas/MonitorStartResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "503":
@@ -63,6 +81,13 @@ paths:
   /monitor/stop:
     post:
       summary: Stop file monitoring
+      description: "Requires role: admin. Stopping the monitor blinds detection for the whole host."
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MonitorStopRequest"
       responses:
         "200":
           description: Monitor stopped.
@@ -72,6 +97,14 @@ paths:
                 $ref: "#/components/schemas/MonitorStopResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: The supplied monitor_id is not the monitor that is running.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /monitor/status:
@@ -105,6 +138,7 @@ paths:
   /predict:
     post:
       summary: Predict ransomware risk from file features
+      description: "Requires role: admin or enterprise."
       requestBody:
         required: true
         content:
@@ -122,6 +156,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /model/metrics:
@@ -141,6 +177,7 @@ paths:
   /ledger/log:
     post:
       summary: Log an event to the ledger
+      description: "Requires role: admin or enterprise. The chain is append-only, so a write is permanent."
       requestBody:
         required: true
         content:
@@ -162,6 +199,8 @@ paths:
                 $ref: "#/components/schemas/LedgerLogResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /ledger/entries:
@@ -238,6 +277,7 @@ paths:
   /response/terminate:
     post:
       summary: Terminate a suspicious process
+      description: "Requires role: admin."
       requestBody:
         required: true
         content:
@@ -253,11 +293,27 @@ paths:
                 $ref: "#/components/schemas/TerminateResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: >-
+            The termination guard refused. Raised when the PID does not exist,
+            is reserved (0 or 1), belongs to the response service or one of its
+            ancestors, is a protected system process, or is not inspectable by
+            this user. The request was well-formed and authorised, so this is
+            neither 400 nor 403; the process is simply not one this service will
+            kill. Note that 409 is outside Table 3.2's enumeration - see
+            APPROACH.md section 8.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /response/isolate:
     post:
       summary: Isolate host/network
+      description: "Requires role: admin."
       requestBody:
         required: true
         content:
@@ -273,11 +329,14 @@ paths:
                 $ref: "#/components/schemas/IsolateResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /response/recover:
     post:
       summary: Recover files from a snapshot
+      description: "Requires role: admin."
       requestBody:
         required: true
         content:
@@ -293,11 +352,14 @@ paths:
                 $ref: "#/components/schemas/RecoverResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /response/trigger:
     post:
       summary: Trigger automated incident response
+      description: "Requires role: admin."
       requestBody:
         required: true
         content:
@@ -313,11 +375,14 @@ paths:
                 $ref: "#/components/schemas/TriggerResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
   /analyze:
     post:
       summary: Analyze a file through Monitor, ML Engine, and Ledger
+      description: "Requires role: admin or enterprise."
       requestBody:
         required: true
         content:
@@ -335,6 +400,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "503":
@@ -354,6 +421,15 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     Unauthorized:
       description: Missing or invalid JWT.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: >-
+        Authenticated, but the token's role may not perform this action.
+        `details.role` carries the role presented and `details.required_roles`
+        the roles that would have been accepted.
       content:
         application/json:
           schema:
@@ -406,10 +482,14 @@ components:
           default: user_id_123
         role:
           type: string
-          default: admin
+          default: free
+          enum: [free, premium, enterprise, admin]
+          description: Anything other than `free` requires the `X-Bootstrap-Secret` header.
         tier:
           type: string
-          default: enterprise
+          default: free
+          enum: [free, premium, enterprise]
+          description: Rate-limit tier. Anything other than `free` requires the `X-Bootstrap-Secret` header.
     TokenResponse:
       type: object
       required: [access_token, token_type]
@@ -459,6 +539,16 @@ components:
         start_time:
           type: string
           format: date-time
+    MonitorStopRequest:
+      type: object
+      description: >-
+        Optional. Only one monitor runs per Monitor process, so an omitted
+        monitor_id means "stop whatever is running". When supplied it is checked
+        against the running monitor, and a mismatch is refused with 404.
+      properties:
+        monitor_id:
+          type: string
+          example: mon_a1b2c3
     MonitorStopResponse:
       type: object
       required: [status, stop_time]
@@ -485,6 +575,14 @@ components:
         uptime_seconds:
           type: integer
           example: 3600
+        file_patterns:
+          type: array
+          description: >-
+            The glob filter actually in force. An empty list means every file on
+            the watched path is processed.
+          items:
+            type: string
+          example: ["*.doc", "*.pdf", "*.jpg"]
     FileEvent:
       type: object
       required: [event_id, file_path, event_type, entropy, timestamp]

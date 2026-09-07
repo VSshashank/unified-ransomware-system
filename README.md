@@ -10,7 +10,7 @@ All six services are implemented. Nothing in `services/` is a stub any more.
 |---|---|---|---|
 | Monitor | 8001 | AS | Real. Watchdog file events, Shannon entropy, magic-byte false-positive mitigation, SHA-256 hashing, and fan-out to ML → Ledger → Response. Picks a polling watcher on mounts that carry no inotify — a Windows bind mount is `9p`, where native watches are accepted and never fire. |
 | ML Engine | 8002 | NI | Real. Serves two trained XGBoost models: the EMBER static-PE classifier (`ember_vector`) and a behavioural classifier over the Monitor's feature dict. Metrics are read from disk, not hardcoded. |
-| Ledger | 8003 | SI | Real. SQLite hash chain with tamper detection; full-chain verification measured at ~3.7ms against a <50ms target. |
+| Ledger | 8003 | SI | Real. SQLite hash chain with tamper detection; full-chain verification of 1,000 blocks measured at 3.1ms median (2.1–5.7ms over 50 warm runs) against a <50ms target. |
 | Response | 8004 | AS + SI | Real. AS owns terminate/isolate/trigger (psutil process termination, platform-aware network isolation); SI owns `recovery/` (VSS snapshots, restore, integrity verification). |
 | Gateway | 8000 | SH | Real. JWT auth, per-tier rate limiting, service proxies, and the `/analyze` orchestration. |
 | Dashboard | 8501 | SH | Real. Streamlit, 1s auto-refresh, live event feed and ledger evidence. |
@@ -54,12 +54,18 @@ pip install -r requirements.txt
 pytest
 ```
 
-The gateway exposes a development-only token endpoint:
+The gateway exposes a development-only token endpoint. An empty POST returns a
+`free` token, which can read but cannot act:
 
 ```bash
-curl -X POST http://localhost:8000/auth/token \
-  -H "Content-Type: application/json" \
-  -d '{"sub":"user_id_123","role":"admin","tier":"enterprise"}'
+curl -X POST http://localhost:8000/auth/token
+```
+
+Anything above `free` needs the shared bootstrap secret
+(`DEV_TOKEN_BOOTSTRAP_SECRET`, defaulted in `docker-compose.yml`):
+
+```bash
+curl -X POST http://localhost:8000/auth/token -H "Content-Type: application/json" -H "X-Bootstrap-Secret: dev-bootstrap-change-me" -d '{"sub":"user_id_123","role":"admin","tier":"enterprise"}'
 ```
 
 Use the returned token as:
@@ -68,7 +74,27 @@ Use the returned token as:
 Authorization: Bearer <token>
 ```
 
-This endpoint is only a Phase 4 placeholder and must be replaced with real identity management later.
+This endpoint is only a Phase 4 placeholder — it verifies no identity — and must
+be replaced with real identity management later. Set `ALLOW_DEV_TOKENS=false` to
+remove it entirely.
+
+### Roles
+
+Authentication (401) and authorization (403) are separate. Roles, least
+privileged first: `free`, `premium`, `enterprise`, `admin`.
+
+| Routes | Required role |
+|---|---|
+| All `GET` routes | any authenticated role |
+| `POST /monitor/start`, `/analyze`, `/predict`, `/ledger/log` | `admin` or `enterprise` |
+| `POST /monitor/stop`, all `/response/*` | `admin` |
+
+### Ports
+
+Only the gateway (`8000`) and dashboard (`8501`) are published on all
+interfaces. Monitor, ML engine, ledger, and response bind to `127.0.0.1` — they
+carry no authentication of their own, so they are reachable from the host but
+not from the network.
 
 ## API Contract
 
@@ -135,6 +161,32 @@ Benchmarks that assert the spec's numeric targets are marked `benchmark`; run th
 ```bash
 cd services/monitor && python -m pytest -m benchmark -q -s
 ```
+
+Benchmarks always measure and always assert, but they only write their numbers
+back to `reports/` when asked. Those files are committed evidence, so a plain
+test run leaves them alone rather than producing diffs anyone could commit by
+accident. To refresh them deliberately:
+
+```bash
+URDS_WRITE_REPORTS=1 python -m pytest -m benchmark -q -s
+```
+
+The simulator sweep is the held-out evidence for detection — thirteen ransomware
+families run past a live watcher, each one measured on what caught it and on
+whether `--restore` returned every file byte for byte:
+
+```bash
+URDS_WRITE_REPORTS=1 python scripts/simulator_sweep.py --files 8 --settle 2.0
+```
+
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [`docs/APPROACH.md`](docs/APPROACH.md) | Design decisions, and §8 where the implementation departs from the specification |
+| [`docs/DETECTION_HARDENING.md`](docs/DETECTION_HARDENING.md) | Five defects found by reading the source, the fixes, and the before/after evidence |
+| [`docs/test_cases.md`](docs/test_cases.md) | How each test case in the reference document maps to a test here |
+| [`docs/openapi/gateway.yaml`](docs/openapi/gateway.yaml) | The authoritative API contract (`docs/api_spec.md` is superseded) |
 
 ## Future Work
 

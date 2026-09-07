@@ -1,0 +1,286 @@
+{
+  "generated_at": "2026-09-05T05:57:30.999768Z",
+  "spec_reference": "section 6.4.1, Scenario A",
+  "files_per_family": 8,
+  "families_run": 13,
+  "families_detected": 13,
+  "families_detected_within_2s": 13,
+  "slowest_detection_seconds": 0.013,
+  "fastest_detection_seconds": 0.001,
+  "all_restore_round_trips": true,
+  "results": [
+    {
+      "family": "copycat",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.005,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "static_entropy"
+      ],
+      "files_suppressed": 0,
+      "files_attenuated": 0,
+      "training_learned": null,
+      "reason_sample": "entropy 7.99 >= 7.5; no recognised container header and a known ransomware extension",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "grinder",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.002,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "entropy_rise"
+      ],
+      "files_suppressed": 0,
+      "files_attenuated": 0,
+      "training_learned": null,
+      "reason_sample": "entropy rose 4.65 to 7.99 on a file already being watched, which is replacement rather than editing; the zip header does not explain a rise this large",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "headerspoof",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.004,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "entropy_rise"
+      ],
+      "files_suppressed": 0,
+      "files_attenuated": 0,
+      "training_learned": null,
+      "reason_sample": "entropy rose 4.65 to 7.99 on a file already being watched, which is replacement rather than editing; the zip header does not explain a rise this large",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "locker",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.013,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "static_entropy"
+      ],
+      "files_suppressed": 0,
+      "files_attenuated": 0,
+      "training_learned": null,
+      "reason_sample": "entropy 7.99 >= 7.5; no recognised container header and a known ransomware extension",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 1,
+      "restore_round_trips": true
+    },
+    {
+      "family": "notedrop",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.005,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "entropy_rise"
+      ],
+      "files_suppressed": 0,
+      "files_attenuated": 0,
+      "training_learned": null,
+      "reason_sample": "entropy rose 4.65 to 7.99 on a file already being watched, which is replacement rather than editing",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "partial",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.002,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "partial_entropy"
+      ],
+      "files_suppressed": 0,
+      "files_attenuated": 0,
+      "training_learned": null,
+      "reason_sample": "whole-file entropy 5.22 is below 7.5, but 25% of its 8 blocks are at or above 7.9 with a spread of 4.61 - part of this file was replaced with ciphertext and the rest was left alone",
+      "mean_entropy": 5.223,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "poisoner",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.001,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "entropy_rise"
+      ],
+      "files_suppressed": 0,
+      "files_attenuated": 0,
+      "training_learned": [],
+      "reason_sample": "entropy rose 4.65 to 7.99 on a file already being watched, which is replacement rather than editing",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 5,
+      "restore_round_trips": true
+    },
+    {
+      "family": "renamer",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.011,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "static_entropy"
+      ],
+      "files_suppressed": 0,
+      "files_attenuated": 0,
+      "training_learned": null,
+      "reason_sample": "entropy 7.99 >= 7.5; no recognised container header",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "silent",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.004,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "entropy_rise"
+      ],
+      "files_suppressed": 0,
+      "files_attenuated": 0,
+      "training_learned": null,
+      "reason_sample": "entropy rose 4.65 to 7.99 on a file already being watched, which is replacement rather than editing",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "slowburn",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.005,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "entropy_rise"
+      ],
+      "files_suppressed": 0,
+      "files_attenuated": 0,
+      "training_learned": null,
+      "reason_sample": "entropy rose 4.65 to 7.99 on a file already being watched, which is replacement rather than editing",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "spoofer",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.006,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "structural_mismatch"
+      ],
+      "files_suppressed": 0,
+      "files_attenuated": 0,
+      "training_learned": null,
+      "reason_sample": "the file declares a zip container but the zip structure is not there behind it, and the content is high entropy (7.99)",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "staged",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.004,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "entropy_rise"
+      ],
+      "files_suppressed": 0,
+      "files_attenuated": 0,
+      "training_learned": null,
+      "reason_sample": "entropy rose 4.65 to 7.99 on a file already being watched, which is replacement rather than editing",
+      "mean_entropy": 7.99,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    },
+    {
+      "family": "strider",
+      "files_encrypted": 8,
+      "files_flagged": 8,
+      "detected": true,
+      "detection_seconds": 0.008,
+      "within_2s": true,
+      "verdicts": [
+        "suspected_encryption"
+      ],
+      "signals": [
+        "partial_entropy"
+      ],
+      "files_suppressed": 0,
+      "files_attenuated": 0,
+      "training_learned": null,
+      "reason_sample": "whole-file entropy 5.86 is below 7.5, but 38% of its 8 blocks are at or above 7.9 with a spread of 4.61 - part of this file was replaced with ciphertext and the rest was left alone",
+      "mean_entropy": 5.859,
+      "collateral_events_flagged": 0,
+      "restore_round_trips": true
+    }
+  ]
+}

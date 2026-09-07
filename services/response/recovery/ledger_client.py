@@ -18,6 +18,28 @@ logger = logging.getLogger(__name__)
 # tolerated so an integrity check never fails purely on naming.
 HASH_KEYS = ("file_hash", "sha256", "hash")
 
+# Event types whose `file_hash` records the file in a state worth restoring *to*.
+#
+# An allowlist, and it has to be one. The Monitor only reaches the ledger for
+# events it has already judged suspicious - services/monitor/pipeline.py fans out
+# only when `verdict["suspicious"]` - and the hash it writes is the hash of the
+# file *as the attacker left it*. `response_action` then carries that same hash a
+# second time. So on a path that is under attack the newest hash is the
+# ciphertext's, and checking a restored file against it inverts the test: it
+# passes only when recovery hands back the encrypted file.
+#
+# A denylist would be one new event type away from reintroducing exactly that, so
+# an unrecognised event type is not trusted here. Being wrong in this direction
+# costs "integrity could not be verified", which is honest; being wrong in the
+# other direction certifies the attacker's output as the recovered file.
+# `snapshot_created` is included because it is written by the snapshot process
+# about content the defender captured, never in response to an attacker's
+# write. Note the residual limit: it attests to what the snapshot holds, so a
+# snapshot taken after encryption would attest to ciphertext. `file_baseline`
+# is what catches that, and test_tc04_integrity_check_catches_a_bad_snapshot
+# covers it.
+GOOD_STATE_EVENT_TYPES = frozenset({"file_baseline", "file_recovered", "snapshot_created"})
+
 
 class LedgerUnavailableError(RuntimeError):
     """The ledger service could not be reached or returned an error."""
@@ -74,11 +96,15 @@ class LedgerClient:
     # --------------------------------------------------------------------- reads
 
     def last_known_hash(self, file_path: str) -> Optional[dict]:
-        """Most recent hash the ledger holds for this path.
+        """Most recent hash recording this path in a state worth restoring *to*.
 
         This is the reference value for recovery's integrity check. Returns None
-        when no event ever carried a hash for the path - in which case recovery
-        can still restore the file, but cannot claim it verified it.
+        when no event ever carried a good-state hash for the path - in which case
+        recovery can still restore the file, but cannot claim it verified it.
+
+        Deliberately not "the most recent hash on this path": that one belongs to
+        whoever wrote the file last, which during an attack is the attacker. See
+        GOOD_STATE_EVENT_TYPES.
         """
         body = self._request(
             "GET",
@@ -86,6 +112,8 @@ class LedgerClient:
             params={"file_path": file_path, "newest_first": True, "limit": 100},
         )
         for block in body.get("blocks", []):
+            if block.get("event_type") not in GOOD_STATE_EVENT_TYPES:
+                continue
             event_data = block.get("event_data") or {}
             for key in HASH_KEYS:
                 value = event_data.get(key)

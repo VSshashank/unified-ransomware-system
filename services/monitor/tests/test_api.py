@@ -7,11 +7,13 @@ request/response shapes the gateway and dashboard depend on.
 import io
 import os
 import time
+import zipfile
 
 import pytest
 from fastapi.testclient import TestClient
 
 import app as monitor_app
+import synthetic_corpus
 
 
 @pytest.fixture
@@ -25,9 +27,15 @@ def client():
 def clean_state():
     monitor_app.EVENTS.clear()
     monitor_app._SEEN_FILES.clear()
+    # Module state, so a test that starts a filtered monitor would otherwise
+    # silently filter every test that runs after it.
+    monitor_app._file_patterns = []
+    monitor_app.ENTROPY_HISTORY.clear()
     yield
     monitor_app.EVENTS.clear()
     monitor_app._SEEN_FILES.clear()
+    monitor_app._file_patterns = []
+    monitor_app.ENTROPY_HISTORY.clear()
 
 
 def wait_for_event(predicate, timeout=5.0, interval=0.02):
@@ -91,6 +99,39 @@ def test_stop_marks_the_monitor_inactive(client, tmp_path):
     assert client.get("/monitor/status").json()["status"] == "stopped"
 
 
+def test_stop_accepts_the_documented_monitor_id(client, tmp_path):
+    """Listing 3.3 sends {monitor_id}; it used to be ignored entirely."""
+    started = client.post("/monitor/start", json={"watch_path": str(tmp_path)}).json()
+
+    stop = client.post("/monitor/stop", json={"monitor_id": started["monitor_id"]})
+
+    assert stop.status_code == 200
+    assert stop.json()["monitor_id"] == started["monitor_id"]
+    assert client.get("/monitor/status").json()["status"] == "stopped"
+
+
+def test_stop_refuses_a_monitor_id_that_is_not_running(client, tmp_path):
+    """Accepting an id and ignoring it lets a caller believe it stopped one
+    monitor while another kept running."""
+    client.post("/monitor/start", json={"watch_path": str(tmp_path)})
+
+    stop = client.post("/monitor/stop", json={"monitor_id": "mon_nope"})
+
+    assert stop.status_code == 404
+    assert stop.json()["error"]["code"] == "UNKNOWN_MONITOR_ID"
+    # Still running: a refused stop must not have stopped anything.
+    assert client.get("/monitor/status").json()["status"] == "active"
+
+
+def test_stop_without_a_body_still_stops_what_is_running(client, tmp_path):
+    """The id stays optional - one monitor runs per process, and every existing
+    caller posts an empty body."""
+    client.post("/monitor/start", json={"watch_path": str(tmp_path)})
+
+    assert client.post("/monitor/stop").status_code == 200
+    assert client.get("/monitor/status").json()["status"] == "stopped"
+
+
 def test_validation_error_uses_the_shared_envelope(client):
     response = client.post("/monitor/start", json={})
     assert response.status_code == 400
@@ -104,10 +145,25 @@ def test_tc01_file_creation_on_the_watched_path_is_detected(client, tmp_path):
     client.post("/monitor/start", json={"watch_path": str(tmp_path), "recursive": True})
 
     target = tmp_path / "payload.bin"
-    target.write_bytes(os.urandom(32768))
+    payload = os.urandom(32768)
+    target.write_bytes(payload)
 
-    event = wait_for_event(lambda e: e["file_path"].endswith("payload.bin"))
-    assert event is not None, "watchdog did not report the created file"
+    # Wait for the event that saw the *whole* file, not merely the first event
+    # for this path. `write_bytes` creates the file and then fills it, and
+    # watchdog is free to deliver `created` while it is still empty - the
+    # monitor then reads a 0-byte file and reports entropy 0.0, entirely
+    # correctly. Selecting on `file_path` alone latches onto that reading and
+    # the test fails intermittently on a race in the fixture rather than on
+    # anything the detector did. Observed once in 9 runs on Linux.
+    #
+    # `file_size` is what distinguishes the two readings, so it is what the
+    # predicate matches on. The assertions below still carry their weight: the
+    # wait establishes *which* write the event observed, and entropy and
+    # suspicious are then asserted rather than assumed.
+    event = wait_for_event(
+        lambda e: e["file_path"].endswith("payload.bin") and e["file_size"] == len(payload)
+    )
+    assert event is not None, "watchdog did not report the created file at its full size"
     assert event["event_type"] in {"created", "modified"}
     assert event["entropy"] > 7.0
     assert event["suspicious"] is True
@@ -132,6 +188,173 @@ def test_detected_event_carries_file_hash_for_the_ledger(client, tmp_path):
     assert event is not None
     assert event["file_hash"] is not None
     assert len(event["file_hash"]) == 64
+
+
+def test_differential_entropy_catches_in_place_encryption_end_to_end(client, tmp_path):
+    """A document that was ordinary text and is now ciphertext, over the live
+    watcher. The header is left as a valid ZIP throughout, so magic-byte
+    verification clears the file at both readings and only the rise sees it."""
+    client.post("/monitor/start", json={"watch_path": str(tmp_path)})
+
+    # The baseline reading has to be taken by the watcher, so it is written
+    # after monitoring starts.
+    target = tmp_path / "quarterly_report.docx"
+    target.write_bytes(b"PK\x03\x04" + b"quarterly figures, nothing unusual. " * 400)
+
+    baseline = wait_for_event(lambda e: e["file_path"].endswith("quarterly_report.docx"))
+    assert baseline is not None
+    assert baseline["suspicious"] is False
+    monitor_app.EVENTS.clear()
+
+    # Encrypted in place, keeping the name and the container header.
+    target.write_bytes(b"PK\x03\x04" + os.urandom(16384))
+
+    event = wait_for_event(
+        lambda e: e["file_path"].endswith("quarterly_report.docx") and e["suspicious"]
+    )
+    assert event is not None, "in-place encryption behind a valid ZIP header was not detected"
+    assert event["verdict"] == "suspected_encryption"
+    assert event["entropy_delta"] is not None and event["entropy_delta"] >= 2.0
+    assert "rose" in event["reason"]
+
+
+def test_ordinary_file_lifecycles_produce_no_differential_false_positives(tmp_path):
+    """Table 5.7 names differential entropy as a false-positive mitigation, so it
+    had better not be a source of them.
+
+    The static false-positive benchmark scores each file once and never builds
+    history, so it cannot exercise this rule at all. These are the sequences a
+    real desktop produces: archives written in passes, documents edited, office
+    files re-saved. None of them is replacement, and none may be flagged.
+    """
+    monitor_app.ENTROPY_HISTORY.clear()
+    flagged = []
+
+    def drive(name, writes):
+        path = tmp_path / name
+        for index, payload in enumerate(writes):
+            path.write_bytes(payload)
+            event = monitor_app.handle_event(str(path), "created" if index == 0 else "modified")
+            if event and event["suspicious"]:
+                flagged.append((name, index, event["verdict"], event["entropy_delta"]))
+
+    def zip_bytes(count):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            for index in range(count):
+                archive.writestr(f"photo_{index}.bin", os.urandom(16 * 1024))
+        return buffer.getvalue()
+
+    # An archive created empty, then written, then added to.
+    drive("photos.zip", [b"", zip_bytes(2), zip_bytes(6), zip_bytes(12)])
+    # A document edited repeatedly.
+    text = b"the quarterly figures are in line with expectations. "
+    drive("report.txt", [text * 100, text * 400, text * 900])
+    # An office file re-saved: a .docx is a ZIP, so it sits near 8.0 throughout.
+    drive("deck.docx", [zip_bytes(3), zip_bytes(4), zip_bytes(5)])
+    # A large download landing in pieces. Every write but the last is a real MP4
+    # cut short, which is what a partial download *is* - the box chain is sound
+    # and the final box has not finished arriving. Structural validation has to
+    # read that as "not finished" rather than "not an MP4", or every large file
+    # anyone downloads onto a watched path becomes an alert while it lands.
+    movie = synthetic_corpus.build_mp4(900_000)
+    drive("movie.mp4", [movie[:64_000], movie[:256_000], movie])
+
+    assert not flagged, f"differential entropy produced false positives: {flagged}"
+
+
+def test_a_file_seen_once_reports_no_entropy_delta(client, tmp_path):
+    client.post("/monitor/start", json={"watch_path": str(tmp_path)})
+    (tmp_path / "fresh.bin").write_bytes(os.urandom(8192))
+
+    event = wait_for_event(lambda e: e["file_path"].endswith("fresh.bin"))
+    assert event is not None
+    assert event["entropy_delta"] is None
+
+
+def test_file_patterns_filter_the_files_that_are_processed(client, tmp_path):
+    """Listing 3.1's file_patterns used to be stored and echoed but never applied.
+
+    gateway.yaml marks the field required, so a caller asking to watch only
+    *.pdf got every file instead, with nothing to indicate the filter had been
+    discarded.
+    """
+    client.post("/monitor/start", json={"watch_path": str(tmp_path), "file_patterns": ["*.pdf"]})
+
+    (tmp_path / "report.pdf").write_bytes(b"%PDF-1.4\n" + os.urandom(2048))
+    (tmp_path / "notes.txt").write_text("nothing to see here")
+
+    assert wait_for_event(lambda e: e["file_path"].endswith("report.pdf")) is not None
+    # Give the unwanted event the same chance to show up before ruling it out.
+    assert wait_for_event(lambda e: e["file_path"].endswith("notes.txt"), timeout=1.0) is None
+
+
+def test_an_empty_pattern_list_still_watches_everything(client, tmp_path):
+    client.post("/monitor/start", json={"watch_path": str(tmp_path), "file_patterns": []})
+
+    (tmp_path / "anything.xyz").write_bytes(os.urandom(2048))
+
+    assert wait_for_event(lambda e: e["file_path"].endswith("anything.xyz")) is not None
+
+
+def test_status_reports_the_filter_in_force(client, tmp_path):
+    client.post("/monitor/start", json={"watch_path": str(tmp_path), "file_patterns": ["*.doc", "*.pdf"]})
+
+    assert client.get("/monitor/status").json()["file_patterns"] == ["*.doc", "*.pdf"]
+
+
+@pytest.mark.parametrize(
+    "path,patterns,expected",
+    [
+        ("/watch/report.pdf", ["*.pdf"], True),
+        ("/watch/report.txt", ["*.pdf"], False),
+        ("/watch/report.txt", [], True),
+        ("/watch/a.doc", ["*.doc", "*.pdf", "*.jpg"], True),
+        # Listing 3.1's own example list.
+        ("/watch/photo.jpg", ["*.doc", "*.pdf", "*.jpg"], True),
+        ("/watch/photo.png", ["*.doc", "*.pdf", "*.jpg"], False),
+        # A directory-bearing pattern matches the whole path.
+        ("/watch/reports/q4.pdf", ["*/reports/*"], True),
+        ("/watch/other/q4.pdf", ["*/reports/*"], False),
+    ],
+)
+def test_pattern_matching(path, patterns, expected):
+    assert monitor_app.matches_patterns(path, patterns) is expected
+
+
+def test_pattern_matching_ignores_case_where_the_filesystem_does():
+    """fnmatch normalises case per platform, matching how the FS behaves."""
+    expected = os.path.normcase("A.PDF") == os.path.normcase("a.pdf")
+    assert monitor_app.matches_patterns("/watch/report.PDF", ["*.pdf"]) is expected
+
+
+def test_detected_event_carries_every_feature_the_model_scores(client, tmp_path):
+    """The dashboard scores an event straight off /monitor/events.
+
+    Anything missing here is not defaulted by the ML engine - features_to_vector
+    interpolates it from entropy instead, which is what made a legitimate ZIP
+    render as a threat on the banner. All seven of the behavioural model's
+    inputs have to be derivable from the event alone.
+    """
+    client.post("/monitor/start", json={"watch_path": str(tmp_path)})
+    (tmp_path / "scored.bin").write_bytes(os.urandom(8192))
+
+    event = wait_for_event(lambda e: e["file_path"].endswith("scored.bin"))
+    assert event is not None
+    for field in [
+        "entropy",
+        "file_size",
+        "magic_bytes",
+        "container_format",
+        "ransom_extension",
+        "printable_ratio",
+        "byte_value_std",
+        "chi_square_uniformity",
+    ]:
+        assert field in event, f"{field} missing from the event the dashboard scores"
+
+    # Measured, not interpolated: random bytes sit at ~0.371 printable.
+    assert 0.3 < event["printable_ratio"] < 0.45
 
 
 def test_events_endpoint_returns_newest_first(client, tmp_path):
@@ -171,15 +394,47 @@ def test_status_counts_distinct_files_not_events(client, tmp_path):
 
 def test_features_are_measured_from_the_real_file(client, tmp_path):
     target = tmp_path / "sample.png"
-    target.write_bytes(b"\x89PNG\r\n\x1a\n" + os.urandom(50000))
+    target.write_bytes(synthetic_corpus.build_png(50000))
 
     body = client.post("/features", json={"path": str(target)}).json()
 
     assert body["magic_bytes"] == "89504E47"
     assert body["file_size"] == target.stat().st_size
     assert body["container_format"] == "png"
+    assert body["container_valid"] is True
     assert body["suspicious"] is False
     assert 0.0 <= body["modification_rate"] <= 1.0
+
+
+def test_features_report_a_forged_container_as_forged(client, tmp_path):
+    """The same eight magic bytes, nothing behind them.
+
+    This file used to be what the test above wrote, and the endpoint used to
+    call it a PNG. It is the `spoofer` evasion in a single file: the header is
+    free to write, and until the structure was checked it bought the container
+    exemption outright.
+    """
+    target = tmp_path / "spoofed.png"
+    target.write_bytes(b"\x89PNG\r\n\x1a\n" + os.urandom(50000))
+
+    body = client.post("/features", json={"path": str(target)}).json()
+
+    assert body["container_format"] == "png"
+    assert body["container_valid"] is False
+    assert body["suspicious"] is True
+    assert body["signal"] == "structural_mismatch"
+
+
+def test_features_do_not_judge_a_format_with_no_validator(client, tmp_path):
+    """`None` is not `False`. A RAR nobody parses stays exempt, as before."""
+    target = tmp_path / "archive.rar"
+    target.write_bytes(b"Rar!\x1a\x07\x00" + os.urandom(50000))
+
+    body = client.post("/features", json={"path": str(target)}).json()
+
+    assert body["container_format"] == "rar"
+    assert body["container_valid"] is None
+    assert body["suspicious"] is False
 
 
 def test_features_are_deterministic_for_the_same_file(client, tmp_path):

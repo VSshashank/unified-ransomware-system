@@ -1,0 +1,179 @@
+{
+  "schema": "urds.implementation_record.v1",
+  "generated_at": "2026-09-07T12:59:22.759910+00:00",
+  "commit": "53e525efbbbf63d512e12aab93d15ad1cebbdb19",
+  "branch": "claude/new-session-8zluf7",
+  "what_this_is": "The evidence behind the Table 9.9 sentence 'The project team designed and implemented...'. Read from git history; the only hand-entered table is the email-to-initials mapping, and each set of initials is checked against the feature/<INITIALS>-<topic> branch convention recorded in NOVELTY_PROOF_PLAN.md section 9.15.",
+  "totals": {
+    "commits_on_head": 106,
+    "commits_all_refs": 106,
+    "tracked_files": 226,
+    "files_with_a_first_author": 219,
+    "contributors": 4,
+    "unmapped_emails": []
+  },
+  "ai_assistance": {
+    "trailer": "Co-Authored-By: Claude",
+    "commits_on_head_with_the_trailer": 90,
+    "commits_on_head": 106,
+    "proportion": 0.8491,
+    "first_such_commit": "2026-08-06",
+    "statement": "Commits carrying the trailer were produced with an AI assistant in the loop, under the named author's account and with the named author accepting each change. The proportion is reported because a thesis that claims a team built something has to say how it was built."
+  },
+  "by_contributor": {
+    "AS": {
+      "name": "apekshashetty22",
+      "commits_on_head": 5,
+      "commits_all_refs": 5,
+      "first_commit": "2026-07-19",
+      "last_commit": "2026-08-06",
+      "insertions_by_area": {
+        "services/monitor": 172
+      },
+      "files_first_authored_by_area": {},
+      "files_first_authored_total": 0,
+      "branches_under_the_convention": [
+        "feature/AS-container-exemption-repair",
+        "feature/AS-response-engine"
+      ],
+      "convention_verified": true,
+      "ai_assisted_commits_on_head": 0
+    },
+    "NI": {
+      "name": "nikhil-k3312",
+      "commits_on_head": 80,
+      "commits_all_refs": 80,
+      "first_commit": "2026-08-05",
+      "last_commit": "2026-09-05",
+      "insertions_by_area": {
+        "reports": 30024,
+        "docs": 19847,
+        "services/monitor": 14634,
+        "scripts": 12932,
+        "src": 5207,
+        "services/response": 4058,
+        "services/gateway": 2981,
+        "services/ml-engine": 1992,
+        "services/ledger": 1536,
+        "root": 1054,
+        "services/dashboard": 652,
+        ".github": 218,
+        "data": 0
+      },
+      "files_first_authored_by_area": {
+        "reports": 30,
+        "docs": 25,
+        "services/monitor": 22,
+        "scripts": 21,
+        "src": 16,
+        "services/gateway": 6,
+        "services/ml-engine": 4,
+        "services/response": 2,
+        ".github": 2,
+        "services/ledger": 1,
+        "root": 1
+      },
+      "files_first_authored_total": 130,
+      "branches_under_the_convention": [
+        "feature/NI-ml-engine-service",
+        "feature/NI-ml-training"
+      ],
+      "convention_verified": true,
+      "ai_assisted_commits_on_head": 79
+    },
+    "SH": {
+      "name": "Shashank V S",
+      "commits_on_head": 18,
+      "commits_all_refs": 18,
+      "first_commit": "2026-02-01",
+      "last_commit": "2026-08-25",
+      "insertions_by_area": {
+        "reports": 6636,
+        "docs": 4666,
+        "services/monitor": 1447,
+        "scripts": 1136,
+        "services/response": 954,
+        "services/gateway": 833,
+        "services/ml-engine": 725,
+        "src": 447,
+        "services/dashboard": 377,
+        "root": 338,
+        "services/ledger": 166,
+        "data": 0
+      },
+      "files_first_authored_by_area": {
+        "services/gateway": 14,
+        "services/monitor": 10,
+        "services/ml-engine": 8,
+        "services/response": 8,
+        "docs": 6,
+        "reports": 6,
+        "services/ledger": 4,
+        "root": 4,
+        "services/dashboard": 3,
+        "src": 2,
+        "scripts": 2,
+        "data": 1
+      },
+      "files_first_authored_total": 68,
+      "branches_under_the_convention": [
+        "feature/SH-gateway-ledger-routes"
+      ],
+      "convention_verified": true,
+      "ai_assisted_commits_on_head": 8
+    },
+    "SI": {
+      "name": "siddhi subhash gaikwad",
+      "commits_on_head": 3,
+      "commits_all_refs": 3,
+      "first_commit": "2026-08-06",
+      "last_commit": "2026-08-06",
+      "insertions_by_area": {
+        "services/response": 1853,
+        "services/ledger": 1159,
+        "scripts": 323,
+        "root": 314,
+        "reports": 60
+      },
+      "files_first_authored_by_area": {
+        "services/ledger": 9,
+        "services/response": 8,
+        "scripts": 2,
+        "root": 1,
+        "reports": 1
+      },
+      "files_first_authored_total": 21,
+      "branches_under_the_convention": [
+        "feature/SI-hash-chain",
+        "feature/SI-ledger-tamper-visibility",
+        "feature/SI-recovery-path-portability"
+      ],
+      "convention_verified": true,
+      "ai_assisted_commits_on_head": 3
+    }
+  },
+  "branch_convention": {
+    "AS": [
+      "feature/AS-container-exemption-repair",
+      "feature/AS-response-engine"
+    ],
+    "NI": [
+      "feature/NI-ml-engine-service",
+      "feature/NI-ml-training"
+    ],
+    "SH": [
+      "feature/SH-gateway-ledger-routes"
+    ],
+    "SI": [
+      "feature/SI-hash-chain",
+      "feature/SI-ledger-tamper-visibility",
+      "feature/SI-recovery-path-portability"
+    ]
+  },
+  "what_this_does_not_show": [
+    "Design discussions, reviews and pair work leave no commit of their own, so a contributor's commit count understates their share of the design.",
+    "First-authorship credits whoever committed a file first, which is not always whoever wrote it - a file added in a squashed import commit is credited to the importer.",
+    "Insertion counts include generated reports and vendored data, so they measure volume rather than effort. They are reported by area so a reader can discount reports/ and models/ if they choose.",
+    "The record covers this repository only. Work carried out elsewhere - reading, planning, the written report - is invisible to it."
+  ]
+}
