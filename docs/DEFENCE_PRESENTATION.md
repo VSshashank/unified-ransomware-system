@@ -360,7 +360,7 @@ project applied to the container repair — a mitigation whose benign cost is no
 measured is not a mitigation — has to apply here too, or it was never a rule.
 
 **"How much of this did an AI write?"**
-82 of 92 commits on the studied branch carry a `Co-Authored-By: Claude` trailer —
+90 of 106 commits on the studied branch carry a `Co-Authored-By: Claude` trailer —
 89.1%, published in `PROJECT_IMPLEMENTATION_RECORD.md` rather than left to be
 inferred. What answers the underlying concern is not a claim about the assistant
 but the evidence discipline: every number here comes from a script you can run,

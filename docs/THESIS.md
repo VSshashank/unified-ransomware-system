@@ -163,7 +163,7 @@ is strongest in an introduction.
   answer either way.
 - **The system was not built for this study.** Phases 1–4 built it; Phases 5–8
   study one mechanism in it. `PROJECT_IMPLEMENTATION_RECORD.md` records who built
-  what, including the fact that 82 of the 92 commits on the studied branch carry
+  what, including the fact that 90 of the 106 commits on the studied branch carry
   an AI co-authorship trailer.
 - **Recovery is verified locally and not through VSS.** Thirteen of thirteen
   local restore round-trips verify; snapshot-backed restore through the Volume
@@ -2313,9 +2313,9 @@ plan §7.1 had in fact predeclared the variant.
 misdirected work, and the reason the strongest result exists is that the error was
 caught before submission rather than after.
 
-## 11.10 89.1% of the studied commits are AI-assisted
+## 11.10 84.9% of the studied commits are AI-assisted
 
-82 of the 92 commits on the studied branch carry a `Co-Authored-By: Claude`
+90 of the 106 commits on the studied branch carry a `Co-Authored-By: Claude`
 trailer. The figure is in `PROJECT_IMPLEMENTATION_RECORD.md` and is repeated here
 because a limitations chapter that omitted it would be incomplete.
 
@@ -2410,18 +2410,26 @@ The full record is `PROJECT_IMPLEMENTATION_RECORD.md`, generated from git by
 
 | | Contributor | Commits on `HEAD` | Files first authored | Active |
 |---|---|---|---|---|
-| NI | nikhil-k3312 | 72 | 116 | 2026-08-05 → 2026-09-05 |
-| SH | Shashank V S | 12 | 65 | 2026-02-01 → 2026-08-25 |
+| NI | nikhil-k3312 | 80 | 130 | 2026-08-05 → 2026-09-05 |
+| SH | Shashank V S | 18 | 68 | 2026-02-01 → 2026-08-25 |
 | AS | apekshashetty22 | 5 | 0 | 2026-07-19 → 2026-08-06 |
 | SI | siddhi subhash gaikwad | 3 | 21 | 2026-08-06 |
 
-92 commits on `HEAD`, 98 across all refs, 209 tracked files, four contributors,
+106 commits on `HEAD`, 106 across all refs, 226 tracked files, four contributors,
 every one verified against §9.15's `feature/<INITIALS>-<topic>` branch convention.
 
-**The contribution is lopsided** — 72 of 92 commits by one contributor, all after
-5 August 2026 — and **82 of 92 commits (89.1%) carry a `Co-Authored-By: Claude`
-trailer.** Both figures are published rather than inferred. The ten without the
-trailer are all five of AS's, four of SH's and one of NI's, which means the
+These figures were regenerated on 7 September 2026. The delivered branch had been
+re-rooted, which made the Phase 1–4 commits unreachable from it: run there, the
+generator returned 50 commits, one contributor and 100% AI assistance, with AS,
+SH and SI each at zero. The ancestry was reconnected by merge — no commit hash
+was rewritten, so every freeze hash quoted in this thesis still resolves. The
+superseded figures were 92 commits, 209 files and 89.1%; they are retained here
+with their date, as Appendix D requires of any superseded figure.
+
+**The contribution is lopsided** — 80 of 106 commits by one contributor, all after
+5 August 2026 — and **90 of 106 commits (84.9%) carry a `Co-Authored-By: Claude`
+trailer.** Both figures are published rather than inferred. The sixteen without
+the trailer are all five of AS's, ten of SH's and one of NI's, which means the
 monitor's entropy, magic-byte and watchdog primitives and the trained model are
 hand-written and the measurement layer above them largely is not.
 
@@ -2493,6 +2501,7 @@ superseded figure is kept with the date it was superseded and the reason.
 | "Tamper-evident" | unqualified | against an attacker who does not recompute | 2026-09-05 | 0 of 8 structural cases detected |
 | Latency | 25.764 ms p95 | 94.650 ms p95, 110.550 ms p99 under 16-way concurrency | 2026-09-05 | the first was a single-file benchmark |
 | Test count, clean checkout | 639 passed | 659 passed | 2026-09-05 | TC-26 added 20 cases |
+| Authorship record | 92 commits, 209 files, 89.1% AI | 106 commits, 226 files, 84.9% AI | 2026-09-07 | the delivered branch was re-rooted, so the Phase 1–4 commits were unreachable and AS, SH and SI each counted zero; ancestry reconnected by merge, no hash rewritten |
 
 # Appendix E — Decision rules D1–D6
 

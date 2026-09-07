@@ -145,10 +145,25 @@ def test_tc01_file_creation_on_the_watched_path_is_detected(client, tmp_path):
     client.post("/monitor/start", json={"watch_path": str(tmp_path), "recursive": True})
 
     target = tmp_path / "payload.bin"
-    target.write_bytes(os.urandom(32768))
+    payload = os.urandom(32768)
+    target.write_bytes(payload)
 
-    event = wait_for_event(lambda e: e["file_path"].endswith("payload.bin"))
-    assert event is not None, "watchdog did not report the created file"
+    # Wait for the event that saw the *whole* file, not merely the first event
+    # for this path. `write_bytes` creates the file and then fills it, and
+    # watchdog is free to deliver `created` while it is still empty - the
+    # monitor then reads a 0-byte file and reports entropy 0.0, entirely
+    # correctly. Selecting on `file_path` alone latches onto that reading and
+    # the test fails intermittently on a race in the fixture rather than on
+    # anything the detector did. Observed once in 9 runs on Linux.
+    #
+    # `file_size` is what distinguishes the two readings, so it is what the
+    # predicate matches on. The assertions below still carry their weight: the
+    # wait establishes *which* write the event observed, and entropy and
+    # suspicious are then asserted rather than assumed.
+    event = wait_for_event(
+        lambda e: e["file_path"].endswith("payload.bin") and e["file_size"] == len(payload)
+    )
+    assert event is not None, "watchdog did not report the created file at its full size"
     assert event["event_type"] in {"created", "modified"}
     assert event["entropy"] > 7.0
     assert event["suspicious"] is True

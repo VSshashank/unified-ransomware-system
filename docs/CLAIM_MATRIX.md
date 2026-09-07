@@ -54,14 +54,14 @@ have required.
 ### C-01 — "The project team designed and implemented…"
 
 `PROJECT_IMPLEMENTATION_RECORD.md`, generated from git by
-`scripts/implementation_record.py`. Four contributors, 92 commits on `HEAD`, 209
+`scripts/implementation_record.py`. Four contributors, 106 commits on `HEAD`, 226
 tracked files; SH first authored files in all six services, SI the ledger's hash
 chain and the recovery internals, AS the monitor's entropy, magic-byte and
 watchdog primitives, NI the Semester 2 measurement layer.
 
 **What the record also publishes rather than leaving to be inferred:** 82 of the
-92 commits (89.1%) carry a `Co-Authored-By: Claude` trailer, and the contribution
-is lopsided — one contributor made 72 of 92 commits, all after 5 August 2026. The
+106 commits (84.9%) carry a `Co-Authored-By: Claude` trailer, and the contribution
+is lopsided — one contributor made 80 of 106 commits, all after 5 August 2026. The
 claim is made with those facts stated, not around them.
 
 ### C-02 — "In the reviewed URDS Monitor…"

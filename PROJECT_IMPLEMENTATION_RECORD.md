@@ -10,8 +10,16 @@ own history by `scripts/implementation_record.py` and stored in
 URDS_WRITE_REPORTS=1 python scripts/implementation_record.py
 ```
 
-Generated from commit `f6c5835`, 5 September 2026. **92 commits on `HEAD`, 98
-across all refs, 209 tracked files, four contributors.**
+Generated from commit `53e525e`, 7 September 2026. **106 commits on `HEAD`, 106
+across all refs, 226 tracked files, four contributors.**
+
+> **Regenerated 7 September 2026.** The figures below moved because the delivered
+> branch had been re-rooted and the Phase 1–4 commits were not reachable from it.
+> Run on that branch, this generator returned 50 commits, one contributor and
+> 100% AI assistance — AS, SH and SI each showed zero. The ancestry was
+> reconnected by merge (no hash was rewritten, so every freeze tag the thesis
+> quotes still resolves), and these are the numbers the generator returns now.
+> The superseded figures were 92 commits, 209 files and 89.1%.
 
 ---
 
@@ -19,8 +27,8 @@ across all refs, 209 tracked files, four contributors.**
 
 | | Contributor | Commits on `HEAD` | Files first authored | Active | Branches under §9.15's convention |
 |---|---|---|---|---|---|
-| **NI** | nikhil-k3312 | 72 | 116 | 2026-08-05 → 2026-09-05 | `feature/NI-ml-engine-service`, `feature/NI-ml-training` |
-| **SH** | Shashank V S | 12 | 65 | 2026-02-01 → 2026-08-25 | `feature/SH-gateway-ledger-routes` |
+| **NI** | nikhil-k3312 | 80 | 130 | 2026-08-05 → 2026-09-05 | `feature/NI-ml-engine-service`, `feature/NI-ml-training` |
+| **SH** | Shashank V S | 18 | 68 | 2026-02-01 → 2026-08-25 | `feature/SH-gateway-ledger-routes` |
 | **AS** | apekshashetty22 | 5 | 0 | 2026-07-19 → 2026-08-06 | `feature/AS-container-exemption-repair`, `feature/AS-response-engine` |
 | **SI** | siddhi subhash gaikwad | 3 | 21 | 2026-08-06 | `feature/SI-hash-chain`, `feature/SI-ledger-tamper-visibility`, `feature/SI-recovery-path-portability` |
 
@@ -43,9 +51,9 @@ gateway (14 files), the monitor's original detection path (10), the ML engine
 the hash chain and its tamper surface — and 8 in `services/response`, the
 recovery and snapshot code.
 
-**NI** created 116 files, concentrated in what Semester 2 added: 27 reports, 21
-monitor files (the capability model, the container registry, the policy switch
-and the Phase 5–7 test suites), 20 documents, 17 measurement scripts, 16 `src/`
+**NI** created 130 files, concentrated in what Semester 2 added: 30 reports, 25
+documents, 22 monitor files (the capability model, the container registry, the
+policy switch and the Phase 5–7 test suites), 21 measurement scripts, 16 `src/`
 research files and the CI workflow.
 
 **AS** first authored no file that survives in the tree, and that count
@@ -65,16 +73,16 @@ three limits in mind — they are recorded in the report itself under
 
 1. **Design leaves no commit.** Discussion, review and pair work do not appear
    here at all, so a low commit count understates a contributor's share of the
-   design. SH's twelve commits include the decision to split the system into six
+   design. SH's eighteen commits include the decision to split the system into six
    services, which shaped every commit that followed.
 2. **First-authorship credits the committer.** A file added inside a squashed
    import is credited to whoever pushed the import.
-3. **Insertions measure volume.** 26,131 of NI's insertions on `HEAD` are into
+3. **Insertions measure volume.** 30,024 of NI's insertions on `HEAD` are into
    `reports/`, which are generated files. Insertions are reported per area in
    the JSON so a reader can discount them.
 
 **The honest summary is that the contribution is lopsided.** One contributor
-made 78% of the commits on `HEAD`, all of them after 5 August 2026. That is what
+made 75% of the commits on `HEAD`, all of them after 5 August 2026. That is what
 the history shows and the thesis says so rather than presenting a four-way
 division of labour the repository does not support.
 
@@ -82,13 +90,13 @@ division of labour the repository does not support.
 
 ## 2. AI assistance
 
-**82 of the 92 commits on `HEAD` (89.1%) carry a `Co-Authored-By: Claude`
+**90 of the 106 commits on `HEAD` (84.9%) carry a `Co-Authored-By: Claude`
 trailer**, the first on 6 August 2026.
 
 Those commits were produced with an AI assistant in the loop, under the named
 author's account, with that author accepting each change. The number is
 published here rather than left to be inferred because a thesis that claims a
-team built something has to say how it was built, and 89.1% is not a footnote.
+team built something has to say how it was built, and 84.9% is not a footnote.
 
 What the trailer does and does not mean:
 
@@ -101,8 +109,8 @@ What the trailer does and does not mean:
 - It does **not** transfer authorship. The commits are authored by the named
   contributor, who is answerable for them.
 
-Ten commits on `HEAD` carry no trailer: **all five of AS's**, four of SH's (the
-three February 2026 structural commits and the June gateway stack), and one of
+Sixteen commits on `HEAD` carry no trailer: **all five of AS's**, ten of SH's
+(the February 2026 structural commits and the June gateway stack), and one of
 NI's (the EMBER feature pipeline and the trained XGBoost model, 5 August 2026).
 So the monitor's entropy, magic-byte and watchdog primitives and the detection
 model itself are hand-written, and the Semester 2 measurement and documentation
