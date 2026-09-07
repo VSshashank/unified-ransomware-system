@@ -63,7 +63,20 @@ jobs:
             # tracked - so Table 9.7's rows are covered either way.
             extras: ""
           - service: response
-            extras: ""
+            # Test-only, and the same case as `psutil` above. TC-04's
+            # `test_tc04_a_real_detect_encrypt_recover_cycle_verifies` loads
+            # `services/monitor/app.py` by file location, because a real
+            # detect-encrypt-recover cycle needs the real detector rather than a
+            # stand-in for it - and the Monitor imports `watchdog` at module
+            # scope. Nothing the Response container runs imports it, so it does
+            # not belong in `services/response/requirements.txt`; it belongs
+            # here, named as what it is.
+            #
+            # This is the first thing the first CI run ever found. It passed on
+            # every developer machine because those have all five services'
+            # requirements installed in one environment, which is exactly the
+            # condition the per-service matrix exists to stop hiding.
+            extras: "watchdog==6.0.0"
     steps:
       - uses: actions/checkout@v4
 
