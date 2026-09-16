@@ -10,3 +10,13 @@ httpx==0.28.1          # ML / ledger / response fan-out
 # only in /features, never on the watchdog event thread, so it costs the
 # detection-latency budget nothing.
 pefile==2024.8.26
+
+# AS process attribution (TC-26). The Security-channel 4663 subscription in
+# attribution.py needs win32evtlog. Marked for Windows because that is the only
+# platform the source exists on: the Linux container and the ubuntu-latest CI
+# runner install nothing here and fall through to NullSource, where every event
+# is UNKNOWN and the pipeline isolates instead of terminating - which is the
+# behaviour that shipped before attribution existed. `attribution.py` imports
+# win32evtlog inside `SecurityLogSource.start`, never at module scope, so the
+# module imports cleanly with this line unsatisfied.
+pywin32==308; sys_platform == "win32"

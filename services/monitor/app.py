@@ -34,8 +34,10 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
 
+import attribution
 import pipeline
 from admissibility import adjudicate
+from attribution import attributor, build_source
 from containers import (
     compression_evidence,
     container_status,
@@ -524,15 +526,27 @@ def handle_event(path: str, event_type: str) -> dict | None:
         "entropy_delta": entropy_delta,
         **statistics,
         "timestamp": utc_now(),
-        # watchdog reports *what* changed, never *who* changed it - attribution
-        # needs eBPF/fanotify (Linux) or ETW (Windows), which is Phase 5 work.
-        # Reporting the monitor's own PID here would be worse than admitting the
-        # gap: the response service runs in a different PID namespace, so that
-        # number would name an unrelated process for it to kill.
+        # watchdog reports *what* changed, never *who* changed it. The answer
+        # comes from `attribution`, and it is filled in below rather than here
+        # because resolving it may wait for an audit record still in flight.
+        # An event that is not suspicious never asks, so the common path costs
+        # nothing. Where no source is available these stay as they are and the
+        # pipeline behaves exactly as it did before attribution existed.
         "process_id": None,
+        "process_image": None,
+        "attribution_confidence": attribution.UNKNOWN,
+        "attribution_reason": "not attempted: event is not suspicious",
+        "attribution_source": attributor.source.name,
         "user": "system",
     }
     event["detection_latency_ms"] = round((perf_counter() - started) * 1000, 3)
+
+    # Attribution runs *after* the latency measurement, deliberately. Waiting
+    # for the Security channel to deliver a 4663 is response-budget work;
+    # charging it to Table 5.9's <100ms detection target would turn that target
+    # into a measurement of the event log's delivery lag.
+    if event["suspicious"]:
+        event.update(attributor.resolve(path).as_event_fields())
 
     first_sighting = _record(event)
 
@@ -711,6 +725,21 @@ def start_monitoring(payload: MonitorStartRequest) -> JSONResponse:
     _file_patterns = list(payload.file_patterns)
     STARTED_AT = time()
 
+    # Attribution starts with the watch, not at import, so a test that imports
+    # this module does not open a Security-channel subscription. Failure here
+    # is not a failure to monitor: without a source every event is UNKNOWN and
+    # the pipeline isolates instead of terminating, which is what it did
+    # before. The reason is logged once and served from /monitor/attribution.
+    if not attributor.available:
+        attributor.start(build_source(attributor.log))
+        if attributor.available:
+            logger.info("attribution active via %s", attributor.source.name)
+        else:
+            logger.warning(
+                "attribution unavailable (%s); responses will isolate rather than terminate",
+                attributor.source.error,
+            )
+
     logger.info("monitoring %s (recursive=%s) as %s", _watch_path, payload.recursive, _monitor_id)
     return JSONResponse(
         content={
@@ -720,6 +749,8 @@ def start_monitoring(payload: MonitorStartRequest) -> JSONResponse:
             "recursive": payload.recursive,
             "file_patterns": payload.file_patterns,
             "start_time": utc_now(),
+            "attribution_available": attributor.available,
+            "attribution_source": attributor.source.name,
         }
     )
 
@@ -778,7 +809,30 @@ def monitor_status() -> dict:
         # that never fired at all.
         "whitelist_entries": len(WHITELIST),
         "training_mode": TRAINING_MODE.status()["state"],
+        # Whether this Monitor can name the process behind an alert. Reported
+        # here because an unattributed incident and an incident whose attacker
+        # was identified and spared look identical from `/monitor/events`
+        # otherwise.
+        "attribution_available": attributor.available,
+        "attribution_source": attributor.source.name,
     }
+
+
+@app.get("/monitor/attribution")
+def monitor_attribution() -> dict:
+    """What the attribution layer can and cannot currently do, and why.
+
+    The failure modes here are all configuration - not elevated, audit policy
+    off, no SACL on the watched tree - and every one of them looks from the
+    outside like a quiet filesystem. This endpoint is what makes the difference
+    legible without reading the Monitor's logs.
+    """
+    status = attributor.status()
+    status["setup"] = (
+        "powershell -ExecutionPolicy Bypass -File scripts/setup_attribution_audit.ps1 "
+        "-WatchPath <dir>   (Administrator)"
+    )
+    return status
 
 
 @app.get("/monitor/events")

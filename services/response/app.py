@@ -74,6 +74,14 @@ class TriggerRequest(BaseModel):
     # ledger entry records why the alert survived to reach it. Optional, so a
     # caller that predates the governance layer still validates.
     admissibility: dict | None = None
+    # How the offending PID was arrived at. The Monitor has already applied the
+    # kill gate before choosing `action_required`; these are recorded here so
+    # the Response service's own ledger entry says on what evidence it killed,
+    # rather than leaving an auditor to join two chains on a timestamp.
+    # Optional, so a caller that predates attribution still validates.
+    attribution_confidence: str | None = None
+    attribution_reason: str | None = None
+    process_image: str | None = None
 
 
 def utc_now() -> str:
@@ -230,6 +238,9 @@ def trigger(payload: TriggerRequest) -> JSONResponse:
             "action": "trigger",
             "incident_id": payload.incident_id,
             "process_id": payload.process_id,
+            "process_image": payload.process_image,
+            "attribution_confidence": payload.attribution_confidence,
+            "attribution_reason": payload.attribution_reason,
             "threat_level": payload.threat_level,
             "action_required": payload.action_required,
             "actions_taken": actions_taken,
