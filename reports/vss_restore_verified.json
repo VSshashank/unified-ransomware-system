@@ -1,0 +1,31 @@
+{
+  "platform_status": {
+    "supported": true,
+    "platform": "Windows",
+    "version": "10.0.26200",
+    "edition": "client",
+    "backend": "wmi:Win32_ShadowCopy",
+    "elevated": true
+  },
+  "original_sha256": "b22a3f28897defe4e860e3fdb3c3120e6bb79a26ab6bc54bdec07575375815a0",
+  "original_bytes": 10200,
+  "snapshot_id": "{9A85F6E2-88EB-4139-9860-192DDF0F4279}",
+  "create_snapshot": "ok",
+  "snapshots_listed": 5,
+  "after_attack_sha256": "ff36f30d2c45b7073312093fca55f02cc7202b4df6ed9995f6b32b1697109e2e",
+  "attack_changed_the_file": true,
+  "snapshot_root": "\\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy13",
+  "restore_file": "ok",
+  "restored_to": "b22a3f28897defe4e860e3fdb3c3120e6bb79a26ab6bc54bdec07575375815a0",
+  "restored_sha256": "b22a3f28897defe4e860e3fdb3c3120e6bb79a26ab6bc54bdec07575375815a0",
+  "round_trip_verified": true,
+  "delete_snapshot": "ok",
+  "_what_this_is": "Acceptance row 12 (recovery preservation), measured. A real Volume Shadow Copy created on D:, a real file encrypted in place, restored from the snapshot, hash round-trip verified, and the snapshot deleted afterwards. Carried as 'partial - VSS-backed restore not measured' since Phase 6 because reaching it needs an elevated shell.",
+  "_the_bug_this_found": "The first attempt failed with 'not present in the snapshot' for a file that was in the snapshot. restore_file joined a forward-slash relative path onto a GLOBALROOT device object, and the Windows verbatim prefix disables separator normalisation - so forward slashes stop being separators. Every restore from a genuine shadow copy had been broken. No test caught it because every test used the dev fallback root, an ordinary directory where both separators resolve. Fixed by join_under_snapshot; regression lives in services/response/recovery/tests/test_snapshot_paths.py.",
+  "_host": {
+    "platform": "Windows",
+    "version": "10.0.26200",
+    "elevated": true,
+    "volume": "D:\\"
+  }
+}

@@ -80,6 +80,44 @@ def to_relative(file_path: str) -> str:
     return tail.replace("\\", "/").lstrip("/")
 
 
+#: Windows "verbatim" path prefix. `\\?\...` tells the filesystem to take the
+#: path exactly as given, which is what makes a shadow copy's device object
+#: addressable at all - and it also disables the separator normalisation every
+#: other Windows path gets for free.
+VERBATIM_PREFIX = "\\\\?\\"
+
+
+def join_under_snapshot(snapshot_root: str, relative_path: str) -> str:
+    """Join a `to_relative` path onto a snapshot root, with the right separator.
+
+    `to_relative` normalises to `/`, and it has to: the Response service runs in
+    a Linux container, where a backslash is an ordinary filename character and
+    a Windows-sourced path joined unconverted yields one oddly-named file
+    instead of a path into a directory.
+
+    A real Windows shadow copy is addressed through its device object -
+    `\\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopyN` - and under the
+    `\\\\?\\` prefix Windows performs **no** separator normalisation. Forward
+    slashes there are not separators, so every `to_relative` path handed to a
+    real shadow copy failed to resolve and the restore reported the file as
+    "not present in the snapshot".
+
+    Measured on Windows 11, `10.0.26200`::
+
+        \\\\?\\D:\\...\\README.md    -> os.path.isfile True
+        \\\\?\\D:\\.../README.md     -> os.path.isfile False
+
+    That is why VSS-backed restoration had never been observed to work: the
+    acceptance row was carried as "not measured" for want of an elevated shell,
+    and the code path underneath it was broken the whole time. The dev fallback
+    root is an ordinary directory, where both separators resolve, so every test
+    that exercised restoration passed.
+    """
+    if snapshot_root.startswith(VERBATIM_PREFIX):
+        return ntpath.join(snapshot_root, relative_path.replace("/", "\\"))
+    return os.path.join(snapshot_root, relative_path)
+
+
 # ------------------------------------------------------------------- API models
 
 
@@ -178,7 +216,7 @@ class RecoveryManager:
 
     def restore_file(self, snapshot_root: str, file_path: str, preserve_damaged_copy: bool = False) -> str:
         """Copy one file out of the snapshot back to its original path."""
-        source = os.path.join(snapshot_root, to_relative(file_path))
+        source = join_under_snapshot(snapshot_root, to_relative(file_path))
         if not os.path.isfile(source):
             raise RecoveryError(f"{file_path} is not present in the snapshot")
 

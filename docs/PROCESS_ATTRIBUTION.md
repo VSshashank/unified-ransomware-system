@@ -219,6 +219,7 @@ is defined is not provable where it is enforced.
 |---|---|---|
 | `services/monitor/tests/test_tc26_attribution.py` | 28 | confidence ladder, 4663 parser, path normalisation, window expiry, self-exclusion, grace-period race, pipeline gate, bounded buffer, lookup cost |
 | `services/response/tests/test_tc26_kill_guard.py` | 11 | reserved PIDs, self and ancestors, name denylist, location guard, lookalike paths, unreadable-image residual |
+| `services/response/recovery/tests/test_snapshot_paths.py` | 6 | verbatim-path separator behaviour, device-object joins, the Linux root left unchanged |
 
 Both run in CI on every pull request, in the matrix and again as named
 acceptance rows.
@@ -238,15 +239,61 @@ that arrives after the 2-second budget is not an answer.
 
 ---
 
+## 6a. Measured on a live elevated host, 16 September 2026
+
+Run on Windows 11 `10.0.26200` from an Administrator shell: audit policy
+enabled, SACL applied, Monitor and Response native and elevated, ML Engine and
+Ledger the running containers.
+
+A real separate process encrypted a real file in the watched directory:
+
+| | |
+|---|---|
+| verdict | `suspected_encryption`, entropy 7.99, signal `entropy_rise` |
+| detection latency | **6.878 ms** |
+| attribution wait | **0.158 ms** |
+| attributed PID | **22716** |
+| the process that actually wrote | **22716** ✅ |
+| confidence | **`certain`** |
+| reason | *exactly one process wrote this path in the last 750ms, from `windows-security-4663`* |
+| termination | `terminated pid=22716 name=python.exe via=sigterm in 190.69ms` |
+| writer alive afterwards | **false** |
+
+**Detect → attribute → kill in roughly 198 ms**, against a 2 s budget.
+
+### One thing this run taught, which the tests did not
+
+The first attempt reported the attributed PID as *wrong*. It was not. On
+Windows a virtualenv's `python.exe` is a **trampoline** that re-executes the
+base interpreter as a child, so `Start-Process` returns one PID and a different
+one writes the bytes:
+
+```
+Start-Process returned pid : 23380   <- the venv trampoline
+the process that WROTE     : 22716   <- what attribution named
+```
+
+Attribution named the process that performed the write, which is the only
+process it can name and the only one worth naming. The test harness was
+asserting against the launcher. This is the same class of problem as limitation
+3 below, seen from the other side: **the process you think you started is not
+always the process doing the work.** Killing 22716 ended 23380 as well, because
+a trampoline whose child is gone has nothing left to wait for.
+
+---
+
 ## 7. Limitations
 
-**1. Not measured on a live elevated host.** Every test above drives `WriteLog`
-and `parse_4663` directly, or a fake kernel-grade source. The development host
-is not elevated, so no test in this repository has observed a real 4663 flow
-end to end into a real termination. `test_tc26_i` asserts only that an
-unavailable source reports *why*. **Closing this needs one run of
-`setup_attribution_audit.ps1` and the Monitor started as Administrator** — it is
-the first thing to do on a machine that has both.
+**1. VSS-backed restore is verified; snapshot *scheduling* is not.** The same
+elevated run created a real shadow copy on `D:`, encrypted a file, restored it,
+and confirmed `restored_sha256 == original_sha256` — closing an acceptance row
+that had been carried as "not measured" since Phase 6. Closing it required
+fixing a real bug first: `restore_file` joined forward-slash relative paths onto
+a `\\?\GLOBALROOT\...` device object, and the `\\?\` prefix disables Windows'
+separator normalisation, so every restore from a genuine shadow copy failed with
+"not present in the snapshot". See `join_under_snapshot` and
+`services/response/recovery/tests/test_snapshot_paths.py`. What is still not
+measured is the 6-hour scheduler running unattended over that interval.
 
 **2. Containers.** The Response service runs in its own PID namespace, where a
 host PID names an unrelated process or nothing. This is why TC-07 is already

@@ -1,0 +1,29 @@
+{
+  "started": "2026-09-16T12:09:57.9510857+05:30",
+  "elevated": true,
+  "audit_setup_exit": 0,
+  "audit_verify_exit": 0,
+  "attribution_available": true,
+  "attribution_source": "windows-security-4663",
+  "attribution_error": null,
+  "launcher_pid": 23380,
+  "real_writer_pid": 22716,
+  "detected": true,
+  "attributed_pid": 22716,
+  "attribution_confidence": "certain",
+  "attribution_reason": "exactly one process wrote this path in the last 750ms, from windows-security-4663",
+  "detection_latency_ms": 6.878,
+  "attribution_waited_ms": 0.158,
+  "pid_is_correct": true,
+  "encryptor_killed_by_pipeline": true,
+  "real_writer_still_alive": false,
+  "vss_exit": 0,
+  "finished": "2026-09-16T12:10:14.6689725+05:30",
+  "_what_this_is": "TC-26 and acceptance row 12, measured on a live elevated Windows host rather than asserted. Produced by scripts/setup_attribution_audit.ps1 plus an elevated Monitor and Response; the 4663 is real, the encrypting process is real, and the termination is real.",
+  "host": {
+    "platform": "Windows",
+    "version": "10.0.26200",
+    "elevated": true
+  },
+  "note_on_the_two_pids": "launcher_pid is the venv trampoline Start-Process returns; real_writer_pid is the base interpreter it re-executes, and is the process that actually wrote the bytes. Attribution named the writer, which is the correct answer and not the one a naive harness asserts."
+}
