@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 
 import httpx
 
+import attribution
+
 logger = logging.getLogger(__name__)
 
 LEDGER_URL = os.getenv("LEDGER_URL", "http://ledger:8003").rstrip("/")
@@ -177,14 +179,25 @@ def trigger_response(
     process_id: int | None,
     threat_level: str,
     admissibility: dict | None = None,
+    attribution_confidence: str = attribution.UNKNOWN,
+    attribution_reason: str | None = None,
+    process_image: str | None = None,
 ) -> dict | None:
     """Ask the Response service to act on one incident.
 
-    Termination is only requested when the offending PID is actually known.
-    Watchdog cannot attribute a file event to a process, so for a filesystem
-    detection it is not - asking for a kill anyway would name some unrelated
-    process in the Response container's PID namespace.
+    Termination is requested only when a PID was attributed **and** the
+    attribution is `certain` - one process, one path, one window, from a
+    kernel-level source. `probable` and `unknown` both fall through to
+    `isolate_and_log`, which is what this call did for every filesystem event
+    before attribution existed.
+
+    The asymmetry is deliberate and it is the whole safety argument: failing to
+    kill leaves an encryptor running for the seconds it takes an operator to
+    act, and killing the wrong process can take down anything on the host. The
+    first failure is recoverable and the second is not, so only the level that
+    names exactly one candidate is allowed to ask for a kill.
     """
+    authorised = bool(process_id) and attribution_confidence in attribution.KILL_AUTHORISING
     return _post(
         client,
         RESPONSE_URL,
@@ -193,7 +206,14 @@ def trigger_response(
             "incident_id": incident_id,
             "process_id": process_id or 0,
             "threat_level": threat_level,
-            "action_required": "terminate_process" if process_id else "isolate_and_log",
+            "action_required": "terminate_process" if authorised else "isolate_and_log",
+            # Why this incident did or did not ask for a kill. Without it the
+            # ledger cannot tell "nothing was attributed" from "something was
+            # attributed and the evidence was not strong enough", and those are
+            # different failures with different fixes.
+            "attribution_confidence": attribution_confidence,
+            "attribution_reason": attribution_reason,
+            "process_image": process_image,
             # The governance record travels with the incident. An operator rule
             # that was consulted and outranked is why this response is firing at
             # all, and the Response service's own ledger entry should say so
@@ -254,6 +274,14 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
             "policy_version": verdict.get("policy"),
             "detection_latency_ms": event.get("detection_latency_ms"),
             "process_id": event.get("process_id"),
+            # Attribution travels into the chain with the event it explains. A
+            # PID in the ledger with no confidence beside it cannot be audited
+            # later: the reader cannot tell whether a kill was declined because
+            # nothing was found or because what was found was not good enough.
+            "process_image": event.get("process_image"),
+            "attribution_confidence": event.get("attribution_confidence"),
+            "attribution_reason": event.get("attribution_reason"),
+            "attribution_source": event.get("attribution_source"),
             "prediction": label,
             "confidence": (prediction or {}).get("confidence"),
             "threat_level": threat_level,
@@ -277,6 +305,9 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
                 event.get("process_id"),
                 threat_level,
                 admissibility=event.get("admissibility"),
+                attribution_confidence=event.get("attribution_confidence", attribution.UNKNOWN),
+                attribution_reason=event.get("attribution_reason"),
+                process_image=event.get("process_image"),
             )
             if response:
                 result["response"] = response

@@ -44,6 +44,24 @@ PROTECTED_NAMES = frozenset(
     }
 )
 
+#: Directories whose contents are never terminated, whatever the process is
+#: called. See `_guard_image_path`: a name denylist covers only what someone
+#: remembered to list, and attribution can hand this service any PID on the
+#: host. `%SystemRoot%` is read from the environment because it is not always
+#: `C:\Windows`, and the literal is kept alongside it for the case where the
+#: variable is unset or the lookup happens inside a container.
+PROTECTED_IMAGE_ROOTS = tuple(
+    p
+    for p in (
+        os.environ.get("SystemRoot"),
+        r"C:\Windows",
+        "/usr/sbin",
+        "/sbin",
+        "/usr/lib/systemd",
+    )
+    if p
+)
+
 
 class TerminationError(RuntimeError):
     """The process could not be terminated, with a reason worth reporting."""
@@ -83,7 +101,8 @@ def guard(pid: int) -> None:
         )
 
     try:
-        name = psutil.Process(pid).name().lower()
+        process = psutil.Process(pid)
+        name = process.name().lower()
     except psutil.NoSuchProcess as exc:
         raise TerminationError(f"PID {pid} does not exist") from exc
     except psutil.AccessDenied as exc:
@@ -91,6 +110,39 @@ def guard(pid: int) -> None:
 
     if name in PROTECTED_NAMES:
         raise TerminationError(f"PID {pid} is a protected system process ({name}); refusing to terminate")
+
+    _guard_image_path(pid, process, name)
+
+
+def _guard_image_path(pid: int, process, name: str) -> None:
+    """Refuse anything running out of a system directory.
+
+    `PROTECTED_NAMES` is a denylist of the processes whose death takes the host
+    with it, and a denylist only covers what someone thought to add. Once a PID
+    can arrive from attribution rather than from an operator typing it, the
+    blast radius of one wrong answer is any process on the machine - so the
+    location of the executable is checked as well as its name.
+
+    A process whose image path cannot be read is *not* refused on that basis:
+    on Windows that is the normal result for a process owned by another user,
+    and refusing it would make this guard reject most of what it exists to
+    allow. The name check above still applies to those.
+    """
+    try:
+        image = process.exe()
+    except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
+        return
+    if not image:
+        return
+
+    resolved = os.path.normcase(os.path.abspath(image))
+    for protected in PROTECTED_IMAGE_ROOTS:
+        root = os.path.normcase(os.path.abspath(protected))
+        if resolved == root or resolved.startswith(root + os.sep):
+            raise TerminationError(
+                f"PID {pid} ({name}) runs from a protected system location ({image}); "
+                "refusing to terminate"
+            )
 
 
 def terminate_process(pid: int, force: bool = True) -> dict:

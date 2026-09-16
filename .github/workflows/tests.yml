@@ -146,6 +146,25 @@ jobs:
         working-directory: services/response
         run: python -m pytest -q tests/test_tc24*.py
 
+      # TC-26 spans two services: the Monitor decides whether the evidence
+      # authorises a kill, and the Response service guards what it will accept.
+      # Both halves run here because testing only the first would leave the
+      # gate provable at the point it is defined and unprovable at the point it
+      # is enforced.
+      #
+      # The real attribution source is a Windows Security-channel subscription
+      # needing Administrator, which this runner is not and does not have. It
+      # is covered by one `skipif` test; everything else - the confidence
+      # ladder, the 4663 parser, the pipeline gate and the kill guard - is
+      # platform-independent by construction and runs here in full.
+      - name: AS row - TC-26 attribution
+        working-directory: services/monitor
+        run: python -m pytest -q tests/test_tc26*.py
+
+      - name: AS row - TC-26 kill guard
+        working-directory: services/response
+        run: python -m pytest -q tests/test_tc26*.py
+
       - name: SH row - TC-25
         working-directory: services/gateway
         run: python -m pytest -q tests/test_tc25*.py
