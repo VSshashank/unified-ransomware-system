@@ -27,6 +27,23 @@
     auditing is on, and a wrapped log silently drops the records attribution
     depends on.
 
+.PARAMETER SaclOnly
+    Do step 2 and not step 1: touch the SACL on this one directory and leave
+    the machine-wide audit policy exactly as it is.
+
+    This exists because of what -Revert does without it. The subcategory is
+    machine-wide and the SACL is per-directory, so reverting the *second* of
+    two protected roots turns off auditing for the *first* as well - and the
+    agent goes on running, reporting every write as `unknown`, suspending
+    nothing, with no error anywhere. That happened on this project's own
+    development machine while cleaning up after an acceptance run, and the only
+    reason it was caught was a -Verify that had been added on a hunch.
+
+    So: uninstall.ps1 removes each root's SACL with -Revert -SaclOnly, and
+    decides about the subcategory once, at the end, from what it recorded
+    before it changed anything. -SaclOnly on its own applies a SACL to an
+    additional root on a machine where the policy is already on.
+
 .EXAMPLE
     # From an Administrator PowerShell, at the repository root:
     powershell -ExecutionPolicy Bypass -File scripts/setup_attribution_audit.ps1 -WatchPath D:\watched_files
@@ -47,7 +64,9 @@ param(
 
     [switch]$Verify,
 
-    [switch]$Revert
+    [switch]$Revert,
+
+    [switch]$SaclOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -171,19 +190,36 @@ if ($Revert) {
     Set-Acl -Path $WatchPath -AclObject $acl
     Write-Result 'SACL removed from the watch path' $true "$removed rule(s)"
 
+    if ($SaclOnly) {
+        Write-Host '[ skip ] File System audit subcategory - left alone (-SaclOnly)' -ForegroundColor DarkGray
+        Write-Host ''
+        Write-Host 'This path is no longer audited. Any other protected root still is: the' -ForegroundColor Cyan
+        Write-Host 'subcategory is machine-wide and was not touched. See -SaclOnly in the help.' -ForegroundColor Cyan
+        exit 0
+    }
+
     & auditpol /set /subcategory:"{0CCE921D-69AE-11D9-BED3-505054503030}" /success:disable | Out-Null
     Write-Result 'File System audit subcategory disabled' $true 'machine-wide'
 
     Write-Host ''
     Write-Host 'Reverted. The Monitor will report attribution as unavailable and responses will isolate rather than terminate.' -ForegroundColor Cyan
+    Write-Host 'That is machine-wide, and it includes every other protected root on this' -ForegroundColor Yellow
+    Write-Host 'machine. Use -Revert -SaclOnly if you meant only this one.' -ForegroundColor Yellow
     exit 0
 }
 
 # 1. audit policy -------------------------------------------------------------
 
-& auditpol /set /subcategory:"{0CCE921D-69AE-11D9-BED3-505054503030}" /success:enable | Out-Null
-$policy = Get-AuditPolicyState
-Write-Result 'File System audit subcategory (Success)' ($policy -match 'Success') "auditpol reports: $policy"
+if ($SaclOnly) {
+    # Not skipped silently: an additional root on a machine whose policy is off
+    # would get a SACL that produces nothing, and the caller has to know.
+    $policy = Get-AuditPolicyState
+    Write-Result 'File System audit subcategory (Success)' ($policy -match 'Success') "not changed (-SaclOnly); auditpol reports: $policy"
+} else {
+    & auditpol /set /subcategory:"{0CCE921D-69AE-11D9-BED3-505054503030}" /success:enable | Out-Null
+    $policy = Get-AuditPolicyState
+    Write-Result 'File System audit subcategory (Success)' ($policy -match 'Success') "auditpol reports: $policy"
+}
 
 # 2. SACL on the watch path ---------------------------------------------------
 
@@ -213,11 +249,15 @@ Write-Result 'SACL applied to the watch path' $true 'WriteData, AppendData, Dele
 
 # 3. Security log size --------------------------------------------------------
 
-try {
-    & wevtutil sl Security /ms:$($LogSizeMB * 1MB)
-    Write-Result 'Security log size' $true "$LogSizeMB MB"
-} catch {
-    Write-Result 'Security log size' $false $_.Exception.Message
+if ($SaclOnly) {
+    Write-Host '[ skip ] Security log size - machine-wide, left alone (-SaclOnly)' -ForegroundColor DarkGray
+} else {
+    try {
+        & wevtutil sl Security /ms:$($LogSizeMB * 1MB)
+        Write-Result 'Security log size' $true "$LogSizeMB MB"
+    } catch {
+        Write-Result 'Security log size' $false $_.Exception.Message
+    }
 }
 
 # 4. prove it actually produces a record --------------------------------------

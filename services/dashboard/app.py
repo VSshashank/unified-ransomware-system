@@ -483,6 +483,28 @@ for service_name in ["gateway", "monitor", "ml_engine", "ledger", "response"]:
     )
 st.dataframe(pd.DataFrame(health_rows), use_container_width=True, hide_index=True)
 
+# What this dashboard is a view of, said on the dashboard rather than only in a
+# README. Two things a reader would otherwise get wrong:
+#
+#   * Response showing as unavailable is not a fault. On a Windows host the
+#     agent is the responder, and `scripts/start_stack.ps1` deliberately does
+#     not start the Response service beside it: the service has no
+#     authentication of its own, so a POST to :8004/response/isolate from any
+#     local process would be enough to act on a PID.
+#   * The ledger below is this stack's ledger. The agent keeps its own, and they
+#     are separate on purpose - two processes appending to one SQLite chain read
+#     the same tip and fork it. Measured: 300 blocks from two writers, chain
+#     invalid at block 116. This page POSTs /predict on every refresh and the
+#     gateway writes a block for it, so sharing the file would corrupt the
+#     agent's evidence roughly every time somebody looked at this page.
+st.caption(
+    "This is the integration view. On a Windows host the protection path is the "
+    "`urds-agent` service, which watches the protected folders and suspends "
+    "processes itself - `python -m agent status` reports it, and it keeps its "
+    "own hash-chained ledger separate from the one shown here. Response reading "
+    "as unavailable is expected beside a running agent."
+)
+
 details_left, details_right = st.columns([1.4, 1])
 
 with details_left:

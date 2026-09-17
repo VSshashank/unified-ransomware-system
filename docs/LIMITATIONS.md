@@ -97,6 +97,42 @@ than as a silent null:
   `unknown` across the board. `install.ps1` raises the log to 128 MB; that
   reduces the window, it does not remove it.
 
+And one condition produces a **confident wrong answer**, which is worse than
+any of the four above and was found while building `install.ps1`'s self-test:
+
+* **the previous writer is still in the window and the current one is not yet.**
+  `lookup` says `CERTAIN` when exactly one process wrote the path inside the
+  window. If process A writes a file at T and process B overwrites it with
+  ciphertext at T+Δ where Δ is under the window, then during the ~600–1010 ms
+  before B's record is delivered the only audited writer on that path is A.
+  One distinct PID, from a kernel-grade source: `CERTAIN`, on A. The agent
+  suspends A.
+
+  Measured, block 16095 of `data/agent/ledger.db` on this host:
+
+  ```
+  file_event | verdict suspected_encryption | pid 27792 | conf certain
+    reason: exactly one process wrote this path in the last 3000ms,
+            from windows-security-4663
+  ```
+
+  27792 was the self-test process, which had written that file about three
+  seconds earlier; the encryptor it had just launched was the actual writer.
+  Nothing was guessed and no rule was broken — the answer was correct about the
+  evidence and wrong about the world.
+
+  The blast radius is bounded by rule 4: a suspend precedes any kill, the
+  escalation resumes on a near miss, and A was resumed 0.7 s later. It is still
+  a false positive that freezes a legitimate process, and the shape it takes in
+  practice — you save a document, something encrypts it a second later, and
+  your editor is what gets suspended — is exactly the shape a user would notice.
+
+  **Not fixed here.** The fix is to refuse `CERTAIN` when the newest matching
+  audit record predates the filesystem event being judged, and park instead.
+  That changes how many events park, which changes TTS, which is a measured
+  claim — so it is a Phase 5 change with its own measurement, not a quiet edit
+  to the attribution path. Recorded here rather than done quickly.
+
 **Status:** measured. `reports/attribution_delivery_lag.json`,
 `reports/attribution_live_run.json`, and the `agent_started` and
 `agent_stopped` blocks of any run.

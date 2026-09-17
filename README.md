@@ -22,7 +22,51 @@ Two things are deliberately *not* real, and both say so at runtime rather than f
 
 Trained model artifacts (`models/`) and datasets (`data/`) are gitignored. Rebuild them with `python src/train_behavioral_model.py` and, once a dataset is fetched via `src/fetch_ember_subset.py`, `python src/train_ember_model.py`.
 
-## Quick Start
+## Install it on a Windows PC
+
+One file, once. Right-click `install.ps1` → **Run with PowerShell**, or:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+It elevates itself, checks the machine can run this, installs Python 3.11+ if
+it is missing, turns on the Windows file auditing that attribution depends on,
+raises the Security log, gives shadow copies somewhere to live, generates real
+signing keys, locks the ledger to SYSTEM and Administrators, registers
+`URDSAgent` to start at boot and restart on failure, seeds the decoys, and then
+**tests itself end to end**: a child process writes a high-entropy file into a
+protected folder, and the installer asks the agent's own hash-chained ledger
+whether it named that PID, froze it, snapshotted, and whether the file comes
+back byte-identical from a shadow copy. Any failure exits non-zero and prints
+the exact command to run next.
+
+By default it protects `watched_files` in this checkout - the demonstration
+folder, not your documents. To protect real folders:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1 -ProtectedPath "$env:USERPROFILE\Documents"
+```
+
+Everything it changed, and the state each setting was in beforehand, is written
+to `%ProgramData%\URDS\install-receipt.json`. `uninstall.ps1` reverts from that
+receipt, so it will not switch off machine-wide file auditing that was already
+on before URDS arrived. The ledger is kept: an uninstaller does not delete an
+audit trail.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File uninstall.ps1
+```
+
+The agent is the protection path and survives reboots. The API services and the
+Streamlit dashboard are the demonstration surface and do not; bring them back
+with `scripts/start_stack.ps1` (`-Stop` to stop them).
+
+## Quick Start (containers, any platform)
+
+Compose is the cross-platform demonstration and the CI path. It is **not** the
+protection path: a container has its own PID namespace, so the Response service
+inside one can hold a correct host PID and still be unable to suspend it.
 
 ```bash
 cp .env.example .env

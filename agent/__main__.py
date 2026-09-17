@@ -3,6 +3,7 @@
     python -m agent run          run in the foreground, Ctrl-C to stop
     python -m agent status       what the agent would see from here
     python -m agent config       the resolved configuration and where it came from
+    python -m agent canary       list, seed or remove the decoy field
 
     python -m agent install      register the Windows Service, auto-start
     python -m agent start        ask the SCM to start it
@@ -91,6 +92,48 @@ def cmd_config(args: argparse.Namespace) -> int:  # noqa: ARG001
     return 0
 
 
+def cmd_canary(args: argparse.Namespace) -> int:
+    """List, seed or remove the decoy field without starting the agent.
+
+    `install.ps1` has no need for this - the agent seeds on start, which is the
+    only moment that can guarantee the decoys exist before the observers do -
+    but `uninstall.ps1` does: removing twenty files it has no list of would
+    mean matching them by name, and a name is not what makes a file a canary.
+    The manifest is, and this is the only thing that reads it.
+
+    `agent/canary.py` has named this command in its own docstring since it was
+    written; until now it did not exist.
+    """
+    from agent.canary import CanaryField
+    from agent import config as agent_config
+
+    config = agent_config.load()
+    field = CanaryField(config)
+    field.load()
+
+    if args.seed:
+        result = field.seed()
+        _print({"action": "seed", "created": len(result["created"]),
+                "already_present": len(result["existing"]),
+                "total": result["total"],
+                "manifest": str(field.manifest_path)})
+        return 0
+    if args.remove:
+        result = field.remove()
+        _print({"action": "remove", **result,
+                "manifest": str(field.manifest_path)})
+        # A decoy that could not be deleted is still on disk after an
+        # uninstall that reported success. Say so in the exit code.
+        return 1 if result["failed"] else 0
+
+    paths = field.paths()
+    _print({"action": "list", "total": len(paths),
+            "manifest": str(field.manifest_path),
+            "protected_paths": [str(p) for p in config.protected_paths],
+            "paths": paths})
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
 
@@ -113,6 +156,14 @@ def main(argv: list[str] | None = None) -> int:
 
     conf = sub.add_parser("config", help="the resolved configuration")
     conf.set_defaults(func=cmd_config)
+
+    canary = sub.add_parser("canary", help="list, seed or remove the decoys")
+    canary_what = canary.add_mutually_exclusive_group()
+    canary_what.add_argument("--seed", action="store_true",
+                             help="create any decoy that is missing")
+    canary_what.add_argument("--remove", action="store_true",
+                             help="delete every decoy in the manifest (uninstall)")
+    canary.set_defaults(func=cmd_canary)
 
     for verb in SERVICE_VERBS:
         sub.add_parser(verb, help=f"Windows Service: {verb}")
