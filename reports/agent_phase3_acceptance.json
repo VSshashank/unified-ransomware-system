@@ -1,0 +1,93 @@
+{
+  "schema": "urds.agent_phase3_acceptance/1",
+  "generated_at": "2026-09-17T04:52:19Z",
+  "commit": "5cacb70976620231430ff3570f91215cf2618040",
+  "branch": "fix/evidence-integrity",
+  "result": "FAILED",
+  "_what_this_is": "Phase 3 acceptance, measured against the urds-agent Windows Service on an elevated host. The criterion was: a third-party encryptor suspended within 20 files and under 2 s, with an ffmpeg transcode, a 7-Zip archive and a git clone running to completion untouched. The attack half was not met. It is recorded as failed rather than restated into something that passed.",
+  "criterion": {
+    "attack": "third-party encryptor suspended within 20 files and under 2 s",
+    "benign": "ffmpeg transcode, 7-Zip archive and git clone complete untouched"
+  },
+  "attack_arms": [
+    {
+      "arm": "A1 7z a -p -sdel over the whole directory (single process)",
+      "tool": "C:\\Program Files\\7-Zip\\7z.exe",
+      "suspended": false,
+      "febr_files_encrypted_before_response": 40,
+      "tts_s": null,
+      "canaries_present_at_start": 20,
+      "verdict": "FAIL - 40 of 40 documents destroyed, nothing suspended"
+    },
+    {
+      "arm": "A2 openssl enc -aes-256-cbc (one process per file)",
+      "tool": "C:\\Program Files\\Git\\mingw64\\bin\\openssl.exe",
+      "suspended": false,
+      "febr_files_encrypted_before_response": 40,
+      "tts_s": null,
+      "canaries_present_at_start": 20,
+      "verdict": "FAIL - 40 of 40 documents destroyed, nothing suspended"
+    }
+  ],
+  "benign_arms": [
+    {
+      "arm": "B1 7z archive (no password)",
+      "exit_code": 0,
+      "suspended": false,
+      "completed": true,
+      "elapsed_s": 0.11,
+      "output_present": true
+    },
+    {
+      "arm": "B2 git clone",
+      "exit_code": 0,
+      "suspended": false,
+      "completed": true,
+      "elapsed_s": 0.56,
+      "output_present": true
+    },
+    {
+      "arm": "B3 tar archive",
+      "exit_code": 0,
+      "suspended": false,
+      "completed": true,
+      "elapsed_s": 0.55,
+      "output_present": true
+    },
+    {
+      "arm": "B4 ffmpeg transcode",
+      "exit_code": null,
+      "suspended": null,
+      "completed": null,
+      "not_run": "ffmpeg is not installed on this host. The arm is named in the brief and is reported as not run rather than substituted with a different tool."
+    }
+  ],
+  "benign_verdict": "PASS on the three arms that ran, and the result carries no weight. Nothing was attributed during the run, so no benign process could have been suspended for any reason. A clean sheet obtained while the detector is blind is not evidence of specificity. ffmpeg was not run: it is not installed on this host.",
+  "canaries": {
+    "seeded_per_root": 20,
+    "touched_by_the_attack": true,
+    "evidence": "the agent logged a write to D:\\Unified_Ransomware_Project\\data\\p3_protected\\~$zzz_urds_canary_19.xlsx.enc, so openssl did encrypt a decoy: the tripwire had the right target",
+    "destroyed_by_the_attack": {
+      "known": 20,
+      "on_disk": 0
+    },
+    "why_it_did_not_fire": "a canary hit still requires a CERTAIN attribution before anything can be suspended, and attribution had already gone stale by the time the event was processed"
+  },
+  "root_cause": {
+    "summary": "The agent cannot consume filesystem events as fast as an attack produces them, and the shortfall destroys attribution rather than merely delaying it.",
+    "detection_cost_ms": 5.9,
+    "attribution_grace_ms": 251.7,
+    "cost_per_unattributable_suspicious_event_ms": 257.6,
+    "sustained_throughput_events_per_s": 3.9,
+    "attack_event_rate_events_per_s": 40,
+    "deficit_ratio": "10.3:1",
+    "mechanism": "app.handle_event calls attributor.resolve() synchronously, and resolve() blocks the calling thread for the full 250 ms grace period whenever no 4663 matches. The agent drives handle_event from a single watchdog dispatch thread, so every unattributable suspicious event costs a quarter of a second of the only thread that processes events. The failure is self-reinforcing: once the backlog exceeds the 750 ms attribution window every lookup misses, every miss costs the full grace, and the lag grows without bound. Observed directly - the acceptance ran between 10:17 and 10:19 and the agent was still logging events from it at 10:20:08.",
+    "measured_how": "detection cost from 12 runs of handle_event over 200 KB files with the pipeline disabled; grace cost from 6 runs of resolve() against a path with no matching record; both on the host that ran the acceptance"
+  },
+  "what_this_does_not_indict": "The Phase 3 signals themselves. The velocity tracker, the canary field and the shadow-copy guard have 70 passing regressions, the canary was written to by the attack exactly as designed, and the ladder's decision logic was never reached because no attribution ever authorised acting. This is a throughput defect in how the agent drives the detector, not a defect in what the detector decides.",
+  "not_fixed_here": "Fixing it means decoupling the grace wait from the dispatch thread - a worker pool for handle_event, or resolving attribution asynchronously and responding when the answer arrives. That is a change to the hot path's concurrency model, and it is not something to bolt on inside a phase whose acceptance has already failed.",
+  "also_found": {
+    "utf8_bom": "PowerShell 5.1's Set-Content -Encoding utf8 writes a BOM. agent/config.py read the file as plain utf-8, so the service refused to start and the SCM reported only that it had stopped. Fixed (utf-8-sig) with a regression. It would have broken install.ps1 on every machine.",
+    "git_clone_false_positive": "A git clone into a protected folder produces hundreds of suspected_encryption verdicts - git objects are zlib-compressed - and fires path_velocity and directory_fanout together. Under the original rule of any two corroborating signals that clone would have been killed. The kill rule now additionally requires at least one discriminating signal (canary, entropy_delta against the ledger baseline, or recovery_destruction), because writing quickly and broadly is what a clone, a compiler and an installer all do."
+  }
+}

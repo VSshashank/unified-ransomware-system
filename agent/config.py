@@ -155,7 +155,12 @@ def load(path: Path | None = None) -> Config:
         )
 
     try:
-        raw = json.loads(chosen.read_text(encoding="utf-8"))
+        # utf-8-sig, not utf-8. Windows PowerShell 5.1 writes a BOM for
+        # `Set-Content -Encoding utf8`, and install.ps1 writes this file with
+        # exactly that. Read as plain utf-8 the BOM raises, the agent refuses
+        # to start, and the Service Control Manager reports only that the
+        # service stopped - which is how this was found. utf-8-sig reads both.
+        raw = json.loads(chosen.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
         raise ConfigError(f"{chosen} is not valid JSON: {exc}") from exc
     if not isinstance(raw, dict):

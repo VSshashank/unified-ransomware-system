@@ -28,9 +28,11 @@ from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 
 from agent import config as agent_config
-from agent import imports, transport
+from agent import imports, procmon, transport
+from agent.canary import CanaryField
 from agent.ledger import DirectLedger
 from agent.responder import Responder
+from agent.velocity import VelocityTracker
 
 logger = logging.getLogger("urds-agent")
 
@@ -75,8 +77,25 @@ class Agent:
         self.config.snapshot_root.mkdir(parents=True, exist_ok=True)
 
         self.ledger = DirectLedger(self.config.ledger_db)
-        self.responder = Responder(self.config, self.ledger)
+        self.velocity = VelocityTracker(
+            window_s=self.config.velocity_window_s,
+            path_threshold=self.config.velocity_path_threshold,
+            fanout_threshold=self.config.velocity_fanout_threshold,
+        )
+        self.canaries = CanaryField(self.config)
+        self.vss = self._build_vss()
+        self.responder = Responder(
+            self.config, ledger=self.ledger, velocity=self.velocity,
+            canaries=self.canaries, vss=self.vss)
+        self.guard = procmon.ShadowCopyGuard(
+            self.config, responder=self.responder, ledger=self.ledger)
+        self.process_source: procmon.ProcessSource | None = None
         self.transport = transport.InProcessTransport(self.ledger, self.responder)
+
+        #: path -> the entropy the ledger holds for it while it was known-good.
+        #: Cached because the alternative is a SQLite read on the hot path for
+        #: every filesystem event on the machine.
+        self._baseline_entropy: dict[str, float | None] = {}
 
         self._original_post = None
         self._observers: list = []
@@ -100,6 +119,20 @@ class Agent:
 
         attribution_started = self._start_attribution()
 
+        # Seeded before the observers start, so the agent's own twenty writes
+        # do not arrive as twenty filesystem events to judge.
+        self.canaries.load()
+        canaries = self.canaries.seed()
+
+        self.process_source = procmon.build_source(self.guard)
+        self.process_source.start()
+        guard_status = self.process_source.status()
+        if not self.process_source.available:
+            logger.warning(
+                "shadow-copy guard is not watching process creation (%s). "
+                "vssadmin delete shadows and its relatives will not be seen.",
+                guard_status.get("error"))
+
         watched = []
         for root in self.config.protected_paths:
             root.mkdir(parents=True, exist_ok=True)
@@ -119,6 +152,10 @@ class Agent:
             "pid": os.getpid(),
             "watching": watched,
             "attribution": attribution_started,
+            "canaries": {"seeded": len(canaries["created"]),
+                         "already_present": len(canaries["existing"]),
+                         "total": canaries["total"]},
+            "shadow_copy_guard": guard_status,
             "ledger_db": str(self.config.ledger_db),
             "config_source": str(self.config.source) if self.config.source else None,
             "timestamp": utc_now(),
@@ -141,6 +178,13 @@ class Agent:
             except Exception:  # noqa: BLE001
                 pass
         self._observers.clear()
+
+        if self.process_source is not None:
+            try:
+                self.process_source.stop()
+            except Exception:  # noqa: BLE001
+                logger.exception("process source failed to stop")
+            self.process_source = None
 
         # Nothing stays frozen because the agent stopped. A suspended process
         # whose supervisor has exited is a process nobody will ever resume.
@@ -176,7 +220,18 @@ class Agent:
         with self._lock:
             self.events_seen += 1
 
-        if not event.get("suspicious"):
+        canary_hit = self._check_canary(event, path, kind)
+
+        # Velocity is fed by every write, not only suspicious ones. An
+        # encryptor's first few files may each look individually unremarkable;
+        # what makes them evidence is that one process produced all of them.
+        self.velocity.record(
+            event.get("process_id"), path,
+            entropy=event.get("entropy"),
+            baseline_entropy=self._baseline_for(path),
+        )
+
+        if not event.get("suspicious") and not canary_hit:
             return event
 
         outcome = self.responder.respond(event)
@@ -188,7 +243,92 @@ class Agent:
                        outcome.action, outcome.reason)
         return event
 
+    def _check_canary(self, event: dict, path: str, kind: str) -> bool:
+        """Did this touch a decoy, and if so, who did it?
+
+        Attribution normally runs only for an event the detector already found
+        suspicious, which is the right economy for ordinary files. It is the
+        wrong one here: a canary rewritten with low-entropy junk produces no
+        entropy verdict at all, so without asking explicitly the tripwire would
+        fire with no PID attached and nothing could be done about it. The whole
+        value of a canary is that it needs no threshold, and that is worth one
+        attribution lookup on the rare event that touches one.
+        """
+        if kind == "deleted" or not self.canaries.is_canary(path):
+            return False
+
+        if event.get("attribution_confidence") != self.attribution.CERTAIN:
+            try:
+                event.update(
+                    self.monitor_app.attributor.resolve(path).as_event_fields())
+            except Exception:  # noqa: BLE001
+                logger.exception("canary attribution failed for %s", path)
+
+        hit = self.canaries.touched(path, event.get("process_id"),
+                                    event.get("process_image"))
+        if hit is None:
+            return False
+        event["canary_hit"] = True
+        event["canary_detail"] = hit.as_dict()
+        return True
+
+    def _baseline_for(self, path: str) -> float | None:
+        """The entropy the ledger recorded for this path while it was good.
+
+        This is the signal the per-file design throws away, and it is free: the
+        `file_baseline` events the pipeline already writes carry `entropy`. A
+        file that read 4.2 bits/byte when first seen and reads 7.99 now has not
+        become a better compressed archive.
+
+        Cached, including misses, because the alternative is a SQLite query on
+        the hot path for every filesystem event on the machine.
+        """
+        key = path.lower()
+        if key in self._baseline_entropy:
+            return self._baseline_entropy[key]
+
+        value = None
+        try:
+            found = self.ledger.chain.get_blocks(
+                file_path=path, newest_first=True, limit=20)
+            for block in found.get("blocks", []):
+                if block.get("event_type") != "file_baseline":
+                    continue
+                candidate = (block.get("event_data") or {}).get("entropy")
+                if isinstance(candidate, (int, float)):
+                    value = float(candidate)
+                    break
+        except Exception:  # noqa: BLE001 - a missing baseline is not an error
+            value = None
+
+        if len(self._baseline_entropy) > 10000:
+            self._baseline_entropy.clear()
+        self._baseline_entropy[key] = value
+        return value
+
     # -- reporting ---------------------------------------------------------
+
+    def _build_vss(self):
+        """A VSS manager pointed at this agent's ledger, or None where VSS is not.
+
+        Constructed with the direct ledger so that `snapshot_created` events -
+        which recovery later accepts as an integrity reference - land in the
+        same chain as everything else rather than being posted over HTTP to a
+        service that may not be running.
+        """
+        try:
+            vss_module = imports.load("recovery.vss_manager")
+            manager = vss_module.VSSManager(
+                ledger_client=self.ledger,
+                default_volume=str(self.config.protected_paths[0].anchor or "C:\\"),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("VSS unavailable, snapshots will not be taken: %s", exc)
+            return None
+        status = manager.platform_status()
+        if not status.get("supported"):
+            logger.warning("VSS reports unsupported on this host: %s", status)
+        return manager
 
     def _start_attribution(self) -> dict:
         attributor = self.monitor_app.attributor
@@ -215,7 +355,15 @@ class Agent:
             "observers_alive": [o.is_alive() for o in self._observers],
             "events_seen": self.events_seen,
             "responses": self.responses,
-            "suspended": dict(self.responder.suspended),
+            "responder": self.responder.summary(),
+            "canaries": len(self.canaries.paths()),
+            "canary_hits": self.canaries.hit_count(),
+            "shadow_copy_guard": (self.process_source.status()
+                                  if self.process_source else
+                                  {"source": "none", "available": False,
+                                   "error": "agent is not running"}),
+            "recovery_destruction_attempts": self.guard.recent(10),
+            "velocity_tracked_pids": len(self.velocity.tracked_pids()),
             "attribution": attributor.status(),
             "ledger_blocks": self.ledger.block_count(),
             "ledger_db": str(self.config.ledger_db),
