@@ -316,16 +316,41 @@ CLAIMS: list[dict] = [
         "wording_required": False,
         "claim": "Local snapshot restore is verified 13/13 and five injected "
                  "failure modes are each reported distinctly, none as "
-                 "verified. VSS-backed restore is NOT measured.",
-        "requires": "Failure injection and VSS status",
-        "artefact": "reports/vss_status.json",
-        "check": ("reports/vss_status.json",
-                  ["platform_status", "elevated"], False),
+                 "verified. VSS-backed restore IS measured: on an elevated "
+                 "Windows host a real Volume Shadow Copy restored a file that "
+                 "had been encrypted in place, and the SHA-256 round trip "
+                 "returned the original bytes.",
+        "requires": "Failure injection and the elevated VSS round trip",
+        "artefact": "reports/vss_restore_verified.json",
+        # Five assertions, not one. A lone `round_trip_verified: true` is a
+        # self-reported boolean in a hand-produced file - the exact shape of
+        # evidence this matrix exists to distrust. So the row also pins the
+        # elevation that made the measurement possible, the hash the file
+        # started and ended at, and `attack_changed_the_file`, without which a
+        # restore that did nothing to an untouched file would report success
+        # just as loudly.
+        "check": [
+            ("reports/vss_restore_verified.json",
+             ["platform_status", "elevated"], True),
+            ("reports/vss_restore_verified.json",
+             ["attack_changed_the_file"], True),
+            ("reports/vss_restore_verified.json", ["original_sha256"],
+             "b22a3f28897defe4e860e3fdb3c3120e6bb79a26ab6bc54bdec07575375815a0"),
+            ("reports/vss_restore_verified.json", ["restored_sha256"],
+             "b22a3f28897defe4e860e3fdb3c3120e6bb79a26ab6bc54bdec07575375815a0"),
+            ("reports/vss_restore_verified.json", ["round_trip_verified"], True),
+        ],
         "tests": ["services/response/recovery/tests"],
-        "note": "Acceptance row 12, still partial. The blocker is measured "
-                "rather than asserted: the host reports VSS supported, the "
-                "shell is not elevated, and both operations refuse for that "
-                "one reason.",
+        "note": "Acceptance row 12, no longer partial, and this row was "
+                "changed deliberately rather than by a gate going red. Until "
+                "2026-09-17 it asserted the opposite - that VSS-backed restore "
+                "was NOT measured - by checking vss_status.json for "
+                "platform_status.elevated == false. The branch that measured "
+                "the restore wrote its evidence to a different file, so that "
+                "check would have gone on passing, and the matrix would have "
+                "stayed green while the claim it made had become untrue. "
+                "reports/vss_status.json is kept: it is the honest record of "
+                "the period when elevation was the blocker.",
     },
 ]
 
@@ -361,23 +386,39 @@ def check_claim(claim: dict) -> dict:
                             else "artefact present; no figure to check")
         return result
 
-    rel, path, expected = claim["check"]
+    # `check` is one (rel, path, expected) tuple, or a list of them when the
+    # claim states more than one thing. Every assertion in the list must hold:
+    # a claim that says three things and checks one of them is a claim with two
+    # unchecked parts.
+    checks = claim["check"]
+    if isinstance(checks, tuple):
+        checks = [checks]
+
+    details = []
+    for rel, path, expected in checks:
+        ok, detail = check_one(rel, path, expected)
+        details.append(detail)
+        if not ok:
+            result["status"] = "FAIL"
+            result["detail"] = detail
+            return result
+
+    result["detail"] = "; ".join(details)
+    return result
+
+
+def check_one(rel: str, path: list, expected) -> tuple[bool, str]:
+    """One assertion: the figure at `path` inside `rel` is `expected`."""
     target = ROOT / rel
     if not target.is_file():
-        result["status"] = "FAIL"
-        result["detail"] = f"evidence file missing: {rel}"
-        return result
+        return False, f"evidence file missing: {rel}"
     try:
         found = dig(json.loads(target.read_text(encoding="utf-8")), list(path))
     except json.JSONDecodeError as exc:
-        result["status"] = "FAIL"
-        result["detail"] = f"{rel} is not valid JSON: {exc}"
-        return result
+        return False, f"{rel} is not valid JSON: {exc}"
 
     if isinstance(found, KeyError):
-        result["status"] = "FAIL"
-        result["detail"] = f"{rel}: no such path {'.'.join(map(str, path))}"
-        return result
+        return False, f"{rel}: no such path {'.'.join(map(str, path))}"
 
     # A tuple of expected values means the claim itself states more than one
     # acceptable outcome, each for a documented reason - see C-15, where the
@@ -385,18 +426,148 @@ def check_claim(claim: dict) -> dict:
     # present. Any value outside the tuple is still a failure.
     if isinstance(expected, tuple):
         same = found in expected
+    elif isinstance(expected, bool) or isinstance(found, bool):
+        # bool is a subclass of int, so `True == 1` and `1 == True`. A claim
+        # quoting a boolean must not be satisfied by a count that happens to
+        # be 1, and a claim quoting 1 must not be satisfied by `true`.
+        same = found is expected
     elif isinstance(expected, float) and isinstance(found, (int, float)):
         same = abs(found - expected) < 1e-6
     else:
         same = found == expected
 
     if not same:
-        result["status"] = "FAIL"
-        result["detail"] = (f"{rel}:{'.'.join(map(str, path))} is {found!r}, "
-                            f"claim quotes {expected!r}")
-    else:
-        result["detail"] = f"{'.'.join(map(str, path))} = {found!r}"
-    return result
+        return False, (f"{rel}:{'.'.join(map(str, path))} is {found!r}, "
+                       f"claim quotes {expected!r}")
+    return True, f"{'.'.join(map(str, path))} = {found!r}"
+
+
+# --------------------------------------------------------------------------
+# Provenance and freshness.
+#
+# Everything above proves exactly one thing: *the artefact says X*. It cannot
+# prove *X is true of the code at HEAD*. An artefact generated on a branch that
+# was never merged, or carried forward from before the change it is supposed to
+# measure, satisfies every check above and is worth nothing. That hole sat in
+# this script - the project's own best tool - until 2026-09-17.
+#
+# So every JSON evidence file the matrix reads must carry `generated_at` and
+# the `commit` it was produced at, and that commit must be an ancestor of HEAD.
+#
+# What this does NOT prove, said plainly because the gap is the whole point of
+# the tool: it does not detect a hand-edited artefact. The stamp lives in the
+# same file as the figure, so whoever can edit one can edit the other. That is
+# `scripts/artefact_manifest.py --verify`, which digests every stable artefact
+# and runs immediately before this script in the reproduction gate. Provenance
+# answers "is this evidence from this line of development"; the manifest
+# answers "is this evidence the bytes we froze". Neither answers the other.
+#
+# Nor does it prove the artefact is current with respect to its *inputs*: a
+# report stamped at an ancestor commit is accepted even if the code that
+# generates it changed afterwards. Doing better needs an artefact-to-source
+# dependency map, which does not exist here. Each row instead reports how many
+# commits behind HEAD its evidence is, so the gap is visible rather than silent.
+# --------------------------------------------------------------------------
+
+def git_run(*args: str, root: Path | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], cwd=root or ROOT, capture_output=True,
+                          text=True, encoding="utf-8", errors="replace")
+
+
+def git_context(root: Path | None = None) -> dict:
+    """Whether there is a repository here with enough history to judge."""
+    head = git_run("rev-parse", "HEAD", root=root)
+    if head.returncode != 0:
+        return {"available": False,
+                "reason": "not a git checkout, or git is not installed"}
+    shallow = git_run("rev-parse", "--is-shallow-repository", root=root)
+    return {
+        "available": True,
+        "head": head.stdout.strip(),
+        "shallow": shallow.stdout.strip() == "true",
+    }
+
+
+def provenance_artefacts() -> list[str]:
+    """Every distinct JSON evidence file the matrix reads."""
+    found: list[str] = []
+    for claim in CLAIMS:
+        candidates = []
+        if claim["artefact"]:
+            candidates.append(claim["artefact"])
+        if claim["check"] is not None:
+            checks = claim["check"]
+            if isinstance(checks, tuple):
+                checks = [checks]
+            candidates.extend(rel for rel, _, _ in checks)
+        for rel in candidates:
+            # Only JSON evidence. A .md or .py artefact is tracked source, and
+            # git already says which commit it is at; stamping a generated_at
+            # into a source file would mean nothing.
+            if rel.endswith(".json") and rel not in found:
+                found.append(rel)
+    return sorted(found)
+
+
+def check_provenance(rel: str, context: dict, root: Path | None = None) -> dict:
+    """The artefact says where it came from, and that commit is behind HEAD."""
+    root = root or ROOT
+    result = {"artefact": rel, "status": "ok", "detail": ""}
+    target = root / rel
+
+    if not target.is_file():
+        return {**result, "status": "FAIL", "detail": f"missing: {rel}"}
+    try:
+        payload = json.loads(target.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {**result, "status": "FAIL", "detail": f"not valid JSON: {exc}"}
+    if not isinstance(payload, dict):
+        return {**result, "status": "FAIL",
+                "detail": "top level is not an object, so it carries no stamp"}
+
+    missing = [k for k in ("generated_at", "commit") if k not in payload]
+    if missing:
+        return {**result, "status": "FAIL",
+                "detail": f"no {' and no '.join(missing)}; regenerate it with "
+                          f"URDS_WRITE_REPORTS=1 so the generator stamps it"}
+
+    stamp = payload["generated_at"]
+    try:
+        when = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return {**result, "status": "FAIL",
+                "detail": f"generated_at {stamp!r} is not an ISO 8601 instant"}
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    ahead = (when - datetime.now(timezone.utc)).total_seconds()
+    if ahead > 86400:
+        return {**result, "status": "FAIL",
+                "detail": f"generated_at {stamp} is {ahead / 3600:.0f}h in the "
+                          f"future; check the clock that wrote it"}
+
+    commit = str(payload["commit"])
+    if not context["available"]:
+        return {**result, "status": "FAIL",
+                "detail": f"cannot verify {commit[:9]}: {context['reason']}. "
+                          f"Run this from a git checkout."}
+
+    resolved = git_run("rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}",
+                       root=root)
+    if resolved.returncode != 0:
+        hint = (" (shallow clone: run `git fetch --unshallow`)"
+                if context["shallow"] else "")
+        return {**result, "status": "FAIL",
+                "detail": f"commit {commit[:9]} is not in this repository{hint}"}
+
+    if git_run("merge-base", "--is-ancestor", commit, "HEAD",
+               root=root).returncode != 0:
+        return {**result, "status": "FAIL",
+                "detail": f"commit {commit[:9]} is not an ancestor of HEAD: "
+                          f"this evidence is from another line of development"}
+
+    behind = git_run("rev-list", "--count", f"{commit}..HEAD",
+                     root=root).stdout.strip()
+    return {**result, "detail": f"{commit[:9]}, {behind} commits behind HEAD"}
 
 
 def run_tests(claim: dict) -> dict | None:
@@ -426,6 +597,11 @@ def main() -> int:
                         help="also run each claim's named regressions")
     args = parser.parse_args()
 
+    context = git_context()
+    provenance = [check_provenance(rel, context)
+                  for rel in provenance_artefacts()]
+    stale = sum(1 for entry in provenance if entry["status"] != "ok")
+
     rows = []
     failures = 0
     for claim in CLAIMS:
@@ -450,12 +626,22 @@ def main() -> int:
                 print(f"{'':14s} {mark}  {target}  {outcome['summary'][:52]}")
     print("-" * 118)
 
+    print()
+    print(f"{'provenance':6s} {'status':7s} {'artefact':44s} detail")
+    print("-" * 118)
+    for entry in provenance:
+        print(f"{'':6s} {entry['status']:7s} {entry['artefact'][:44]:44s} "
+              f"{entry['detail'][:60]}")
+    print("-" * 118)
+    print(f"{len(provenance)} evidence artefacts carry a commit that is an "
+          f"ancestor of HEAD: {len(provenance) - stale} yes, {stale} no")
+
     made = sum(1 for c in CLAIMS if c["claim"] != NOT_CLAIMED)
     print(f"{len(CLAIMS)} claims in the matrix: {made} made, "
           f"{len(CLAIMS) - made} recorded as not claimed")
     mandatory = sum(1 for c in CLAIMS if c["wording_required"])
     print(f"{mandatory} carry Table 9.9's mandatory wording")
-    print(f"{failures} failed verification")
+    print(f"{failures} failed verification, {stale} failed provenance")
 
     if os.getenv("URDS_WRITE_REPORTS", "").lower() in {"1", "true", "yes"}:
         REPORTS.mkdir(parents=True, exist_ok=True)
@@ -463,10 +649,12 @@ def main() -> int:
             "schema": "urds.claim_matrix.v1",
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "claims": rows,
+            "provenance": {"git": context, "artefacts": provenance},
             "summary": {"total": len(CLAIMS), "made": made,
                         "not_claimed": len(CLAIMS) - made,
                         "mandatory_wording": mandatory,
-                        "failed_verification": failures},
+                        "failed_verification": failures,
+                        "failed_provenance": stale},
         }
         with open(OUT, "w", encoding="utf-8", newline="") as handle:
             json.dump(payload, handle, indent=2)
@@ -475,7 +663,7 @@ def main() -> int:
     else:
         print("\nURDS_WRITE_REPORTS is not set: report not written")
 
-    return 1 if failures else 0
+    return 1 if (failures or stale) else 0
 
 
 if __name__ == "__main__":

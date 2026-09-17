@@ -78,7 +78,14 @@ jobs:
             # condition the per-service matrix exists to stop hiding.
             extras: "watchdog==6.0.0"
     steps:
+      # Full history, not the default depth-1. The Monitor's
+      # `test_claim_matrix.py` asks whether each evidence artefact's recorded
+      # commit is an ancestor of HEAD, and in a shallow clone those older
+      # commits are simply absent - the test would skip, and a skipped
+      # provenance check is the condition it exists to end.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -112,6 +119,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -168,3 +177,15 @@ jobs:
       - name: SH row - TC-25
         working-directory: services/gateway
         run: python -m pytest -q tests/test_tc25*.py
+
+      # The claim matrix itself, as a job step rather than only as a test.
+      # `--tests` is deliberately not passed: the regressions it would run are
+      # the same ones the matrix above already runs per service, and running
+      # them twice buys nothing. What this adds is the provenance pass, which
+      # is not a pytest assertion - it reads every evidence artefact's stamp
+      # and refuses a figure measured on a commit that is not in this history.
+      #
+      # URDS_WRITE_REPORTS stays empty (set at workflow scope): this step
+      # checks the artefacts, and must not regenerate them.
+      - name: Claim matrix and artefact provenance
+        run: python scripts/claim_matrix.py

@@ -125,3 +125,153 @@ def test_mandatory_wording_is_carried_verbatim():
         phrase = claim["wording"].removesuffix("...").strip()
         assert phrase in claim["claim"], (
             f"{claim['id']} does not carry its mandatory wording: {phrase!r}")
+
+
+# --------------------------------------------------------------------------
+# Provenance. Everything above asks whether the artefact says what the claim
+# quotes. These ask the question that was missing until 2026-09-17: whether the
+# artefact came from this line of development at all.
+#
+# The failing cases build their own one-commit repository in tmp_path rather
+# than reaching into this one. That keeps them hermetic, and it means they
+# still run where the checkout is shallow and the real repository's older
+# commits are not present.
+# --------------------------------------------------------------------------
+
+import json
+import subprocess
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+
+
+@pytest.fixture
+def repo(tmp_path):
+    """A repository with one ancestor commit and one commit off to the side."""
+    def git(*args):
+        done = subprocess.run(["git", *args], cwd=tmp_path,
+                              capture_output=True, text=True)
+        assert done.returncode == 0, f"git {' '.join(args)}: {done.stderr}"
+        return done.stdout.strip()
+
+    git("init", "--quiet")
+    git("config", "user.email", "provenance@example.invalid")
+    git("config", "user.name", "provenance test")
+    git("config", "commit.gpgsign", "false")
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "seed.txt").write_text("seed\n")
+    git("add", "-A")
+    git("commit", "--quiet", "-m", "seed")
+    trunk = git("rev-parse", "--abbrev-ref", "HEAD")
+    ancestor = git("rev-parse", "HEAD")
+
+    # A commit that exists but is not in HEAD's history: an artefact generated
+    # on a branch that was never merged is exactly this case.
+    git("checkout", "--quiet", "-b", "never-merged")
+    (tmp_path / "side.txt").write_text("side\n")
+    git("add", "-A")
+    git("commit", "--quiet", "-m", "off to the side")
+    orphan = git("rev-parse", "HEAD")
+
+    git("checkout", "--quiet", trunk)
+    (tmp_path / "more.txt").write_text("more\n")
+    git("add", "-A")
+    git("commit", "--quiet", "-m", "move HEAD on")
+
+    return SimpleNamespace(path=tmp_path, ancestor=ancestor, orphan=orphan)
+
+
+def _artefact(root, name="evidence.json", **fields):
+    (root / "reports" / name).write_text(json.dumps(fields), encoding="utf-8")
+    return f"reports/{name}"
+
+
+def _verdict(repo, rel):
+    context = claim_matrix.git_context(root=repo.path)
+    assert context["available"], "the fixture repository should be a git checkout"
+    return claim_matrix.check_provenance(rel, context, root=repo.path)
+
+
+def test_a_stamped_ancestor_commit_passes_provenance(repo):
+    """The shape every generated artefact is supposed to have."""
+    rel = _artefact(repo.path, generated_at="2026-01-01T00:00:00Z",
+                    commit=repo.ancestor)
+    assert _verdict(repo, rel)["status"] == "ok"
+
+
+def test_an_artefact_from_an_unmerged_branch_fails(repo):
+    """The hole this guard was added to close.
+
+    The commit resolves, so nothing about the file looks wrong. It is simply
+    not in HEAD's history, which means the figure it holds was measured against
+    code that is not the code being claimed about.
+    """
+    rel = _artefact(repo.path, generated_at="2026-01-01T00:00:00Z",
+                    commit=repo.orphan)
+    result = _verdict(repo, rel)
+    assert result["status"] == "FAIL"
+    assert "not an ancestor of HEAD" in result["detail"]
+
+
+def test_an_unstamped_artefact_fails(repo):
+    """No stamp is not a pass. It is the condition the guard replaces."""
+    rel = _artefact(repo.path, round_trip_verified=True)
+    result = _verdict(repo, rel)
+    assert result["status"] == "FAIL"
+    assert "generated_at" in result["detail"] and "commit" in result["detail"]
+
+
+def test_a_partially_stamped_artefact_fails(repo):
+    """A date without a commit cannot be checked against anything."""
+    rel = _artefact(repo.path, generated_at="2026-01-01T00:00:00Z")
+    assert _verdict(repo, rel)["status"] == "FAIL"
+
+
+def test_an_unknown_commit_fails(repo):
+    """A plausible-looking hash that no object matches."""
+    rel = _artefact(repo.path, generated_at="2026-01-01T00:00:00Z",
+                    commit="0" * 40)
+    result = _verdict(repo, rel)
+    assert result["status"] == "FAIL"
+    assert "not in this repository" in result["detail"]
+
+
+def test_a_generated_at_in_the_future_fails(repo):
+    """A clock ahead of the run that wrote the file is a red flag, not a detail."""
+    ahead = datetime.now(timezone.utc) + timedelta(days=30)
+    rel = _artefact(repo.path, generated_at=ahead.isoformat(),
+                    commit=repo.ancestor)
+    result = _verdict(repo, rel)
+    assert result["status"] == "FAIL"
+    assert "future" in result["detail"]
+
+
+def test_an_unparseable_generated_at_fails(repo):
+    rel = _artefact(repo.path, generated_at="last Tuesday", commit=repo.ancestor)
+    assert _verdict(repo, rel)["status"] == "FAIL"
+
+
+def test_provenance_covers_every_json_artefact_the_matrix_reads():
+    """The guard's scope is the matrix's evidence, with nothing quietly exempt."""
+    covered = set(claim_matrix.provenance_artefacts())
+    for claim in claim_matrix.CLAIMS:
+        checks = claim["check"]
+        if checks is None:
+            continue
+        if isinstance(checks, tuple):
+            checks = [checks]
+        for rel, _, _ in checks:
+            if rel.endswith(".json"):
+                assert rel in covered, f"{claim['id']} reads {rel} unchecked"
+
+
+@pytest.mark.parametrize("rel", claim_matrix.provenance_artefacts())
+def test_this_repositorys_evidence_carries_verifiable_provenance(rel):
+    """Every artefact this matrix actually cites, in this actual repository."""
+    context = claim_matrix.git_context()
+    if not context["available"]:
+        pytest.skip("not a git checkout; provenance is undefined here")
+    if context["shallow"]:
+        pytest.skip("shallow clone: older commits are absent, so ancestry "
+                    "cannot be decided. Run with fetch-depth 0.")
+    result = claim_matrix.check_provenance(rel, context)
+    assert result["status"] == "ok", f"{rel}: {result['detail']}"

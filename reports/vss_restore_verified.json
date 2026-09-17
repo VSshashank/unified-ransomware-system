@@ -1,4 +1,9 @@
 {
+  "schema": "urds.vss_restore_verified/1",
+  "generated_at": "2026-09-16T06:44:02Z",
+  "commit": "2213d27967de01dd7c28fdde4310e085017f2924",
+  "branch": "feat/process-attribution-and-vss-restore",
+  "_provenance": "generated_at and commit were recovered from git history, not written by the run that produced this evidence: the elevated VSS round-trip predates the claim-matrix provenance guard, so nothing stamped it at the time. Both values are the committer date and hash of 2213d27, the commit that introduced this file and that also carries the join_under_snapshot fix the run exercised. The run itself is not re-datable more precisely than that, and this field exists so nobody later mistakes a recovered stamp for a self-reported one.",
   "platform_status": {
     "supported": true,
     "platform": "Windows",
