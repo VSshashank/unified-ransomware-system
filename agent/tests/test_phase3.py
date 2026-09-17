@@ -22,8 +22,10 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from agent import agent as agent_module  # noqa: E402
 from agent import config as agent_config  # noqa: E402
 from agent import procmon  # noqa: E402
+from agent.ledger import DirectLedger  # noqa: E402
 from agent.canary import CanaryField  # noqa: E402
 from agent.velocity import VelocityTracker  # noqa: E402
 
@@ -569,31 +571,77 @@ def test_a_config_with_a_utf8_bom_loads(tmp_path):
     assert loaded.protected_paths
 
 
-def test_the_phase3_acceptance_evidence_still_records_a_failure():
-    """Phase 3's acceptance was not met, and the artefact has to keep saying so.
+def test_the_phase3_acceptance_artefact_agrees_with_its_own_verdict():
+    """The acceptance artefact must not be able to claim more than it measured.
 
-    The attack half failed: both arms destroyed 40 of 40 documents and nothing
-    was suspended. The criterion is not restated and the result is not softened
-    to "partial". If someone later fixes the throughput defect, this test
-    changes in the same commit as the measurement that justifies it.
+    This replaces a test that asserted the *previous* artefact - `result` was
+    FAILED, both arms unsuspended, FEBR 40 - and which went red the moment that
+    artefact was rewritten, in a commit whose message reported the suite green.
+    See docs/CORRECTIONS.md correction 9.
+
+    So this one does not pin a number. It pins the criterion, and it pins the
+    relationship between the verdict and the runs behind it: a PASSED that any
+    replicate contradicts is a failure of this test. The bounds are the two
+    things that must never move, because moving either is how a failing phase
+    becomes a passing one without anything being fixed.
     """
     import json as _json
 
     report = _json.loads(
         (ROOT / "reports" / "agent_phase3_acceptance.json").read_text(encoding="utf-8"))
 
-    assert report["result"] == "FAILED"
-    for arm in report["attack_arms"]:
-        assert arm["suspended"] is False
-        assert arm["febr_files_encrypted_before_response"] == 40
+    # The bounds. Not negotiable, and spelled out here so that changing them
+    # means changing a test rather than editing a string in an artefact.
+    assert "20 files" in report["criterion"]["attack"]
+    assert "under 2 s" in report["criterion"]["attack"]
 
-    # The benign sheet must not be quoted as a specificity result. Nothing was
-    # attributed during the run, so nothing could have been suspended.
-    assert "carries no weight" in report["benign_verdict"]
+    arms = {arm["arm"].split()[0]: arm for arm in report["attack_arms"]}
+    a2, a1 = arms["A2"], arms["A1"]
 
-    root = report["root_cause"]
-    assert root["sustained_throughput_events_per_s"] < root["attack_event_rate_events_per_s"]
-    assert root["deficit_ratio"]
+    # A verdict that the replicates do not support is the failure mode this
+    # test exists for. Both directions: a PASSED nobody earned, and a FAILED
+    # left in place after the runs stopped failing.
+    within_files = int(a2["within_the_file_bound"].split()[0])
+    within_time = int(a2["within_the_time_bound"].split()[0])
+    replicates = a2["replicates"]
+    assert replicates >= 3, (
+        "the response's floor is a periodic timer about a second wide, so a "
+        "single run measures one draw from a distribution wider than the bound")
+
+    if report["result"] == "PASSED":
+        assert within_files == replicates, (
+            f"result is PASSED with {replicates - within_files} replicate(s) "
+            f"outside the file bound")
+        assert within_time == replicates
+        assert a2["suspended_in"] == replicates
+        assert a2["febr_files_encrypted_before_response"]["max"] <= 20
+    else:
+        assert within_files < replicates or within_time < replicates, (
+            "result is FAILED but every replicate met both bounds")
+
+    # A1 is not suspended and the artefact must keep saying so, with the reason
+    # that was measured rather than either of the two that were guessed.
+    assert a1["suspended"] is False
+    assert a1["febr_files_encrypted_before_response"] == 500
+    assert "encryptor_lifetime.json" in a1["why_it_is_missed"], (
+        "A1's explanation must cite the lifetime measurement; the separability "
+        "result and the -sdel claim were both the wrong reason")
+
+    # The one harness change that helps the agent has to be measured, not
+    # argued. Its absence would let a future run quietly depend on it.
+    control = report["control_did_the_harness_change_do_this"]
+    assert control["replicates"] >= 1, "the fixed-sleep control was not run"
+    assert control["finding"]
+
+    # A benign arm shorter than the audit delivery lag completes untouched
+    # whatever the detector decided, so it cannot be quoted as specificity.
+    ran = [arm for arm in report["benign_arms"] if arm.get("exit_code") is not None]
+    assert ran, "no benign arm ran"
+    for arm in ran:
+        assert arm.get("suspended") is not True
+        assert "outlived_the_delivery_lag" in arm, (
+            f"{arm['arm']} does not record whether a response could have "
+            f"reached it")
 
 
 def test_a_removed_protected_root_drops_out_of_the_canary_manifest(tmp_path):
@@ -622,3 +670,138 @@ def test_a_removed_protected_root_drops_out_of_the_canary_manifest(tmp_path):
     # paths() returns the manifest's keys, which are lowercased for
     # case-insensitive membership tests on Windows.
     assert all(str(second_root).lower() in path for path in moved.paths())
+
+
+# ------------------------------------------- the baseline cache off the chain
+
+class _CacheOnly:
+    """Just enough of an Agent to exercise the two cache methods.
+
+    A whole Agent needs the Monitor's app module, a watchdog observer and a
+    Security-channel subscription. What is under test here is a dict and one
+    query, and binding the unbound methods keeps the test hermetic without
+    pretending the rest of the agent is present.
+    """
+
+    def __init__(self, ledger):
+        self.ledger = ledger
+        self._baseline_entropy = {}
+
+    warm = agent_module.Agent._warm_baselines
+    note = agent_module.Agent._note_block
+
+
+def _ledger_with_baselines(tmp_path, entries):
+    ledger = DirectLedger(tmp_path / "chain.db")
+    for path, entropy in entries:
+        ledger.chain.add_block("file_baseline",
+                               {"file_path": path, "entropy": entropy})
+    return ledger
+
+
+def test_the_agent_never_reads_the_chain_to_find_a_baseline(tmp_path):
+    """The single most expensive thing on the protection path, removed.
+
+    `_baseline_for` used to query the chain on every cache miss, and every
+    path the agent has not seen before is a miss. The filter has no index it
+    can use - file_path lives inside the event_data JSON, so it is a LIKE with
+    a leading wildcard - and it ran on a lane, on the one SQLite connection
+    the fan-out thread was writing the next block through. Measured at 3300
+    blocks it cost 4.4 ms against 2.5 ms for the whole of detection.
+    """
+    ledger = _ledger_with_baselines(tmp_path, [(r"C:\p\a.docx", 4.2)])
+    stub = _CacheOnly(ledger)
+    stub.warm()
+
+    def explode(*args, **kwargs):
+        raise AssertionError(
+            "the protection path read the chain to answer a baseline lookup")
+
+    ledger.chain.get_blocks = explode
+    try:
+        assert agent_module.Agent._baseline_for(stub, r"C:\p\a.docx") == 4.2
+        assert agent_module.Agent._baseline_for(stub, r"C:\p\never.docx") is None
+    finally:
+        ledger.close()
+
+
+def test_a_baseline_written_now_is_readable_without_a_query(tmp_path):
+    """The agent is the process writing these. Reading them back was the long way."""
+    ledger = _ledger_with_baselines(tmp_path, [])
+    stub = _CacheOnly(ledger)
+    stub.warm()
+    assert agent_module.Agent._baseline_for(stub, r"C:\p\fresh.docx") is None
+
+    stub.note("file_baseline", {"file_path": r"C:\p\fresh.docx", "entropy": 3.9})
+    assert agent_module.Agent._baseline_for(stub, r"C:\p\fresh.docx") == 3.9
+    ledger.close()
+
+
+def test_warming_keeps_the_newest_reading_for_a_path(tmp_path):
+    """Two baselines for one path: the later one is the one that counts.
+
+    The query is newest-first, so an older block must not overwrite what a
+    newer one already put in the cache. Getting this backwards would compare
+    today's entropy against a reading from before the file was last rewritten.
+    """
+    ledger = _ledger_with_baselines(tmp_path, [
+        (r"C:\p\twice.docx", 2.0),
+        (r"C:\p\twice.docx", 6.5),
+    ])
+    stub = _CacheOnly(ledger)
+    assert stub.warm() == 1
+    assert agent_module.Agent._baseline_for(stub, r"C:\p\twice.docx") == 6.5
+    ledger.close()
+
+
+def test_a_baseline_lookup_is_case_insensitive_like_the_filesystem(tmp_path):
+    ledger = _ledger_with_baselines(tmp_path, [(r"C:\Protected\Report.DOCX", 4.4)])
+    stub = _CacheOnly(ledger)
+    stub.warm()
+    assert agent_module.Agent._baseline_for(stub, r"c:\protected\report.docx") == 4.4
+    ledger.close()
+
+
+def test_a_ledger_that_cannot_be_read_does_not_stop_the_agent_starting(tmp_path):
+    """Starting without baselines is a weaker detector, not a dead one."""
+    ledger = _ledger_with_baselines(tmp_path, [])
+
+    def explode(*args, **kwargs):
+        raise RuntimeError("chain unavailable")
+
+    ledger.chain.get_blocks = explode
+    stub = _CacheOnly(ledger)
+    assert stub.warm() == 0
+    assert agent_module.Agent._baseline_for(stub, r"C:\p\a.docx") is None
+    ledger.close()
+
+
+def test_a_failed_ledger_write_does_not_put_a_baseline_in_the_cache(tmp_path):
+    """The cache must not claim a reading the chain does not hold.
+
+    The hook runs from the transport after a block commits, so a write that
+    raised never reaches it. That is the property under test: the agent's
+    in-memory view of the chain cannot get ahead of the chain itself.
+    """
+    from agent import transport as transport_module
+
+    ledger = _ledger_with_baselines(tmp_path, [])
+    stub = _CacheOnly(ledger)
+    seen = []
+
+    class _Broken:
+        class chain:
+            @staticmethod
+            def add_block(*args, **kwargs):
+                raise RuntimeError("disk full")
+
+    hop = transport_module.InProcessTransport(
+        _Broken(), on_block=lambda kind, data: seen.append(kind))
+    result = hop(None, "http://ledger", "/ledger/log", {
+        "event_type": "file_baseline",
+        "event_data": {"file_path": r"C:\p\lost.docx", "entropy": 4.0}})
+
+    assert result is None
+    assert seen == [], "the cache was told about a block that was never written"
+    assert agent_module.Agent._baseline_for(stub, r"C:\p\lost.docx") is None
+    ledger.close()

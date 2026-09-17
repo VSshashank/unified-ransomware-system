@@ -264,3 +264,90 @@ def test_drain_waits_for_work_already_in_flight(running):
 def test_stopping_an_unstarted_pool_is_harmless():
     pool = dispatch.Dispatcher(Recorder(), lanes=2)
     assert pool.stop()["processed"] == 0
+
+
+# ------------------------------------------------- the decoys go first
+
+def test_a_decoy_event_is_handled_before_the_backlog_it_arrived_behind(running):
+    """The third thing that failed Phase 3's acceptance.
+
+    Lanes fixed the throughput and `pending` fixed the blocking wait, and arm
+    A2 was *still* suspended at 1.972 s against an audit delivery lag of about
+    0.93 s. The agent's own counters said why: five events parked and none
+    resolved by re-asking, meaning every event reached its lane so late that
+    the record naming the attacker had already arrived. The queue was running
+    more than a second behind, and the canary deletion - the least ambiguous
+    signal in the system, produced on the attack's very first file - was in it
+    with everything else.
+    """
+    handler = Recorder(delay=0.05)
+    pool = running(handler, lanes=1, queue_max=512)
+
+    # Fill the lane with ordinary traffic first, the way a corpus being worked
+    # through does. The first one is picked up immediately; the rest queue.
+    for index in range(20):
+        pool.submit(f"C:/protected/bulk_{index}.docx", "modified")
+    pool.submit("C:/protected/!_urds_canary_01.docx", "deleted", priority=True)
+
+    assert pool.drain(timeout=15.0)
+    seen = handler.paths()
+    position = seen.index("C:/protected/!_urds_canary_01.docx")
+    assert position <= 2, (
+        f"the decoy was handled {position} events into a 21-event backlog. It "
+        f"must jump the queue, not wait in it.")
+
+
+def test_a_full_lane_never_discards_a_decoy_to_make_room(running):
+    """Head-drop and head-insert are the same end of the same deque.
+
+    An event pushed to the front to be handled first is the next one thrown
+    away when the lane fills, so the two policies would cancel out and the
+    tripwire would be the *first* thing lost under exactly the load that
+    matters. Two queues, not one reordered queue.
+    """
+    handler = Recorder(delay=0.3)
+    pool = running(handler, lanes=1, queue_max=2)
+
+    pool.submit("C:/protected/!_urds_canary_01.docx", "deleted", priority=True)
+    for index in range(10):
+        pool.submit(f"C:/protected/flood_{index}.docx", "modified")
+
+    assert pool.drain(timeout=15.0)
+    assert pool.dropped > 0, "the ordinary queue should have overflowed"
+    assert "C:/protected/!_urds_canary_01.docx" in handler.paths(), (
+        "the decoy was dropped to make room for ordinary writes")
+
+
+def test_ordinary_events_keep_arriving_when_decoys_are_queued(running):
+    """Priority must not become starvation: the bulk still has to be judged."""
+    handler = Recorder(delay=0.01)
+    pool = running(handler, lanes=1, queue_max=512)
+
+    for index in range(5):
+        pool.submit(f"C:/protected/!_urds_canary_{index:02d}.docx", "deleted",
+                    priority=True)
+        pool.submit(f"C:/protected/doc_{index}.docx", "modified")
+
+    assert pool.drain(timeout=15.0)
+    assert len(handler.paths()) == 10
+
+
+def test_the_decoy_wait_is_reported_separately_from_the_bulk(running):
+    """`max_lag_ms` is dominated by whatever bulk the agent was chewing.
+
+    The number the acceptance turns on is how long the *tripwire* waited, and
+    an aggregate that mixes the two cannot show that the fix worked.
+    """
+    handler = Recorder(delay=0.05)
+    pool = running(handler, lanes=1, queue_max=512)
+
+    for index in range(15):
+        pool.submit(f"C:/protected/bulk_{index}.docx", "modified")
+    pool.submit("C:/protected/!_urds_canary_01.docx", "deleted", priority=True)
+    assert pool.drain(timeout=15.0)
+
+    stats = pool.stats()
+    assert stats["priority_submitted"] == 1
+    assert stats["max_priority_lag_ms"] < stats["max_lag_ms"], (
+        f"the decoy waited {stats['max_priority_lag_ms']} ms against a lane "
+        f"maximum of {stats['max_lag_ms']} ms; it did not jump anything")

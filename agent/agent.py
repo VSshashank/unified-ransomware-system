@@ -47,6 +47,10 @@ from agent.velocity import VelocityTracker
 
 logger = logging.getLogger("urds-agent")
 
+#: Paths the baseline cache will hold before it is emptied. Also the cap on
+#: the single query that fills it at startup.
+MAX_BASELINES = int(os.getenv("URDS_MAX_BASELINES", "20000"))
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -101,7 +105,8 @@ class Agent:
         self.guard = procmon.ShadowCopyGuard(
             self.config, responder=self.responder, ledger=self.ledger)
         self.process_source: procmon.ProcessSource | None = None
-        self.transport = transport.InProcessTransport(self.ledger, self.responder)
+        self.transport = transport.InProcessTransport(
+            self.ledger, self.responder, on_block=self._note_block)
         self.dispatcher = dispatch.Dispatcher(
             self._process,
             lanes=self.config.dispatch_lanes,
@@ -114,9 +119,9 @@ class Agent:
         )
 
         #: path -> the entropy the ledger holds for it while it was known-good.
-        #: Cached because the alternative is a SQLite read on the hot path for
-        #: every filesystem event on the machine.
-        self._baseline_entropy: dict[str, float | None] = {}
+        #: Filled once at startup and kept current from the agent's own writes.
+        #: See `_warm_baselines` for what it replaced and why that mattered.
+        self._baseline_entropy: dict[str, float] = {}
 
         self._original_post = None
         self._observers: list = []
@@ -139,6 +144,10 @@ class Agent:
         self.monitor_app._ensure_worker()
 
         attribution_started = self._start_attribution()
+
+        # Before the observers, because this is the one chain read the agent
+        # makes and it must not happen while events are queueing behind it.
+        baselines = self._warm_baselines()
 
         # Seeded before the observers start, so the agent's own twenty writes
         # do not arrive as twenty filesystem events to judge.
@@ -184,6 +193,7 @@ class Agent:
             "shadow_copy_guard": guard_status,
             "dispatch": {"lanes": self.dispatcher.lane_count,
                          "queue_max_per_lane": self.dispatcher.queue_max},
+            "baselines_loaded": baselines,
             "attribution_window_ms": self._attribution_window_ms(),
             "ledger_db": str(self.config.ledger_db),
             "config_source": str(self.config.source) if self.config.source else None,
@@ -260,12 +270,20 @@ class Agent:
     def on_file_event(self, path: str, kind: str) -> bool:
         """Called on a watchdog thread. Hands the event to a lane and returns.
 
-        Nothing is decided here. This function used to run detection, the
-        attribution wait and the response inline, which meant a quarter of a
-        second of the watchdog's only thread for every write nobody could be
-        named for - see `agent/dispatch.py` for what that cost measured.
+        Nothing is decided here, with one exception: whether this path is a
+        decoy, which is a dict lookup and decides only *where in the queue*
+        the event goes, never what happens to it. A canary event that waits
+        behind two hundred ordinary writes is a tripwire wired through a
+        backlog, and the whole point of the decoy is that it is the one signal
+        needing no threshold and no delay.
+
+        Everything else used to happen here - detection, the attribution wait
+        and the response inline, a quarter of a second of the watchdog's only
+        thread for every write nobody could be named for. See
+        `agent/dispatch.py` for what that cost measured.
         """
-        return self.dispatcher.submit(path, kind)
+        return self.dispatcher.submit(path, kind,
+                                      priority=self.canaries.is_canary(path))
 
     def _attribution_window_ms(self) -> float:
         """How far back a lookup will still match an audited write."""
@@ -399,31 +417,77 @@ class Agent:
         file that read 4.2 bits/byte when first seen and reads 7.99 now has not
         become a better compressed archive.
 
-        Cached, including misses, because the alternative is a SQLite query on
-        the hot path for every filesystem event on the machine.
+        A dict lookup, and nothing else. It used to be a lookup backed by a
+        query, and the query was the single most expensive thing on the
+        protection path - see `_warm_baselines`.
         """
-        key = path.lower()
-        if key in self._baseline_entropy:
-            return self._baseline_entropy[key]
+        return self._baseline_entropy.get(path.lower())
 
-        value = None
+    def _note_block(self, event_type: str, event_data: dict) -> None:
+        """Keep the baseline cache current from the agent's own ledger writes.
+
+        Called by the transport after a block commits, on the pipeline's
+        worker thread. The agent is the process writing these baselines, so
+        reading them back out of the chain to learn what it just put in was
+        always the long way round.
+        """
+        if event_type != "file_baseline":
+            return
+        entropy = (event_data or {}).get("entropy")
+        path = (event_data or {}).get("file_path")
+        if not path or not isinstance(entropy, (int, float)):
+            return
+        if len(self._baseline_entropy) > MAX_BASELINES:
+            # Dropping the lot loses the signal for every path until each is
+            # baselined again, which is the safe direction: a missing baseline
+            # makes the detector rely on absolute entropy, and a stale one
+            # would have it compare against a reading from a different file.
+            self._baseline_entropy.clear()
+            logger.info("baseline cache exceeded %d paths and was cleared",
+                        MAX_BASELINES)
+        self._baseline_entropy[str(path).lower()] = float(entropy)
+
+    def _warm_baselines(self) -> int:
+        """Load every baseline the chain holds, in one indexed query.
+
+        What this replaced: `_baseline_for` used to call `get_blocks(
+        file_path=...)` on a cache miss, and every path the agent has not seen
+        before is a miss. That query has no index it can use - `file_path`
+        lives inside the `event_data` JSON blob, so the filter is a LIKE with
+        a leading wildcard - and it runs twice, once to COUNT and once to
+        SELECT. It is a full scan of the chain, it gets slower as the chain
+        grows, and it ran on a lane, on one SQLite connection shared with the
+        fan-out thread writing the next block.
+
+        Measured at 3300 blocks: 4.4 ms, against 2.5 ms for the whole of
+        detection. Five hundred documents is five hundred of them, and the
+        arm that created that corpus recorded a dispatch lag of 12.8 s -
+        which is the agent still draining the backlog when the attack started.
+
+        This is one query on `event_type`, which *is* indexed, and after it
+        the protection path never reads the chain at all.
+        """
         try:
             found = self.ledger.chain.get_blocks(
-                file_path=path, newest_first=True, limit=20)
-            for block in found.get("blocks", []):
-                if block.get("event_type") != "file_baseline":
-                    continue
-                candidate = (block.get("event_data") or {}).get("entropy")
-                if isinstance(candidate, (int, float)):
-                    value = float(candidate)
-                    break
-        except Exception:  # noqa: BLE001 - a missing baseline is not an error
-            value = None
+                event_type="file_baseline", newest_first=True,
+                limit=MAX_BASELINES)
+        except Exception as exc:  # noqa: BLE001 - starting without them is fine
+            logger.warning("could not warm the baseline cache: %s", exc)
+            return 0
 
-        if len(self._baseline_entropy) > 10000:
-            self._baseline_entropy.clear()
-        self._baseline_entropy[key] = value
-        return value
+        loaded = 0
+        # Newest first, so the first reading seen for a path is the most
+        # recent one and later (older) blocks must not overwrite it.
+        for block in found.get("blocks", []):
+            data = block.get("event_data") or {}
+            path, entropy = data.get("file_path"), data.get("entropy")
+            if not path or not isinstance(entropy, (int, float)):
+                continue
+            key = str(path).lower()
+            if key not in self._baseline_entropy:
+                self._baseline_entropy[key] = float(entropy)
+                loaded += 1
+        return loaded
 
     # -- reporting ---------------------------------------------------------
 
@@ -480,6 +544,7 @@ class Agent:
             "responder": self.responder.summary(),
             "canaries": len(self.canaries.paths()),
             "canary_hits": self.canaries.hit_count(),
+            "baselines_cached": len(self._baseline_entropy),
             "shadow_copy_guard": (self.process_source.status()
                                   if self.process_source else
                                   {"source": "none", "available": False,

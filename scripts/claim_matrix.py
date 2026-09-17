@@ -436,6 +436,54 @@ CLAIMS: list[dict] = [
                 "needs a mechanism that names the writer synchronously with "
                 "the write; see docs/LIMITATIONS.md section 1.",
     },
+    {
+        "id": "C-18",
+        "table_9_9_row": "(beyond the table) which attack shapes a response can reach at all",
+        "wording": None,
+        "wording_required": False,
+        "claim": "Whether an encryptor can be suspended is decided by how long "
+                 "its process lives, before any question about detection. "
+                 "7-Zip archives and unlinks a 500-document corpus in about "
+                 "230 ms, against an audit delivery lag of 600-1010 ms, so it "
+                 "is gone before the record naming it arrives. A loop around "
+                 "openssl has the same property per writer and the opposite "
+                 "one per campaign: the driver that unlinks each original "
+                 "outlives the lag, which is why that arm is suspended and "
+                 "this one is not.",
+        "requires": "7-Zip and OpenSSL on the host; no elevation and no agent",
+        "artefact": "reports/encryptor_lifetime.json",
+        "check": [
+            # Categories, not timings. Each arm sits nowhere near a boundary,
+            # so the category is the finding and the millisecond figure is the
+            # sample - see `_reachability` in the measuring script.
+            ("reports/encryptor_lifetime.json",
+             ["seven_zip", "reachability"], "unreachable"),
+            ("reports/encryptor_lifetime.json",
+             ["openssl_loop", "writer_reachability"], "unreachable"),
+            ("reports/encryptor_lifetime.json",
+             ["openssl_loop", "campaign_reachability"], "reachable"),
+            # The correction this artefact exists to make.
+            ("reports/encryptor_lifetime.json",
+             ["seven_zip", "sdel_unlinks_during_the_run"], True),
+        ],
+        "tests": [],
+        "note": "This row exists because the previous Phase 3 artefact gave the "
+                "wrong reason for arm A1's escape, and no gate covered the "
+                "sentence that gave it. It said 7-Zip's -sdel unlinks only "
+                "after the archive completes, and it attributed the miss to the "
+                "container-separability result. Neither holds: the first unlink "
+                "lands about 130 ms in, and in the acceptance the decoy "
+                "tripwire fired, the agent attributed the deletions to 7z.exe "
+                "with CERTAIN confidence, and the response was refused because "
+                "the PID no longer existed. See docs/CORRECTIONS.md correction "
+                "10. "
+                "The second consequence is about the benign half: an arm that "
+                "finishes faster than the delivery lag completes untouched "
+                "whatever the detector decided, so it cannot be quoted as "
+                "evidence of specificity. The benign arms now record "
+                "outlived_the_delivery_lag and an arm that did not is reported "
+                "as inconclusive.",
+    },
 ]
 
 

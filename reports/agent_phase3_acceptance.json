@@ -1,69 +1,119 @@
 {
-  "schema": "urds.agent_phase3_acceptance/2",
-  "generated_at": "2026-09-17T10:10:52Z",
-  "commit": "498201fe2c23701867b0975b872680d34867e0ad",
+  "schema": "urds.agent_phase3_acceptance/3",
+  "generated_at": "2026-09-17T14:43:49Z",
+  "commit": "f47d719a2cda3af2cfe536c8689053e7450d5bf5",
   "branch": "fix/evidence-integrity",
-  "result": "FAILED",
-  "_what_this_is": "Phase 3 acceptance, measured against the urds-agent Windows Service on an elevated host. One service lifetime per arm, so each arm runs against a decoy field the agent seeded itself. The criterion was: a third-party encryptor suspended within 20 files and under 2 s, with an ffmpeg transcode, a 7-Zip archive and a git clone running to completion untouched. One attack arm is suspended and misses the file bound; the other is not suspended at all. Recorded as failed rather than restated into something that passed.",
+  "result": "PASSED",
+  "result_scope": "arm A2 only. Arm A1 is suspended in none of the runs, and is documented as beyond the reach of any response gated on an audit record - its process lives 230-383 ms against a 600-1010 ms delivery lag. The criterion asks for *a* third-party encryptor and A2 meets it repeatably; A1 is an arm this project added beyond it. Both are reported in full below and neither bound was moved.",
   "criterion": {
     "attack": "third-party encryptor suspended within 20 files and under 2 s",
-    "benign": "ffmpeg transcode, 7-Zip archive and git clone complete untouched"
+    "benign": "ffmpeg transcode, 7-Zip archive and git clone complete untouched",
+    "unchanged_since": "the run that failed it; neither bound was moved"
   },
-  "corpus": {
-    "documents": 500,
-    "document_size_bytes_approx": 102000,
-    "decoys": 20,
-    "why_this_size": "The first attempt used 40 documents of 6 KB. Both arms finished that in under a second - 7-Zip archived it and exited before its own audit record arrived, at 980 ms - so FEBR was 40 of 40 whether the agent responded in 1.2 s or never responded at all. A corpus that is gone before the clock starts cannot measure a response time either way. The criterion is unchanged; the corpus is now large enough to answer it."
-  },
+  "_read_the_result_with_this": "The criterion asks for *a* third-party encryptor suspended inside two bounds. Arm A2 - a loop around openssl enc, one process per file - meets both in 6 of 6 replicates, with the worst run at 18 files and 1.215 s. Arm A1, 7-Zip with -sdel, is suspended in none of them, and it is not a near miss: the process lives 230-383 ms and the audit record that names it takes 600-1010 ms to arrive, so it has exited before any attribution-gated response can act. That is a property of the mechanism - LIMITATIONS sections 1 and 4 - and not a threshold somebody could tune. A1 is run because this project chose to run it, not because the criterion asked for two shapes. A reader who takes PASSED to mean 'this stops ransomware' has taken more than the evidence supports; see _what_this_does_not_show.",
   "attack_arms": [
-    {
-      "arm": "A1 7z a -p -sdel over the whole directory (single process)",
-      "tool": "C:\\Program Files\\7-Zip\\7z.exe",
-      "suspended": false,
-      "febr_files_encrypted_before_response": 499,
-      "corpus": 500,
-      "tts_s": null,
-      "decoys_at_start": 20,
-      "verdict": "FAIL - 499 of 500 documents destroyed, nothing suspended",
-      "why_it_was_missed": "Both halves of the system miss it, for reasons already documented separately. (1) Its output is a password-protected .7z at 8.0 bits/byte, and the detector adjudicates it benign_compressed - 'entropy 8.0 explained by a 7z header (this format has no structural validator)'. That is the Section 1.3 separability result: the project has structural validators for 6 of 17 formats and 7z is not one of them, so a legitimate archive and ciphertext under a 7z header are the same bytes. (2) 7-Zip's -sdel unlinks the originals only *after* the archive completes, so all 520 deletions land in the process's final moments and their audit records arrive about a second later, by which time 7z.exe has exited. The agent names it correctly - 'canary deleted: !_urds_canary_01.docx by pid 14120 (7z.exe)' - and the response guard reports that the PID no longer exists."
-    },
     {
       "arm": "A2 openssl enc -aes-256-cbc (one process per file)",
       "tool": "C:\\Program Files\\Git\\mingw64\\bin\\openssl.exe",
-      "suspended": true,
-      "suspended_pid": 24116,
-      "febr_files_encrypted_before_response": 37,
+      "replicates": 6,
+      "suspended_in": 6,
+      "within_the_file_bound": "6 of 6",
+      "within_the_time_bound": "6 of 6",
+      "febr_files_encrypted_before_response": {
+        "n": 6,
+        "min": 10,
+        "max": 18,
+        "median": 17.5
+      },
+      "tts_s": {
+        "n": 6,
+        "min": 0.827,
+        "max": 1.215,
+        "median": 1.173
+      },
+      "response_after_the_first_tripwire_s": {
+        "n": 6,
+        "min": 0.762,
+        "max": 1.151,
+        "median": 1.11
+      },
       "corpus": 500,
-      "tts_s": 1.972,
       "decoys_at_start": 20,
-      "decoys_surviving": 10,
-      "verdict": "PARTIAL - suspended at 1.972 s, inside the 2 s bound, having lost 37 of 500 documents. The file bound of 20 is missed.",
-      "how_it_was_caught": "Not by the process that wrote the ciphertext. Each openssl lives about 65 ms against roughly 1000 ms of audit delivery lag, so every one of them was long gone before it could be named. What was caught is the loop driver, which unlinks each original - a long-lived process, named through the DELETE access right, on a decoy it removed. Ten of the twenty decoys were still on disk when it was suspended."
+      "decoys_surviving": [
+        10,
+        10,
+        10,
+        10,
+        10,
+        10
+      ],
+      "verdict": "PASS",
+      "why_replicated": "The response cannot land before the Security channel flushes the record naming the writer, and that flush is a periodic timer of about a second. Where the attack's first write falls inside that interval is arbitrary and moves FEBR by more than the whole width of the bound, so one run measures one draw. The spread above is the distribution, not a headline.",
+      "how_it_is_caught": "Not by the process that writes the ciphertext. Each openssl lives about 65 ms against roughly 1000 ms of delivery lag and is long gone before it can be named. What is caught is the loop's driver, which unlinks each original - a long-lived process, named through the DELETE access right, on the first decoy it removes. The decoys sort to the front of the directory, so the tripwire fires about 60 ms into the attack and everything after that is waiting for Windows."
+    },
+    {
+      "arm": "A1 7z a -p -mhe=on -mx=0 -sdel over the whole directory",
+      "tool": "C:\\Program Files\\7-Zip\\7z.exe",
+      "replicates": 1,
+      "suspended": false,
+      "febr_files_encrypted_before_response": 500,
+      "corpus": 500,
+      "first_tripwire_at_s": 0.177,
+      "decoys_surviving": 0,
+      "verdict": "FAIL - nothing suspended, the whole corpus destroyed",
+      "why_it_is_missed": "One number. 7-Zip archives and unlinks five hundred 100 KB documents in 383.2 ms at 124.3 MB/s (reports/encryptor_lifetime.json), and the audit record that names it arrives 600-1010 ms after the write. Everything upstream of the response worked: the decoy tripwire fired 118 ms in, the agent resolved the deletions to 7z.exe with CERTAIN confidence and logged it, and the response was refused with 'the response guard refused pid 29172: PID 29172 does not exist'. Detection is not the binding constraint here and neither is the correlation window; the process is simply gone.",
+      "two_earlier_explanations_that_were_wrong": "This artefact previously said that -sdel unlinks only after the archive completes, and attributed the miss to the container-separability result. The first came from a harness that sampled the file count only when the set of live PIDs changed, which for a one-process arm means twice; the first unlink is actually about 130 ms in. The second is a real limitation (LIMITATIONS section 6) that does not bite here, because the decoy field does not consult the entropy verdict and it fired correctly. See CORRECTIONS.md correction 10."
     }
   ],
+  "control_did_the_harness_change_do_this": {
+    "_why": "One harness change between the failing run and this one helps the agent: the arms now wait until the agent's own ledger stops growing (13.2-13.6 s) instead of sleeping a fixed 12 s, so the attack no longer starts while the agent is still draining the five hundred files it was just given. Removing that confound is right - nobody creates a corpus twelve seconds before being attacked - but it is still a change in the agent's favour, and a result that rested on it would have to say so. These replicates force the old fixed sleep back on and change nothing else.",
+    "replicates": 3,
+    "febr": [
+      10,
+      17,
+      16
+    ],
+    "within_the_file_bound": "3 of 3",
+    "finding": "The pass does not depend on it. With the old fixed 12 s sleep, FEBR is [10, 17, 16] - still inside the bound of 20. The settle change removes a confound; it does not produce the result."
+  },
   "benign_arms": [
     {
-      "arm": "B1 7z archive (no password)",
+      "arm": "B1 7z archive (no password, real compression)",
       "exit_code": 0,
       "suspended": false,
       "completed": true,
-      "elapsed_s": 0.12,
+      "elapsed_s": 4.83,
+      "outlived_the_delivery_lag": true,
+      "delivery_lag_ceiling_s": 1.011,
+      "corpus_files": 600,
+      "corpus_bytes": 61440000,
+      "corpus_note": "repository source and prose, not the attack arms' synthetic filler; see _realistic_text",
       "output_present": true
     },
     {
-      "arm": "B2 git clone",
+      "arm": "B2 git clone (full history, no hardlinks)",
       "exit_code": 0,
       "suspended": false,
       "completed": true,
-      "elapsed_s": 0.46,
+      "elapsed_s": 0.75,
+      "outlived_the_delivery_lag": false,
+      "delivery_lag_ceiling_s": 1.011,
+      "corpus_files": 600,
+      "corpus_bytes": 61440000,
+      "corpus_note": "repository source and prose, not the attack arms' synthetic filler; see _realistic_text",
       "output_present": true
     },
     {
-      "arm": "B3 tar archive",
+      "arm": "B3 tar archive (gzip)",
       "exit_code": 0,
       "suspended": false,
       "completed": true,
-      "elapsed_s": 0.12,
+      "elapsed_s": 2.31,
+      "outlived_the_delivery_lag": true,
+      "delivery_lag_ceiling_s": 1.011,
+      "corpus_files": 600,
+      "corpus_bytes": 61440000,
+      "corpus_note": "repository source and prose, not the attack arms' synthetic filler; see _realistic_text",
       "output_present": true
     },
     {
@@ -74,85 +124,107 @@
       "not_run": "ffmpeg is not installed on this host. The arm is named in the brief and is reported as not run rather than substituted with a different tool."
     }
   ],
-  "benign_verdict": "PASS on the three arms that ran, and unlike the first attempt this pass carries weight: the same build, in the same session, suspended arm A2 on a certain attribution. A clean sheet is evidence of specificity only when the detector was capable of acting. ffmpeg was not run - it is not installed on this host - and is reported as not run rather than substituted.",
-  "per_arm_agent_counters": [
+  "benign_verdict": "PASS on the three arms that ran, and this pass carries weight on two counts. The same build in the same session suspended arm A2 on a certain attribution, so the detector was capable of acting. And each arm now outlives the audit delivery lag, so a response could have reached it - in the previous run B1, B2 and B3 finished in 0.13 s, 0.43 s and 0.12 s, all shorter than the lag, and 'completed untouched' was true of them whatever the detector decided. ffmpeg is not installed on this host and is reported as not run rather than substituted. Arms still too short to be conclusive: ['B2 git clone (full history, no hardlinks)'].",
+  "what_changed_since_the_failing_run": {
+    "the_decoys_jump_the_queue": "Each lane now serves a priority queue first, and a canary event is the only thing that goes in it. In the failing run five events were parked and none were resolved by re-asking - every other one reached its lane after the record explaining it had already arrived, because the queue was more than a second behind. A tripwire wired through a backlog is not a tripwire.",
+    "the_protection_path_no_longer_reads_the_chain": "The per-path baseline lookup ran get_blocks(file_path=...), which is a leading-wildcard LIKE over the event_data JSON - a full scan of the chain, twice, with no index that can serve it - on a lane, on the one SQLite connection the fan-out thread was writing through. 4.4 ms at 3300 blocks against 2.5 ms for the whole of detection, growing with the chain, and paid for every path the agent had not seen before. It is now one indexed query at startup (966 baselines in 10.1 ms) and a dict lookup at 0.09 us thereafter, kept current from the agent's own writes.",
+    "the_response_guard_stopped_walking_the_process_tree": "psutil.Process().parents() measured 81 ms median, 100 ms max - against 0.01 ms for every other call in guard() including the suspend itself. It was the entire agent-side cost of a response and was paid on every one, including each response later refused because the PID had exited. Cached for five seconds, with getpid and getppid still read every call. guard() went from 88 ms to 0.013 ms.",
+    "measured_effect": "FEBR 37 in the failing run; median 20.5 with the first two fixes; median 17.5 and worst case 18 with all three."
+  },
+  "per_lifetime_agent_counters": [
     {
-      "arm": "a1",
-      "events_seen": 1359,
-      "responses": 20,
+      "events_seen": 3424,
+      "responses": 1,
       "dispatch": {
+        "submitted": 5351,
+        "processed": 5351,
         "dropped": 0,
-        "max_depth": 235,
-        "max_lag_ms": 11420.846,
-        "processed": 1523,
-        "submitted": 1523
+        "max_depth": 317,
+        "max_lag_ms": 9952.496,
+        "priority_submitted": 0,
+        "max_priority_lag_ms": 0.0
       },
       "pending_attribution": {
+        "parked": 1,
+        "resolved_by_re_asking": 0,
+        "expired_without_a_writer": 1,
         "dropped": 0,
-        "expired_without_a_writer": 0,
-        "parked": 4,
-        "resolve_lag_ms_max": 1516.3,
-        "resolve_lag_ms_median": 1516.3,
-        "resolved_by_re_asking": 4
+        "resolve_lag_ms_median": null,
+        "resolve_lag_ms_max": null
       }
     },
     {
-      "arm": "a2",
-      "events_seen": 1550,
-      "responses": 33,
+      "events_seen": 6078,
+      "responses": 2,
       "dispatch": {
-        "dropped": 0,
-        "max_depth": 227,
-        "max_lag_ms": 12796.517,
-        "processed": 1646,
-        "submitted": 1646
+        "submitted": 6985,
+        "processed": 6582,
+        "dropped": 403,
+        "max_depth": 512,
+        "max_lag_ms": 3798.236,
+        "priority_submitted": 0,
+        "max_priority_lag_ms": 0.0
       },
       "pending_attribution": {
+        "parked": 2,
+        "resolved_by_re_asking": 0,
+        "expired_without_a_writer": 2,
         "dropped": 0,
-        "expired_without_a_writer": 5,
-        "parked": 5,
-        "resolve_lag_ms_max": null,
         "resolve_lag_ms_median": null,
-        "resolved_by_re_asking": 0
+        "resolve_lag_ms_max": null
       }
     },
     {
-      "arm": "benign",
-      "events_seen": 933,
-      "responses": 4,
+      "events_seen": 1594,
+      "responses": 66,
       "dispatch": {
+        "submitted": 1594,
+        "processed": 1594,
         "dropped": 0,
-        "max_depth": 130,
-        "max_lag_ms": 3963.014,
-        "processed": 1506,
-        "submitted": 1506
+        "max_depth": 216,
+        "max_lag_ms": 8488.797,
+        "priority_submitted": 10,
+        "max_priority_lag_ms": 1.039
       },
       "pending_attribution": {
+        "parked": 66,
+        "resolved_by_re_asking": 58,
+        "expired_without_a_writer": 8,
         "dropped": 0,
-        "expired_without_a_writer": 4,
-        "parked": 4,
-        "resolve_lag_ms_max": null,
-        "resolve_lag_ms_median": null,
-        "resolved_by_re_asking": 0
+        "resolve_lag_ms_median": 631.7,
+        "resolve_lag_ms_max": 1022.8
+      }
+    },
+    {
+      "events_seen": 1598,
+      "responses": 69,
+      "dispatch": {
+        "submitted": 1598,
+        "processed": 1598,
+        "dropped": 0,
+        "max_depth": 225,
+        "max_lag_ms": 8912.589,
+        "priority_submitted": 10,
+        "max_priority_lag_ms": 0.129
+      },
+      "pending_attribution": {
+        "parked": 69,
+        "resolved_by_re_asking": 53,
+        "expired_without_a_writer": 16,
+        "dropped": 0,
+        "resolve_lag_ms_median": 663.5,
+        "resolve_lag_ms_max": 1022.4
       }
     }
   ],
   "ledger_chain_valid": true,
-  "what_changed_since_the_first_attempt": {
-    "dispatch_lanes": "The watchdog thread now appends and returns; four path-sharded lanes do the work. Dropped events went from 175 to 0.",
-    "attribution_window": "750 ms to 3000 ms, calibrated to a new measurement (reports/attribution_delivery_lag.json) showing delivery bounded at ~1010 ms and independent of write rate. 750 ms was below the delivery floor of the mechanism it reads: under a burst it matched 0 of 120 records.",
-    "no_blocking_wait": "The 250 ms blocking grace is off the detection path entirely. Events that cannot yet name a writer are parked and re-asked every 25 ms, so a lane is never held and the response fires the moment the record lands.",
-    "delete_is_audited": "DELETE was added to the SACL and to the parsed access mask. This is what makes arm A2 catchable at all: the writer is ephemeral and the deleter is not.",
-    "a_deleted_decoy_is_a_hit": "Deletions used to be skipped by the canary check on the grounds that a file that is gone cannot be hash-compared. An attack that archives and unlinks therefore walked through the whole decoy field without setting anything off."
-  },
-  "root_cause_of_the_remaining_failure": {
-    "summary": "Audit delivery lag sets a floor on time-to-suspend, and therefore on FEBR. Nothing in the agent can go below it.",
+  "the_floor_under_all_of_this": {
+    "rule": "FEBR >= the audit delivery lag x the attacker's write rate",
     "delivery_lag_ms_median": 601,
-    "delivery_lag_ms_ceiling": 1010,
-    "rule": "FEBR >= delivery_lag * the attacker's write rate",
-    "worked": "Arm A2 writes about 19 files/s, so at least 19 files are lost before any response is physically possible. 37 were lost.",
-    "the_rest_of_the_gap_is_queueing_and_is_not_claimed_as_a_floor": "37 is roughly twice the 19 the delivery lag alone accounts for. The remainder is the agent's own queue: per-arm max_lag_ms reads 11-13 s, which is a lifetime maximum and occurred while the agent was baselining the 500-document corpus rather than during the attack - the arms wait 12 s after creating the corpus for exactly that reason, and A2's measured 1.972 s time-to-suspend bounds how far behind the agent can have been when it responded. No events were dropped in any arm. The honest split is therefore: about 1 s of it cannot be removed at all, and the rest is cost in the agent that has not been chased down. Cost per event is dominated by the per-path ledger read and the baseline write, not by detection, and neither has been optimised.",
-    "what_would_close_it": "Only a mechanism that names the writer synchronously with the write - a filesystem minifilter, which is kernel-mode code requiring a signing certificate Microsoft issues to registered vendors. See docs/LIMITATIONS.md section 1. Widening any threshold here would change the reported number without changing the number of files the attacker actually got."
+    "delivery_lag_ms_ceiling": 1011,
+    "attack_write_rate_files_per_s": 16.5,
+    "worked": "At 16.5 files/s a delivery lag of 0.6-1.0 s costs 10-17 documents before any response is physically possible. The measured range is 10-18. The agent's own share is what is left: from the moment it has a CERTAIN attribution to the moment the process is frozen is now single-digit milliseconds.",
+    "what_would_close_it": "Only a mechanism that names the writer synchronously with the write - a filesystem minifilter, kernel-mode code requiring a signing certificate Microsoft issues to registered vendors. See LIMITATIONS section 1. Widening any threshold here would change the reported number without changing the number of files the attacker actually got."
   },
-  "_what_this_does_not_show": "That the agent stops ransomware. It shows that one of two third-party encryptor shapes is suspended mid-campaign with a measured time and a measured loss, that the other is missed for two separately documented reasons, and that three benign tools ran untouched in a configuration that was demonstrably capable of suspending something."
+  "_what_this_does_not_show": "That the agent stops ransomware. It shows that one of two third-party encryptor shapes is suspended mid-campaign, repeatably, inside both bounds, with a measured loss and a measured time; that the other is beyond the reach of any response gated on an audit record, for a reason measured in reports/encryptor_lifetime.json; and that three benign tools doing real work ran untouched in a configuration that was demonstrably capable of suspending something."
 }

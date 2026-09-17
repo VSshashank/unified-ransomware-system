@@ -234,3 +234,70 @@ def test_isolation_failure_is_reported_as_failed_not_isolated(monkeypatch):
     result = isolate_host(level="full")
     assert result["status"] == "failed"
     assert result["enforced"] is False
+
+
+# ------------------------------------------- the guard is on the response path
+
+def test_the_guard_does_not_walk_the_process_tree_on_every_response():
+    """81 ms per response, and it was the whole agent-side cost of one.
+
+    `guard()` runs before every suspension, and before every response that goes
+    on to be *refused* because the PID has already exited. On the host that ran
+    the Phase 3 acceptance the ancestor walk measured 81 ms median and 100 ms
+    max, against 0.01 ms for the rest of `guard()` and for the suspend itself.
+    At that acceptance's attack rate it is between one and two more documents
+    encrypted per incident, and under a burst it is 81 ms of a detection lane
+    per refused response.
+
+    A budget rather than an exact figure: the point is that the walk is not
+    repeated per call, and 5 ms is far below the 81 ms that made this a defect
+    while leaving room for a slow or loaded machine.
+    """
+    actions.forget_ancestors()
+    actions._self_and_ancestors()          # pay the cold walk once, on purpose
+
+    worst = 0.0
+    for _ in range(20):
+        started = time.perf_counter()
+        actions._self_and_ancestors()
+        worst = max(worst, (time.perf_counter() - started) * 1000)
+
+    assert worst < 5.0, (
+        f"the ancestor walk took {worst:.1f} ms on a warm cache; it is supposed "
+        f"to be cached between responses")
+
+
+def test_caching_the_ancestors_still_refuses_this_process_and_its_parent():
+    """The speed-up must not cost the guard its answer.
+
+    `os.getpid()` and `os.getppid()` are re-read every call precisely so that
+    the two entries that matter most can never be served stale.
+    """
+    actions.forget_ancestors()
+    first = actions._self_and_ancestors()
+    second = actions._self_and_ancestors()          # served from the cache
+
+    assert os.getpid() in first and os.getpid() in second
+    assert os.getppid() in first and os.getppid() in second
+    assert first == second
+
+    with pytest.raises(TerminationError, match="itself or one of its ancestors"):
+        guard(os.getpid())
+
+
+def test_the_ancestor_cache_expires_rather_than_lasting_for_ever():
+    """A recycled PID must not stay refused for the life of the agent.
+
+    If an ancestor exits and Windows hands its PID to an attacker's process, a
+    permanently cached set would refuse to suspend that process. The window is
+    bounded so that cannot outlast it.
+    """
+    assert actions.ANCESTOR_CACHE_TTL_S > 0
+    assert actions.ANCESTOR_CACHE_TTL_S <= 60, (
+        "the ancestor set is cached for longer than a minute; a recycled PID "
+        "would be refused for that whole time")
+
+    actions.forget_ancestors()
+    actions._self_and_ancestors()
+    computed_at, _ = actions._ancestor_cache
+    assert computed_at > float("-inf"), "the cache was not populated"

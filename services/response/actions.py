@@ -22,11 +22,36 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from time import perf_counter
+from time import monotonic, perf_counter
 
 import psutil
 
 logger = logging.getLogger(__name__)
+
+#: How long the walked ancestor chain is reused before it is recomputed.
+#:
+#: `psutil.Process().parents()` measured at **81 ms median, 100 ms max** on the
+#: host that ran the Phase 3 acceptance - against 0.01 ms for every other call
+#: in `guard()` combined, including the suspend itself. It was therefore the
+#: entire agent-side cost of a response, paid on each one, including every
+#: response that went on to be refused because the PID had already exited. At
+#: the acceptance's attack rate that is between one and two more documents
+#: encrypted per incident, and during a burst it is 81 ms of lane time per
+#: refused response as well.
+#:
+#: Five seconds rather than for ever. The set is nearly constant - this
+#: process's PID never changes and a service's parent chain is services.exe and
+#: wininit.exe - but "nearly" is not "always": if an ancestor exits and Windows
+#: recycles its PID onto an attacker's process, a permanently cached entry
+#: would refuse to suspend that process for the rest of the agent's life. A
+#: bounded window trades a measured 81 ms for at most five seconds of staleness
+#: on a set that rarely changes at all.
+ANCESTOR_CACHE_TTL_S = 5.0
+
+#: (computed_at, pids). Written without a lock: two threads racing here both
+#: compute the same answer and the later write wins, which costs one redundant
+#: walk and cannot produce a wrong set.
+_ancestor_cache: tuple[float, frozenset[int]] = (float("-inf"), frozenset())
 
 # SIGTERM first, then SIGKILL. The whole budget has to fit the <2s target.
 TERM_GRACE_SECONDS = float(os.getenv("TERMINATE_GRACE_SECONDS", "1.0"))
@@ -81,13 +106,36 @@ def _self_and_ancestors() -> set[int]:
     deliberately *not* protected: a process this service happens to sit above
     in the tree can still be the one encrypting files, and refusing those would
     block legitimate kills.
+
+    `os.getpid()` and `os.getppid()` are read every call - they are two
+    syscalls and they are the two entries that matter most. Only the walk above
+    the immediate parent is cached, and that is the part that was measured at
+    81 ms; see `ANCESTOR_CACHE_TTL_S` for why it is a window rather than a
+    one-off.
     """
+    global _ancestor_cache
     pids = {os.getpid(), os.getppid()}
-    try:
-        pids.update(parent.pid for parent in psutil.Process().parents())
-    except psutil.Error:
-        pass
-    return pids
+
+    now = monotonic()
+    computed_at, walked = _ancestor_cache
+    if now - computed_at > ANCESTOR_CACHE_TTL_S:
+        try:
+            walked = frozenset(parent.pid for parent in psutil.Process().parents())
+        except psutil.Error:
+            walked = frozenset()
+        _ancestor_cache = (now, walked)
+
+    return pids | set(walked)
+
+
+def forget_ancestors() -> None:
+    """Drop the cached chain, so the next guard walks it again.
+
+    For tests, and for any caller that has just changed its own process tree
+    and would rather pay the walk than reason about the window.
+    """
+    global _ancestor_cache
+    _ancestor_cache = (float("-inf"), frozenset())
 
 
 def guard(pid: int) -> None:

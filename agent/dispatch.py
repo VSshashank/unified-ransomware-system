@@ -51,6 +51,17 @@ less than the event arriving now, which can still name a process. Drops are
 counted, logged, and reported by `Agent.status()`. They are never silent: an
 agent that quietly discards writes is an agent claiming a coverage it does not
 have.
+
+Each lane serves two queues, and the decoys' one first. That is the third
+thing the Phase 3 acceptance measured. With the lanes in place and nothing
+dropped, arm A2 was still suspended at 1.972 s against an audit delivery lag
+of about 0.93 s, and the agent's own counters said why: of the events that
+could have named the attacker, five were parked and *none* were resolved by
+re-asking. Every other one reached its lane so late that the audit record
+explaining it had already arrived - the queue was running more than a second
+behind, so `pending` never had anything to do. FIFO is right for ordinary
+writes, all of which are equally uninteresting until something says otherwise.
+It is wrong for the twenty files whose only purpose is to say so.
 """
 
 from __future__ import annotations
@@ -86,6 +97,10 @@ class Event:
     path: str
     kind: str
     queued_at: float
+    #: Goes to the front of its lane. Set for events on a decoy, and for
+    #: nothing else. See `_Lane.submit` for why the queue is split rather than
+    #: reordered.
+    priority: bool = False
 
     def age_ms(self, now: float | None = None) -> float:
         moment = time.monotonic() if now is None else now
@@ -116,6 +131,7 @@ class _Lane:
         self._handler = handler
         self._queue_max = max(1, int(queue_max))
         self._items: deque[Event] = deque()
+        self._priority: deque[Event] = deque()
         self._cv = threading.Condition()
         self._stopping = False
         self._busy = False
@@ -128,6 +144,8 @@ class _Lane:
         self.max_depth = 0
         self.max_lag_ms = 0.0
         self.last_lag_ms = 0.0
+        self.priority_submitted = 0
+        self.max_priority_lag_ms = 0.0
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -148,34 +166,57 @@ class _Lane:
     # -- the two ends ------------------------------------------------------
 
     def submit(self, event: Event) -> bool:
-        """Append. Returns False if an older event had to be discarded first."""
+        """Append. Returns False if an older event had to be discarded first.
+
+        Priority events go in a second queue rather than at the head of the
+        first, because head-insertion and the head-drop policy are the same
+        end of the same deque: an event pushed to the front to be handled
+        first would be the next one discarded when the lane filled up. Two
+        queues keep "oldest first" for ordinary traffic and "never dropped for
+        throughput" for a tripwire, without either rule undoing the other.
+        """
         with self._cv:
             dropped = False
-            if len(self._items) >= self._queue_max:
-                self._items.popleft()
+            if event.priority:
+                queue = self._priority
+                self.priority_submitted += 1
+            else:
+                queue = self._items
+            if len(queue) >= self._queue_max:
+                queue.popleft()
                 self.dropped += 1
                 dropped = True
-            self._items.append(event)
+            queue.append(event)
             self.submitted += 1
-            if len(self._items) > self.max_depth:
-                self.max_depth = len(self._items)
+            depth = len(self._items) + len(self._priority)
+            if depth > self.max_depth:
+                self.max_depth = depth
             self._cv.notify()
         return not dropped
 
     def _run(self) -> None:
         while True:
             with self._cv:
-                while not self._items and not self._stopping:
+                while not self._items and not self._priority and not self._stopping:
                     self._cv.wait(timeout=0.5)
-                if self._stopping and not self._items:
+                if self._stopping and not self._items and not self._priority:
                     return
-                event = self._items.popleft()
+                # Decoys first. A canary write or deletion is the least
+                # ambiguous signal the agent has, and in the failed Phase 3
+                # acceptance it waited behind two hundred ordinary writes of
+                # the corpus the attack was working through - which is the
+                # whole of the response time that was not the audit channel's
+                # delivery lag.
+                event = (self._priority.popleft() if self._priority
+                         else self._items.popleft())
                 self._busy = True
             try:
                 lag = event.age_ms()
                 self.last_lag_ms = lag
                 if lag > self.max_lag_ms:
                     self.max_lag_ms = lag
+                if event.priority and lag > self.max_priority_lag_ms:
+                    self.max_priority_lag_ms = lag
                 self._handler(event)
             except Exception:  # noqa: BLE001 - one bad file cannot stop a lane
                 self.failed += 1
@@ -190,11 +231,11 @@ class _Lane:
 
     def idle(self) -> bool:
         with self._cv:
-            return not self._items and not self._busy
+            return not self._items and not self._priority and not self._busy
 
     def depth(self) -> int:
         with self._cv:
-            return len(self._items)
+            return len(self._items) + len(self._priority)
 
     def stats(self) -> dict:
         return {
@@ -207,6 +248,12 @@ class _Lane:
             "max_depth": self.max_depth,
             "max_lag_ms": round(self.max_lag_ms, 3),
             "last_lag_ms": round(self.last_lag_ms, 3),
+            "priority_submitted": self.priority_submitted,
+            # Reported separately because it is the number the acceptance
+            # turns on. The overall max_lag_ms is dominated by whatever
+            # bulk the agent was chewing through; this one says how long the
+            # tripwire itself waited.
+            "max_priority_lag_ms": round(self.max_priority_lag_ms, 3),
         }
 
 
@@ -240,9 +287,16 @@ class Dispatcher:
         self._running = False
         return self.stats()
 
-    def submit(self, path: str, kind: str) -> bool:
-        """Called on a watchdog thread. Appends and returns."""
-        event = Event(path=path, kind=kind, queued_at=time.monotonic())
+    def submit(self, path: str, kind: str, priority: bool = False) -> bool:
+        """Called on a watchdog thread. Appends and returns.
+
+        `priority` puts the event at the front of its lane. The caller decides
+        what deserves it; `Agent.on_file_event` sets it for a decoy and for
+        nothing else, which is a dict lookup and keeps this function's cost on
+        the watchdog thread where it was.
+        """
+        event = Event(path=path, kind=kind, queued_at=time.monotonic(),
+                      priority=bool(priority))
         lane = self._lanes[lane_for(path, self.lane_count)]
         accepted = lane.submit(event)
         if not accepted:
@@ -299,5 +353,8 @@ class Dispatcher:
             "depth": sum(item["depth"] for item in lanes),
             "max_depth": max((item["max_depth"] for item in lanes), default=0),
             "max_lag_ms": max((item["max_lag_ms"] for item in lanes), default=0.0),
+            "priority_submitted": sum(item["priority_submitted"] for item in lanes),
+            "max_priority_lag_ms": max(
+                (item["max_priority_lag_ms"] for item in lanes), default=0.0),
             "per_lane": lanes,
         }

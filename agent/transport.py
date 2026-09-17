@@ -38,10 +38,17 @@ class InProcessTransport:
     unreachable leg degrades exactly as it always did.
     """
 
-    def __init__(self, ledger, responder=None, ml_post: Callable | None = None) -> None:
+    def __init__(self, ledger, responder=None, ml_post: Callable | None = None,
+                 on_block: Callable[[str, dict], None] | None = None) -> None:
         self.ledger = ledger
         self.responder = responder
         self.ml_post = ml_post
+        #: Called with (event_type, event_data) after a block is committed.
+        #: The agent uses it to keep its baseline-entropy cache current from
+        #: the writes it is already making, instead of reading the chain back
+        #: on the detection path. Never called for a write that failed, so the
+        #: cache cannot claim a baseline the chain does not hold.
+        self.on_block = on_block
         self.calls: list[tuple[str, str]] = []
 
     def __call__(self, client, base_url: str, path: str, payload: dict) -> dict | None:
@@ -72,6 +79,12 @@ class InProcessTransport:
             logger.error("direct ledger write failed for %s: %s",
                          payload.get("event_type"), exc)
             return None
+        if self.on_block is not None:
+            try:
+                self.on_block(payload["event_type"], payload["event_data"])
+            except Exception:  # noqa: BLE001 - a cache is not worth a lost write
+                logger.exception("on_block hook failed for %s",
+                                 payload.get("event_type"))
         return {"block_id": block["block_id"],
                 "current_hash": block["current_hash"],
                 "timestamp": block["timestamp"]}

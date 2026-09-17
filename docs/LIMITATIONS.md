@@ -111,34 +111,58 @@ exits inside that second is **named correctly and named too late**. The agent
 reports it — image, PID, what it did to which file — and the response records
 `the response guard refused pid N: PID N does not exist`.
 
-Measured, on a 40-document corpus:
+Measured directly by `scripts/measure_encryptor_lifetime.py`, outside any
+protected path, with the agent not involved:
 
-* `7z a -p -sdel` over 60 files: attributed to `7z.exe` at 980 ms, by which
-  time 7-Zip had archived everything and exited. Nothing suspended.
-* a loop around `openssl enc`, one process per file: each `openssl` lives about
-  **65 ms** against roughly **1000 ms** of delivery lag, so the process that
-  wrote each ciphertext was gone fifteen times over before it could be named.
+| shape | process lifetime | reachable? |
+|---|---|---|
+| `7z a -p -mhe=on -mx=0 -sdel`, 500 documents / 48 MB | **230-383 ms** | no |
+| `openssl enc`, the process writing one ciphertext | **~65 ms** | no |
+| `openssl enc`, the loop driver running the campaign | seconds | **yes** |
 
-The second case is nonetheless stopped, and the reason is worth stating: the
-*writer* is short-lived but the **deleter** is not. The loop's driver unlinks
+7-Zip stores 48 MB at 124-200 MB/s and begins unlinking about 130 ms in. Its
+whole life measured 230-383 ms across three measurements on this host, so it is gone
+two to four times over before the record naming it arrives. The figure moves
+with disk cache state between runs; what does not move is that it sits well
+under the 601 ms median delivery lag, which is why
+`reports/encryptor_lifetime.json` records a *category* - `unreachable` - beside the milliseconds, and why claim C-18 asserts the category. Nothing about the detector enters into this: in the Phase 3
+acceptance the decoy tripwire fired 118 ms in, the agent attributed the
+deletions to `7z.exe` with `CERTAIN` confidence and said so in the log, and the
+response was refused with *the response guard refused pid 29172: PID 29172 does
+not exist*. A perfect verdict on the archive's contents would have changed
+nothing.
+
+The openssl loop is stopped, and the reason is the asymmetry in the table: the
+*writer* is short-lived and the **deleter** is not. The loop's driver unlinks
 each original, so `DELETE` auditing names the long-lived process running the
 campaign rather than the ephemeral one running the cipher. That is why `Delete`
-is in the SACL and in the parsed access mask — without it the agent watched
-forty documents disappear and could not say who removed them.
+is in the SACL and in the parsed access mask, and without it the agent watched
+the documents disappear and could not say who removed them.
 
-It does not rescue the first case, because 7-Zip is both writer and deleter and
-is finished before either record lands.
+An earlier version of this section, and of
+`reports/agent_phase3_acceptance.json`, said that `-sdel` unlinks only after
+the archive completes. It does not, and that claim came from an acceptance
+harness which sampled the file count only when the set of live PIDs changed,
+which for a single-process arm means twice. See
+[CORRECTIONS.md](CORRECTIONS.md) correction 10.
+
+The same number bounds what a *benign* arm can prove. A tool that finishes
+inside the delivery lag completes untouched whether the detector judged it
+correctly or did not judge it at all, so an arm that short is not evidence of
+specificity. The benign arms are now sized to outlive the lag and each records
+`outlived_the_delivery_lag`; one that did not is reported as inconclusive.
 
 So the honest statement of what suspension can reach: **a campaign that runs
 for longer than the audit delivery lag.** Real ransomware working through a
 user's documents folder runs for minutes and is well inside that; a tool that
-swallows sixty files in under a second is not. FEBR is bounded below by
+swallows five hundred documents in a fifth of a second is not. FEBR is bounded below by
 (delivery lag × the attacker's write rate) and no amount of work on the agent
 changes that — only a mechanism that reports the writer synchronously would,
 which is §1.
 
-**Status:** measured. `reports/attribution_delivery_lag.json` and
-`reports/agent_phase3_acceptance.json`.
+**Status:** measured. `reports/encryptor_lifetime.json`,
+`reports/attribution_delivery_lag.json` and
+`reports/agent_phase3_acceptance.json`. Claim C-18.
 
 ## 5. Tamper-evident is not tamper-resistant
 
@@ -262,6 +286,18 @@ queued event is discarded — it is the one whose attribution window has already
 expired, so it is worth less than the event arriving now. Drops are counted per
 lane, logged, surfaced in `status()` and written into the `agent_stopped` block
 of the chain.
+
+Each lane serves two queues and takes the decoys' first. A canary write or
+deletion is the least ambiguous signal in the system, and it used to wait in
+line behind whatever bulk the agent was working through: in the failed
+acceptance, of the events that could have named the attacker, five were parked
+and **none** were resolved by re-asking, because every other one reached its
+lane after the record explaining it had already arrived. A tripwire wired
+through a backlog is not a tripwire. Priority events are never dropped to make
+room for ordinary ones, which is why there are two queues rather than one
+reordered queue: head-insert and head-drop are otherwise the same end of the
+same deque, and the tripwire would be the first thing discarded under exactly
+the load that matters.
 
 They are still dropped. A drop is a write the agent did not examine, and a run
 that reports `dropped > 0` has a coverage gap of exactly that size. The counter
