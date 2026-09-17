@@ -264,6 +264,29 @@ def test_provenance_covers_every_json_artefact_the_matrix_reads():
                 assert rel in covered, f"{claim['id']} reads {rel} unchecked"
 
 
+def test_no_stamped_report_escapes_the_provenance_sweep():
+    """A file that says where it came from gets asked whether that is true.
+
+    The sweep used to be the matrix's reading list alone, so an artefact could
+    carry a `commit` and a `generated_at` and never have either checked. Both
+    host-agent acceptance artefacts sat in that gap - and correction 9 is the
+    Phase 3 one going stale under a commit message that said otherwise.
+    """
+    covered = set(claim_matrix.provenance_artefacts())
+    for path in sorted((claim_matrix.ROOT / "reports").glob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if "generated_at" in payload and "commit" in payload:
+            rel = path.relative_to(claim_matrix.ROOT).as_posix()
+            assert rel in covered, (
+                f"{rel} stamps itself with commit {str(payload['commit'])[:9]} "
+                f"and nothing verifies it")
+
+
 @pytest.mark.parametrize("rel", claim_matrix.provenance_artefacts())
 def test_this_repositorys_evidence_carries_verifiable_provenance(rel):
     """Every artefact this matrix actually cites, in this actual repository."""

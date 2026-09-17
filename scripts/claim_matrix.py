@@ -620,8 +620,28 @@ def git_context(root: Path | None = None) -> dict:
     }
 
 
-def provenance_artefacts() -> list[str]:
-    """Every distinct JSON evidence file the matrix reads."""
+def provenance_artefacts(root: Path | None = None) -> list[str]:
+    """Every JSON evidence file that claims a provenance, cited or not.
+
+    Two sources, because being cited by a claim and asserting where you came
+    from are different things and either one should be enough to be checked.
+
+    The first is the matrix's own reading list. The second is every
+    `reports/*.json` carrying both a `generated_at` and a `commit`: a file that
+    stamps itself is asserting it was produced at a known point in this
+    history, and an assertion nothing verifies is the shape of defect this
+    whole gate exists for. Until this was added, the two artefacts recording
+    whether the host agent met its acceptance - `agent_phase2_acceptance.json`
+    and `agent_phase3_acceptance.json` - were stamped and unchecked, which is
+    exactly how docs/CORRECTIONS.md correction 9 happened: the Phase 3 artefact
+    was rewritten and the thing pinning it was not.
+
+    Reports with no stamp are left alone rather than failed. Several predate
+    the convention and are not evidence for any claim; failing them here would
+    turn one gate into a campaign, and a gate nobody can get green is a gate
+    people learn to skip.
+    """
+    root = root or ROOT
     found: list[str] = []
     for claim in CLAIMS:
         candidates = []
@@ -638,6 +658,18 @@ def provenance_artefacts() -> list[str]:
             # into a source file would mean nothing.
             if rel.endswith(".json") and rel not in found:
                 found.append(rel)
+
+    for path in sorted((root / "reports").glob("*.json")):
+        rel = path.relative_to(root).as_posix()
+        if rel in found:
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue          # check_provenance's job, and only if cited
+        if isinstance(payload, dict) and "generated_at" in payload and "commit" in payload:
+            found.append(rel)
+
     return sorted(found)
 
 
