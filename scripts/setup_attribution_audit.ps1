@@ -63,12 +63,24 @@ function Test-Elevated {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+# Every failed check is counted here, and the script exits non-zero if any of
+# them fired. It used to print `[ FAIL ]` and exit 0, which meant an installer
+# branching on $LASTEXITCODE would configure a machine whose auditing does not
+# work and report success - and everything the agent can do rests on auditing
+# working. See docs/CORRECTIONS.md correction 7.
+$script:Failures = 0
+
 function Write-Result {
     param([string]$Label, [bool]$Ok, [string]$Detail = '')
     $mark = if ($Ok) { '  ok  ' } else { ' FAIL ' }
     $line = "[$mark] $Label"
     if ($Detail) { $line += "  -  $Detail" }
-    if ($Ok) { Write-Host $line -ForegroundColor Green } else { Write-Host $line -ForegroundColor Red }
+    if ($Ok) {
+        Write-Host $line -ForegroundColor Green
+    } else {
+        $script:Failures++
+        Write-Host $line -ForegroundColor Red
+    }
 }
 
 function Get-AuditPolicyState {
@@ -179,17 +191,25 @@ $acl = Get-Acl -Path $WatchPath -Audit
 $rule = New-Object System.Security.AccessControl.FileSystemAuditRule(
     $AuditIdentity,
     # WriteData covers bytes into an existing file; AppendData covers a write
-    # past the end. Between them they are what the parser filters 4663 on. Read
-    # rights are deliberately not audited: they would multiply the log volume
-    # for events attribution never asks about.
-    [System.Security.AccessControl.FileSystemRights]'WriteData, AppendData',
+    # past the end; Delete covers removing it. Between them they are what the
+    # parser filters 4663 on. Read rights are deliberately not audited: they
+    # would multiply the log volume for events attribution never asks about.
+    #
+    # Delete is not optional. Two of the commonest ransomware shapes never
+    # overwrite the original at all - 7z -sdel and a loop around openssl both
+    # write somewhere else and unlink - and in both the process that wrote the
+    # ciphertext has usually exited by the time the audit record arrives, while
+    # the process doing the deleting is the long-lived one running the
+    # campaign. Without this right the agent watches files disappear and cannot
+    # say who removed them.
+    [System.Security.AccessControl.FileSystemRights]'WriteData, AppendData, Delete',
     [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit',
     [System.Security.AccessControl.PropagationFlags]'None',
     [System.Security.AccessControl.AuditFlags]'Success'
 )
 $acl.AddAuditRule($rule)
 Set-Acl -Path $WatchPath -AclObject $acl
-Write-Result 'SACL applied to the watch path' $true 'WriteData, AppendData - inherited by children'
+Write-Result 'SACL applied to the watch path' $true 'WriteData, AppendData, Delete - inherited by children'
 
 # 3. Security log size --------------------------------------------------------
 
@@ -204,11 +224,23 @@ try {
 
 $probe = Join-Path $WatchPath ('.urds_attribution_probe_{0}.tmp' -f ([guid]::NewGuid().ToString('N').Substring(0, 8)))
 [System.IO.File]::WriteAllBytes($probe, [byte[]](1..64))
-Start-Sleep -Milliseconds 800
 
-$hit = Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 4663; StartTime = (Get-Date).AddSeconds(-10) } -ErrorAction SilentlyContinue |
-    Where-Object { $_.Message -like "*$probe*" } |
-    Select-Object -First 1
+# Polled to four seconds, not slept for 800 ms.
+#
+# scripts/measure_attribution_lag.py measured this channel's delivery at four
+# write rates and found it bounded at about 1010 ms and independent of rate - a
+# flush timer, not queueing. A single check at 800 ms therefore sat *below* the
+# ceiling and would report a correctly configured machine as broken whenever
+# the probe write happened to land on the wrong side of a flush. Polling costs
+# nothing when the record is early, which is the common case.
+$deadline = (Get-Date).AddSeconds(4)
+$hit = $null
+while (-not $hit -and (Get-Date) -lt $deadline) {
+    Start-Sleep -Milliseconds 250
+    $hit = Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 4663; StartTime = (Get-Date).AddSeconds(-15) } -ErrorAction SilentlyContinue |
+        Where-Object { $_.Message -like "*$probe*" } |
+        Select-Object -First 1
+}
 
 Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
 
@@ -216,11 +248,19 @@ if ($hit) {
     $pidField = ($hit.Message -split "`n" | Where-Object { $_ -match 'Process ID:' } | Select-Object -First 1).Trim()
     Write-Result 'End-to-end probe' $true "a write under the watch path produced a 4663 ($pidField)"
 } else {
-    Write-Result 'End-to-end probe' $false 'the probe write produced no 4663 within 800ms - re-run with -Verify, and check the Security log is not full'
+    Write-Result 'End-to-end probe' $false 'the probe write produced no 4663 within 4s - check the Security log is not full, and that the File System subcategory is enabled'
 }
 
 Write-Host ''
+if ($script:Failures -gt 0) {
+    Write-Host "$($script:Failures) check(s) failed. Attribution will not work on this path, so the agent will" -ForegroundColor Red
+    Write-Host 'detect and record and suspend nothing: without a kernel-grade source no answer' -ForegroundColor Red
+    Write-Host 'reaches CERTAIN, and it does not guess a PID.' -ForegroundColor Red
+    exit 1
+}
+
 Write-Host 'Done. Start the Monitor from an elevated shell - the subscription needs the same privilege - then:' -ForegroundColor Cyan
 Write-Host '    curl http://localhost:8001/monitor/attribution' -ForegroundColor White
 Write-Host ''
 Write-Host 'Undo with:  -Revert' -ForegroundColor DarkGray
+exit 0

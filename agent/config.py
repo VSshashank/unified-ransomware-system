@@ -92,6 +92,14 @@ class Config:
     #: How long to wait for attribution to name a writer, in milliseconds.
     attribution_timeout_ms: float = 750.0
 
+    #: Worker lanes between the watchdog and detection. Events are sharded to
+    #: a lane by path, so every event for one file stays in order. One lane
+    #: reproduces the serial build whose acceptance failed; see agent/dispatch.py.
+    dispatch_lanes: int = 4
+    #: Events one lane holds before it discards its oldest. The oldest is the
+    #: one whose attribution window has already expired.
+    dispatch_queue_max: int = 512
+
     source: Path | None = None
 
     @property
@@ -128,6 +136,8 @@ class Config:
             "velocity_fanout_threshold": self.velocity_fanout_threshold,
             "canaries_per_root": self.canaries_per_root,
             "attribution_timeout_ms": self.attribution_timeout_ms,
+            "dispatch_lanes": self.dispatch_lanes,
+            "dispatch_queue_max": self.dispatch_queue_max,
             "source": str(self.source) if self.source else None,
         }
 
@@ -231,5 +241,7 @@ def from_mapping(raw: dict, source: Path | None = None) -> Config:
         velocity_fanout_threshold=int(number("velocity_fanout_threshold", 3)),
         canaries_per_root=int(number("canaries_per_root", 20)),
         attribution_timeout_ms=float(number("attribution_timeout_ms", 750.0)),
+        dispatch_lanes=int(number("dispatch_lanes", 4)),
+        dispatch_queue_max=int(number("dispatch_queue_max", 512)),
         source=source,
     )

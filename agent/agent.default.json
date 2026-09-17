@@ -19,5 +19,9 @@
   "canaries_per_root": 20,
 
   "_attribution_timeout_ms": "How long the correlator waits for the Security-log subscription to name the writer of a path. The live run measured 0.158 ms to attribution; this is the ceiling before the answer degrades to UNKNOWN and the responder isolates rather than terminates.",
-  "attribution_timeout_ms": 750.0
+  "attribution_timeout_ms": 750.0,
+
+  "_dispatch": "Worker lanes between the watchdog and detection, and how many events one lane queues before it discards its oldest. Phase 3's first acceptance ran the equivalent of one lane and failed at 3.9 events/s against ~40 produced; agent/dispatch.py carries the measurement. Events shard to a lane by path, so every event for one file is handled in order.",
+  "dispatch_lanes": 4,
+  "dispatch_queue_max": 512
 }

@@ -1,15 +1,26 @@
 """The protection path, assembled and running in one process on the host.
 
     watchdog event
+      -> Dispatcher.submit     append and return, on the watchdog's thread
       -> app.handle_event      the Monitor's measured detector, unchanged
-      -> Responder.respond     synchronous, in-process, on host PIDs
+      -> who wrote it?         asked once, never waited for
+           named    -> Responder.respond, on the lane
+           not yet  -> PendingAttribution, re-asked every 25 ms
       -> pipeline fan-out      background thread, transport swapped to SQLite
 
-The response is taken **synchronously on the detection path**, before the
-fan-out is queued. The pipeline's worker is a background thread and a
-suspension that waits behind a queue is not a response inside 100 ms. By the
-time the fan-out writes its record, the decision has already been made and the
-record reports it rather than requesting a second action.
+The response is taken **on the detection path**, before the fan-out is queued.
+The pipeline's worker is a background thread and a suspension that waits behind
+a queue is not a response. By the time the fan-out writes its record, the
+decision has already been made and the record reports it rather than requesting
+a second action.
+
+Two modules carry the Phase 3 fix and the measurements behind it.
+`agent/dispatch.py` took the work off the watchdog's single thread;
+`agent/pending.py` took the *waiting* out of the work, after measuring that the
+Security channel delivers its audit records on a one-second flush timer - so a
+blocking grace catches a minority of them at any write rate and none at all
+under a burst. Nothing on this path waits for attribution. It asks, and asks
+again when the answer has had time to arrive.
 
 Nothing here reimplements detection. `app.handle_event` is the function the
 thesis measures latency over, and it already runs entropy history, container
@@ -28,7 +39,7 @@ from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 
 from agent import config as agent_config
-from agent import imports, procmon, transport
+from agent import dispatch, imports, pending, procmon, transport
 from agent.canary import CanaryField
 from agent.ledger import DirectLedger
 from agent.responder import Responder
@@ -91,6 +102,16 @@ class Agent:
             self.config, responder=self.responder, ledger=self.ledger)
         self.process_source: procmon.ProcessSource | None = None
         self.transport = transport.InProcessTransport(self.ledger, self.responder)
+        self.dispatcher = dispatch.Dispatcher(
+            self._process,
+            lanes=self.config.dispatch_lanes,
+            queue_max=self.config.dispatch_queue_max,
+        )
+        self.pending = pending.PendingAttribution(
+            resolve=self._attribution_fields,
+            respond=self._respond_to_parked,
+            window_ms=self._attribution_window_ms(),
+        )
 
         #: path -> the entropy the ledger holds for it while it was known-good.
         #: Cached because the alternative is a SQLite read on the hot path for
@@ -133,6 +154,11 @@ class Agent:
                 "vssadmin delete shadows and its relatives will not be seen.",
                 guard_status.get("error"))
 
+        # Started before the observers, so that the first event the watchdog
+        # delivers has a lane to go to rather than a queue nobody is reading.
+        self.dispatcher.start()
+        self.pending.start()
+
         watched = []
         for root in self.config.protected_paths:
             root.mkdir(parents=True, exist_ok=True)
@@ -156,6 +182,9 @@ class Agent:
                          "already_present": len(canaries["existing"]),
                          "total": canaries["total"]},
             "shadow_copy_guard": guard_status,
+            "dispatch": {"lanes": self.dispatcher.lane_count,
+                         "queue_max_per_lane": self.dispatcher.queue_max},
+            "attribution_window_ms": self._attribution_window_ms(),
             "ledger_db": str(self.config.ledger_db),
             "config_source": str(self.config.source) if self.config.source else None,
             "timestamp": utc_now(),
@@ -179,6 +208,21 @@ class Agent:
                 pass
         self._observers.clear()
 
+        # Observers first, then the lanes: no new events can arrive now, so
+        # draining finishes the ones already in hand instead of discarding
+        # them. A response half-taken at shutdown is the worst of both.
+        drained = self.dispatcher.drain(timeout=10.0)
+        dispatch_stats = self.dispatcher.stop(timeout=5.0)
+        if not drained:
+            logger.warning("dispatch did not drain within 10s; %d events left",
+                           dispatch_stats["depth"])
+
+        # After the lanes, because a lane can still be parking events. Stopping
+        # responds to whatever is left as unattributed rather than discarding
+        # it: "the agent stopped" must not read the same as "the agent looked
+        # at these and decided they were fine".
+        pending_stats = self.pending.stop(timeout=5.0)
+
         if self.process_source is not None:
             try:
                 self.process_source.stop()
@@ -197,6 +241,12 @@ class Agent:
         record = {
             "events_seen": self.events_seen,
             "responses": self.responses,
+            # In the chain, not only in a log file. An agent that dropped
+            # writes during a run must say so somewhere an auditor reads.
+            "dispatch": {k: v for k, v in dispatch_stats.items()
+                         if k != "per_lane"},
+            "dispatch_drained_cleanly": drained,
+            "pending_attribution": pending_stats,
             "resumed_on_shutdown": resumed,
             "timestamp": utc_now(),
         }
@@ -207,10 +257,45 @@ class Agent:
 
     # -- the hot path ------------------------------------------------------
 
-    def on_file_event(self, path: str, kind: str) -> dict | None:
-        """One filesystem event, from detection through to the response."""
+    def on_file_event(self, path: str, kind: str) -> bool:
+        """Called on a watchdog thread. Hands the event to a lane and returns.
+
+        Nothing is decided here. This function used to run detection, the
+        attribution wait and the response inline, which meant a quarter of a
+        second of the watchdog's only thread for every write nobody could be
+        named for - see `agent/dispatch.py` for what that cost measured.
+        """
+        return self.dispatcher.submit(path, kind)
+
+    def _attribution_window_ms(self) -> float:
+        """How far back a lookup will still match an audited write."""
         try:
-            event = self.monitor_app.handle_event(path, kind)
+            return float(self.monitor_app.attributor.log.window_ms)
+        except Exception:  # noqa: BLE001
+            return float(self.config.attribution_timeout_ms)
+
+    def _attribution_fields(self, path: str) -> dict:
+        """Who wrote this path, asked once and without waiting.
+
+        `grace_ms=0` always. The blocking grace was measured on this host and
+        catches a minority of records at any rate and none at all under burst;
+        `agent/pending.py` carries the numbers. What replaces it is asking
+        again, which costs a lock and a bounded scan.
+        """
+        return (self.monitor_app.attributor
+                .resolve(path, grace_ms=0.0).as_event_fields())
+
+    def _process(self, queued: "dispatch.Event") -> dict | None:
+        """One filesystem event, from detection to a response or a parking slot.
+
+        This function never waits for anything. It classifies, asks who wrote
+        the file, and then either acts - if the answer is `CERTAIN` - or parks
+        the event for `pending` to re-ask. The lane is free either way.
+        """
+        path, kind = queued.path, queued.kind
+        try:
+            event = self.monitor_app.handle_event(
+                path, kind, attribution_grace_ms=0.0)
         except Exception:  # noqa: BLE001 - one bad file must not stop the agent
             logger.exception("detection failed for %s", path)
             return None
@@ -219,20 +304,84 @@ class Agent:
 
         with self._lock:
             self.events_seen += 1
+        event["dispatch_lag_ms"] = round(queued.age_ms(), 3)
 
-        canary_hit = self._check_canary(event, path, kind)
+        # A canary rewritten with low-entropy junk produces no entropy verdict
+        # at all, so the detector never asks who wrote it. The whole value of a
+        # decoy is that it needs no threshold, and that is worth one lookup on
+        # the rare event that touches one.
+        #
+        # Deletions count. They used to be skipped here, on the reasoning that
+        # a file that is gone cannot be hash-compared - which is true and beside
+        # the point. A decoy that has been deleted is the least ambiguous
+        # tripwire in the system, and skipping it meant an attack that archives
+        # and unlinks rather than overwriting walked through the whole field
+        # without setting anything off.
+        canary_path = self.canaries.is_canary(path)
+        if canary_path and event.get("attribution_confidence") != self.attribution.CERTAIN:
+            try:
+                event.update(self._attribution_fields(path))
+            except Exception:  # noqa: BLE001
+                logger.exception("canary attribution failed for %s", path)
 
-        # Velocity is fed by every write, not only suspicious ones. An
-        # encryptor's first few files may each look individually unremarkable;
-        # what makes them evidence is that one process produced all of them.
+        if not event.get("suspicious") and not canary_path:
+            # Not actionable, so there is nothing to wait for. Velocity still
+            # takes it if somebody is named: an encryptor's first few files may
+            # each look unremarkable, and what makes them evidence is that one
+            # process produced all of them.
+            self.velocity.record(
+                event.get("process_id"), path,
+                entropy=event.get("entropy"),
+                baseline_entropy=self._baseline_for(path),
+            )
+            return event
+
+        if event.get("attribution_confidence") == self.attribution.CERTAIN:
+            self._act(event, path, canary_path, queued.queued_at)
+            return event
+
+        # Actionable, but nobody is named yet - which at these delivery
+        # latencies is the common case, not the exception. Park it rather than
+        # holding the lane, and rather than deciding on evidence that has not
+        # arrived. `pending` responds either way: when the writer is named, or
+        # when the window shuts and the answer is honestly `unknown`.
+        self.pending.add(event, path, kind, queued.queued_at, canary_path)
+        return event
+
+    def _respond_to_parked(self, parked: "pending.Parked", attributed: bool) -> None:
+        """The other way into `_act`: a parked event whose writer arrived."""
+        if attributed:
+            logger.info("attribution arrived %.0f ms after the write for %s",
+                        parked.resolved_after_ms or 0.0, parked.path)
+        self._act(parked.event, parked.path, parked.canary_path,
+                  parked.queued_at)
+
+    def _act(self, event: dict, path: str, canary_path: bool,
+             queued_at: float) -> None:
+        """Velocity, the decoy record, and the response. Once per event.
+
+        Reached either straight from a lane when the writer was already known,
+        or from `pending` when the audit record caught up. Both go through here
+        so that an event cannot be responded to twice, and so that a decoy's
+        hit is recorded with the PID that was finally established rather than
+        with the `None` that was true a second earlier.
+        """
         self.velocity.record(
             event.get("process_id"), path,
             entropy=event.get("entropy"),
             baseline_entropy=self._baseline_for(path),
+            # The write happened when it was queued, not when it was resolved.
+            # Stamping it now would make a slow attribution look like a slow
+            # attacker and flatten the rate the signals are measuring.
+            at=queued_at,
         )
 
-        if not event.get("suspicious") and not canary_hit:
-            return event
+        if canary_path:
+            hit = self.canaries.touched(path, event.get("process_id"),
+                                        event.get("process_image"))
+            if hit is not None:
+                event["canary_hit"] = True
+                event["canary_detail"] = hit.as_dict()
 
         outcome = self.responder.respond(event)
         with self._lock:
@@ -241,36 +390,6 @@ class Agent:
 
         logger.warning("%s: %s -> %s (%s)", path, event.get("verdict"),
                        outcome.action, outcome.reason)
-        return event
-
-    def _check_canary(self, event: dict, path: str, kind: str) -> bool:
-        """Did this touch a decoy, and if so, who did it?
-
-        Attribution normally runs only for an event the detector already found
-        suspicious, which is the right economy for ordinary files. It is the
-        wrong one here: a canary rewritten with low-entropy junk produces no
-        entropy verdict at all, so without asking explicitly the tripwire would
-        fire with no PID attached and nothing could be done about it. The whole
-        value of a canary is that it needs no threshold, and that is worth one
-        attribution lookup on the rare event that touches one.
-        """
-        if kind == "deleted" or not self.canaries.is_canary(path):
-            return False
-
-        if event.get("attribution_confidence") != self.attribution.CERTAIN:
-            try:
-                event.update(
-                    self.monitor_app.attributor.resolve(path).as_event_fields())
-            except Exception:  # noqa: BLE001
-                logger.exception("canary attribution failed for %s", path)
-
-        hit = self.canaries.touched(path, event.get("process_id"),
-                                    event.get("process_image"))
-        if hit is None:
-            return False
-        event["canary_hit"] = True
-        event["canary_detail"] = hit.as_dict()
-        return True
 
     def _baseline_for(self, path: str) -> float | None:
         """The entropy the ledger recorded for this path while it was good.
@@ -355,6 +474,9 @@ class Agent:
             "observers_alive": [o.is_alive() for o in self._observers],
             "events_seen": self.events_seen,
             "responses": self.responses,
+            "dispatch": self.dispatcher.stats(),
+            "pending_attribution": self.pending.stats(),
+            "attribution_window_ms": self._attribution_window_ms(),
             "responder": self.responder.summary(),
             "canaries": len(self.canaries.paths()),
             "canary_hits": self.canaries.hit_count(),

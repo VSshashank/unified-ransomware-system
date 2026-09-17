@@ -221,6 +221,30 @@ def test_a_write_to_a_canary_is_recorded_with_the_content_change(tmp_path):
     assert field.hit_count(4242) == 2
 
 
+def test_a_deleted_canary_is_a_hit_and_counts_as_changed(tmp_path):
+    """The least ambiguous tripwire in the system, and it used to be skipped.
+
+    A decoy that is gone cannot be hash-compared, which is true and beside the
+    point. An attack that archives and unlinks rather than overwriting - `7z a
+    -sdel`, or a loop around `openssl enc` - never writes a single byte to a
+    decoy, so treating deletion as "not a hit" meant it walked through the
+    whole field without setting anything off.
+    """
+    field = CanaryField(_config(tmp_path, canaries_per_root=2))
+    field.seed()
+    target = field.paths()[0]
+
+    Path(target).unlink()
+    hit = field.touched(target, pid=9624, image="7z.exe")
+
+    assert hit is not None, "a deleted decoy must still be a hit"
+    assert hit.deleted is True
+    assert hit.changed is True, (
+        "a file that is gone has certainly changed; recording it as unchanged "
+        "makes the clearest possible hit the weakest kind")
+    assert hit.as_dict()["deleted"] is True
+
+
 def test_a_file_that_is_not_a_canary_is_not_a_hit(tmp_path):
     field = CanaryField(_config(tmp_path, canaries_per_root=2))
     field.seed()

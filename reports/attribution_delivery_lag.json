@@ -1,0 +1,73 @@
+{
+  "schema": "urds.attribution_delivery_lag/1",
+  "generated_at": "2026-09-17T10:09:59Z",
+  "commit": "498201fe2c23701867b0975b872680d34867e0ad",
+  "branch": "fix/evidence-integrity",
+  "_what_this_measures": "delay between a write completing and its 4663 record becoming visible to Attributor.lookup, at four write rates, on this host",
+  "host_platform": "win32",
+  "source": "windows-security-4663",
+  "kernel_grade": true,
+  "grace_ms_at_measurement": 250.0,
+  "window_ms_at_measurement": 3000.0,
+  "results": [
+    {
+      "rate": "idle      5 writes/s",
+      "files_written": 25,
+      "writes_recorded_delta": 25,
+      "attributed": 25,
+      "never_attributed": 0,
+      "lag_ms_min": 150.4,
+      "lag_ms_median": 582.2,
+      "lag_ms_p90": 1001.5,
+      "lag_ms_max": 1008.8,
+      "within_250ms": 5,
+      "within_750ms": 15,
+      "within_3000ms": 25
+    },
+    {
+      "rate": "busy     20 writes/s",
+      "files_written": 40,
+      "writes_recorded_delta": 40,
+      "attributed": 40,
+      "never_attributed": 0,
+      "lag_ms_min": 26.6,
+      "lag_ms_median": 535.4,
+      "lag_ms_p90": 958.6,
+      "lag_ms_max": 1011.3,
+      "within_250ms": 9,
+      "within_750ms": 29,
+      "within_3000ms": 40
+    },
+    {
+      "rate": "fast    100 writes/s",
+      "files_written": 60,
+      "writes_recorded_delta": 60,
+      "attributed": 60,
+      "never_attributed": 0,
+      "lag_ms_min": 286.1,
+      "lag_ms_median": 645.1,
+      "lag_ms_p90": 940.6,
+      "lag_ms_max": 995.6,
+      "within_250ms": 0,
+      "within_750ms": 39,
+      "within_3000ms": 60
+    },
+    {
+      "rate": "burst   uncapped",
+      "files_written": 120,
+      "writes_recorded_delta": 120,
+      "attributed": 120,
+      "never_attributed": 0,
+      "lag_ms_min": 867.3,
+      "lag_ms_median": 933.1,
+      "lag_ms_p90": 990.8,
+      "lag_ms_max": 1006.0,
+      "within_250ms": 0,
+      "within_750ms": 0,
+      "within_3000ms": 120
+    }
+  ],
+  "observed_delivery_ceiling_ms": 1011.3,
+  "finding": "Delivery lag is bounded at roughly one second and is independent of write rate - the minimum falls to a few milliseconds and the maximum sits near the same ceiling whatever the rate. That is a flush timer, not queueing: a write landing just before a flush is visible almost at once, one landing just after waits out the interval.",
+  "consequence": "A correlation window shorter than this ceiling is set below the floor of the mechanism it reads. Under a burst, where every write falls inside one flush interval, such a window matches nothing at all - which is what the first Phase 3 acceptance measured as 40 of 40 documents destroyed with nothing suspended."
+}

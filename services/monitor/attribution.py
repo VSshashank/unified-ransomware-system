@@ -88,24 +88,70 @@ KILL_AUTHORISING = frozenset({CERTAIN})
 #: How far back a write counts as explaining this event. Long enough to cover
 #: audit delivery lag and the watchdog debounce, short enough that an unrelated
 #: earlier writer to the same path is not swept in.
-WINDOW_MS = float(os.getenv("ATTRIBUTION_WINDOW_MS", "750"))
+#:
+#: 3000, not the 750 this shipped with. `scripts/measure_attribution_lag.py`
+#: measured delivery on this channel at four write rates and found the lag
+#: bounded at ~1010 ms and *independent of rate* - a flush timer, not queueing.
+#: A write landing just before a flush is visible in ~12 ms; one landing just
+#: after waits out the interval. 750 ms is therefore below the delivery floor
+#: of the mechanism this reads: under a burst, where every write falls inside
+#: one flush interval, it matched 0 of 120 records. At 3000 it matched 245 of
+#: 245 across every rate tested, with roughly 3x margin on the ceiling.
+#:
+#: Widening this does not make attribution easier to obtain. `lookup` returns
+#: CERTAIN only when exactly one process wrote the path inside the window, so a
+#: longer window admits *more* candidate writers and yields PROBABLE where a
+#: shorter one would have said CERTAIN on partial evidence. The cost is paid in
+#: the safe direction. See reports/attribution_delivery_lag.json.
+WINDOW_MS = float(os.getenv("ATTRIBUTION_WINDOW_MS", "3000"))
 
 #: How long `resolve()` will wait for a record that has not arrived yet.
+#:
+#: This is a *blocking* wait, and the same measurement says it catches a
+#: minority of records at any rate and none at all under burst. It is kept for
+#: the Monitor's own HTTP path, where one event is adjudicated per request and
+#: blocking briefly is harmless. The agent passes `grace_ms=0` and re-checks
+#: instead - see `agent/pending.py` - because a detector that blocks a thread
+#: for a second per unattributed write cannot keep up with an encryptor.
 GRACE_MS = float(os.getenv("ATTRIBUTION_GRACE_MS", "250"))
 
 #: Poll interval inside that grace period.
 POLL_MS = float(os.getenv("ATTRIBUTION_POLL_MS", "10"))
 
 #: Bounded, because this is fed by every audited write on the volume. At the
-#: default it is a few hundred KB and it is the reason this module cannot
-#: become the `_SEEN_FILES` leak recorded as S-7 in the security audit.
-MAX_ENTRIES = int(os.getenv("ATTRIBUTION_MAX_ENTRIES", "4096"))
+#: default it is a couple of MB and it is the reason this module cannot become
+#: the `_SEEN_FILES` leak recorded as S-7 in the security audit.
+#:
+#: Raised with WINDOW_MS and for the same reason: four times the window holds
+#: four times the in-window records, and an entry evicted while still inside
+#: the window is an attribution silently lost.
+MAX_ENTRIES = int(os.getenv("ATTRIBUTION_MAX_ENTRIES", "16384"))
 
 #: 4663 reports the access that was checked. WriteData (0x2) and AppendData
 #: (0x4) are the two that mean "this process put bytes in the file".
 ACCESS_WRITE_DATA = 0x2
 ACCESS_APPEND_DATA = 0x4
 WRITE_MASK = ACCESS_WRITE_DATA | ACCESS_APPEND_DATA
+
+#: DELETE (0x10000), and it is not an afterthought.
+#:
+#: Two of the commonest ransomware shapes never write over the original file at
+#: all. `7z a -sdel` and `tar --remove-files` archive it and unlink it; a loop
+#: around `openssl enc -in X -out X.enc` writes a *new* path and unlinks the
+#: old one. In both, the bytes-written record names a process that has usually
+#: already exited - one `openssl` per file lives about 65 ms on the measured
+#: host, against roughly 1000 ms of audit delivery lag - while the process
+#: doing the *deleting* is the long-lived one that is actually running the
+#: campaign.
+#:
+#: Without this bit the agent watched forty documents disappear and could not
+#: say who removed them. Auditing it costs one more access right on the SACL
+#: and a modest rise in log volume, because deletes are rare next to writes.
+ACCESS_DELETE = 0x10000
+
+#: What counts as touching a file destructively, and therefore as something
+#: attribution will answer about.
+ACTIONABLE_MASK = WRITE_MASK | ACCESS_DELETE
 
 
 def _normalise(path: str) -> str:
@@ -180,6 +226,10 @@ class Write:
     pid: int
     image: str | None
     at: float
+    #: "write" or "delete". Both are destructive touches by a named process and
+    #: both answer "who did this to my file"; the word is kept so an incident
+    #: record can say which one happened.
+    kind: str = "write"
 
 
 class WriteLog:
@@ -220,12 +270,14 @@ class WriteLog:
 
     # -- write side ------------------------------------------------------
 
-    def record(self, path: str, pid: int, image: str | None = None, at: float | None = None) -> None:
+    def record(self, path: str, pid: int, image: str | None = None,
+               at: float | None = None, kind: str = "write") -> None:
         entry = Write(
             path=_normalise(path),
             pid=int(pid),
             image=image,
             at=time.monotonic() if at is None else at,
+            kind=kind,
         )
         with self._lock:
             self._writes.append(entry)
@@ -255,7 +307,8 @@ class WriteLog:
 
         if not hits:
             return _unattributed(
-                f"no audited write to this path by another process in the last {window:.0f}ms",
+                f"no audited write or delete on this path by another process "
+                f"in the last {window:.0f}ms",
                 source=source,
             )
 
@@ -265,6 +318,7 @@ class WriteLog:
             if w.pid not in distinct:
                 distinct.append(w.pid)
         newest = hits[-1]
+        did = "deleted" if newest.kind == "delete" else "wrote"
 
         if len(distinct) == 1:
             if kernel_grade:
@@ -273,8 +327,8 @@ class WriteLog:
                     image=newest.image,
                     confidence=CERTAIN,
                     reason=(
-                        f"exactly one process wrote this path in the last {window:.0f}ms, "
-                        f"from {source}"
+                        f"exactly one process {did} this path in the last "
+                        f"{window:.0f}ms, from {source}"
                     ),
                     source=source,
                     candidates=(newest.pid,),
@@ -296,8 +350,9 @@ class WriteLog:
             image=newest.image,
             confidence=PROBABLE,
             reason=(
-                f"{len(distinct)} processes wrote this path in the last {window:.0f}ms "
-                f"({', '.join(str(p) for p in distinct)}); reporting the most recent"
+                f"{len(distinct)} processes wrote or deleted this path in the last "
+                f"{window:.0f}ms ({', '.join(str(p) for p in distinct)}); "
+                f"reporting the most recent"
             ),
             source=source,
             candidates=tuple(distinct),
@@ -353,7 +408,7 @@ def parse_4663(xml: str) -> dict | None:
             data[name] = node.text
 
     mask = _as_int(data.get("AccessMask"))
-    if mask is None or not mask & WRITE_MASK:
+    if mask is None or not mask & ACTIONABLE_MASK:
         return None
 
     pid = _as_int(data.get("ProcessId"))
@@ -373,6 +428,10 @@ def parse_4663(xml: str) -> dict | None:
         "pid": pid,
         "image": data.get("ProcessName"),
         "access_mask": mask,
+        # Which kind of destruction this was. Both are attributable and both
+        # are recorded; the distinction is kept because "who deleted my decoy"
+        # and "who overwrote it" are different sentences in an incident record.
+        "kind": "write" if mask & WRITE_MASK else "delete",
     }
 
 
@@ -493,7 +552,8 @@ class SecurityLogSource(AttributionSource):
             if parsed is None:
                 self.log.dropped_non_write += 1
                 return 0
-            self.log.record(parsed["path"], parsed["pid"], parsed["image"])
+            self.log.record(parsed["path"], parsed["pid"], parsed["image"],
+                            kind=parsed["kind"])
         except Exception:  # a callback that raises tears down the subscription
             logger.debug("attribution: 4663 callback failed", exc_info=True)
         return 0

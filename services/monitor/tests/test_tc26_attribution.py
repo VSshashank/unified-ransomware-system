@@ -359,13 +359,47 @@ def test_tc26_l_a_write_event_parses_to_path_pid_and_image():
 
 
 def test_tc26_m_an_append_is_a_write():
-    assert parse_4663(_event_xml(access_mask="0x4")) is not None
+    parsed = parse_4663(_event_xml(access_mask="0x4"))
+    assert parsed is not None
+    assert parsed["kind"] == "write"
+
+
+def test_tc26_m2_a_delete_is_attributable_and_says_so():
+    """The access right that decides whether archive-and-unlink can be seen.
+
+    `7z a -sdel` and a loop around `openssl enc -in X -out X.enc` both leave
+    the original unmodified and then remove it. The process that wrote the
+    ciphertext has usually exited by the time its record arrives - one openssl
+    per file lives about 65 ms against roughly 1000 ms of delivery lag - while
+    the process doing the deleting is the long-lived one running the campaign.
+    Dropping DELETE here meant watching files disappear and being unable to say
+    who removed them.
+    """
+    parsed = parse_4663(_event_xml(access_mask="0x10000"))
+
+    assert parsed is not None, "DELETE must be attributable"
+    assert parsed["kind"] == "delete"
+    assert parsed["pid"] == 0x1092
+
+
+def test_tc26_m3_a_delete_names_its_process_and_reports_what_it_did():
+    log = WriteLog(window_ms=3000)
+    log.record(RANSOM, 4242, r"C:\Program Files\7-Zip\7z.exe", kind="delete")
+
+    answer = log.lookup(RANSOM, source="windows-security-4663",
+                        kernel_grade=True)
+
+    assert answer.confidence == attribution.CERTAIN
+    assert answer.pid == 4242
+    assert "deleted" in answer.reason, (
+        f"an incident record must distinguish a deletion from an overwrite; "
+        f"got {answer.reason!r}")
 
 
 @pytest.mark.parametrize(
     "kwargs, why",
     [
-        ({"access_mask": "0x1"}, "ReadData is not a write"),
+        ({"access_mask": "0x1"}, "ReadData is neither a write nor a delete"),
         ({"access_mask": "0x80"}, "ReadAttributes is not a write"),
         ({"object_type": "Key"}, "a registry key is not a file"),
         ({"process_id": "0x0"}, "PID 0 is the idle process"),

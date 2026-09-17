@@ -159,10 +159,15 @@ class Hit:
     image: str | None
     at: str
     changed: bool
+    #: The decoy is gone. Recorded separately from `changed` because a file
+    #: that no longer exists cannot be hashed, and "the hash did not match"
+    #: and "there was nothing left to hash" are different findings.
+    deleted: bool = False
 
     def as_dict(self) -> dict:
         return {"path": self.path, "pid": self.pid, "image": self.image,
-                "at": self.at, "content_changed": self.changed}
+                "at": self.at, "content_changed": self.changed,
+                "deleted": self.deleted}
 
 
 @dataclass
@@ -281,12 +286,13 @@ class CanaryField:
         return image.lower() in allowed
 
     def touched(self, path: str, pid: int | None, image: str | None) -> Hit | None:
-        """Record a write to a canary, if that is what this was."""
+        """Record a write to - or a deletion of - a canary, if that is what this was."""
         if not self.is_canary(path):
             return None
         with self._lock:
             expected = self._paths.get(str(path).lower())
-        current = _sha256(Path(path))
+        gone = not Path(path).exists()
+        current = None if gone else _sha256(Path(path))
         hit = Hit(
             path=str(path),
             pid=pid,
@@ -295,14 +301,21 @@ class CanaryField:
             # A hit is a hit either way. The hash says whether the bytes
             # actually changed, which separates "something rewrote this" from
             # "something opened it and the filesystem reported a touch".
-            changed=bool(expected and current and current != expected),
+            #
+            # A deleted decoy counts as changed without a hash to prove it.
+            # Requiring the comparison would mean the one outcome nobody can
+            # mistake for ordinary activity - the file is gone - recorded as
+            # the weakest kind of hit.
+            changed=bool(gone or (expected and current and current != expected)),
+            deleted=gone,
         )
         with self._lock:
             self._hits.append(hit)
             if len(self._hits) > 1000:
                 del self._hits[:500]
-        logger.warning("canary touched: %s by pid %s (%s), content changed=%s",
-                       path, pid, image, hit.changed)
+        logger.warning("canary %s: %s by pid %s (%s), content changed=%s",
+                       "deleted" if gone else "touched", path, pid, image,
+                       hit.changed)
         return hit
 
     def hits(self, pid: int | None = None) -> list[dict]:

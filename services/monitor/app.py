@@ -356,11 +356,20 @@ def extract_features(path: str) -> dict:
     }
 
 
-def handle_event(path: str, event_type: str) -> dict | None:
+def handle_event(path: str, event_type: str,
+                 attribution_grace_ms: float | None = None) -> dict | None:
     """Classify one filesystem event and record it.
 
     Detection latency is measured over exactly this function: from the event
     arriving to a verdict existing. Target is under 100ms.
+
+    `attribution_grace_ms` caps how long the attribution lookup below will wait
+    for an audit record that has not arrived yet. `None` keeps the module
+    default, which is what every caller inside this service passes and what
+    Table 5.9 was measured with. `agent.dispatch` passes a smaller number when
+    the event has been queued long enough that the record explaining it has
+    already aged out of the lookup window - waiting past that point cannot find
+    the write that caused this event, only a later one.
     """
     started = perf_counter()
 
@@ -386,7 +395,19 @@ def handle_event(path: str, event_type: str) -> dict | None:
             "verdict": "deleted",
             "reason": "file removed",
             "timestamp": utc_now(),
-            "process_id": os.getpid(),
+            # None, not os.getpid(). This used to stamp the *detector's* own
+            # PID on every deletion it observed, with no confidence field at
+            # all - a wrong answer wearing the shape of a right one, in the
+            # field whose entire job is naming who did it. Nothing deleted the
+            # file on this process's behalf. Who did is a question the agent
+            # asks of `attribution` when it matters, and the honest default
+            # until it is asked is that nobody has been named.
+            "process_id": None,
+            "process_image": None,
+            "attribution_confidence": attribution.UNKNOWN,
+            "attribution_reason": "not attempted: deletions are attributed by "
+                                  "the caller when the path is one it protects",
+            "attribution_source": attributor.source.name,
             "user": "system",
         }
         event["detection_latency_ms"] = round((perf_counter() - started) * 1000, 3)
@@ -546,7 +567,9 @@ def handle_event(path: str, event_type: str) -> dict | None:
     # charging it to Table 5.9's <100ms detection target would turn that target
     # into a measurement of the event log's delivery lag.
     if event["suspicious"]:
-        event.update(attributor.resolve(path).as_event_fields())
+        event.update(
+            attributor.resolve(path, grace_ms=attribution_grace_ms)
+            .as_event_fields())
 
     first_sighting = _record(event)
 

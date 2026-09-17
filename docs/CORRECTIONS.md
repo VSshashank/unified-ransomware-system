@@ -1,15 +1,22 @@
 # Corrections
 
-**Dated 17 September 2026.** Six defects in this repository's evidence: what
+**Dated 17 September 2026.** Eight defects in this repository's evidence: what
 each one was, what it produced, and what replaced it.
 
-This document exists because four of the six were not failures. They were
+This document exists because six of the eight were not failures. They were
 passes. A demonstration that spawns the process it then reports killing does
 not go red; a claim whose evidence moves to a different file does not go red; a
 row that counts whether a field is present does not go red when the field
-contains an invented number. Each published a result that was not earned, and
-each did so while every gate in the project stayed green. A reader cannot find
-these by running the suite, which is the only reason to write them down.
+contains an invented number; a setup script that prints `[ FAIL ]` and then
+exits `0` does not go red for anything that reads an exit code. Each published
+a result that was not earned, and each did so while every gate in the project
+stayed green. A reader cannot find these by running the suite, which is the
+only reason to write them down.
+
+Corrections 7 and 8 were found later than the rest, during the work that put
+the agent on a host. Both are earlier corrections recurring in a new file,
+which is the argument for this document existing rather than for the defects
+having been one-off slips.
 
 **This must reach the supervisor and co-authors before submission.** Three of
 the corrections change figures or claims that appear in the write-up.
@@ -186,6 +193,53 @@ that never looked would report the same zero, so
 be flagged, and C-16 additionally pins `events_examined == 48`, so that a
 future change which quietly stopped collecting events cannot pass by examining
 nothing.
+
+## 7. The audit setup printed FAIL and exited 0 — F11
+
+**Where:** `scripts/setup_attribution_audit.ps1`, the end-to-end probe.
+**Found:** 17 September 2026. **Fixed:** 17 September 2026.
+
+The script verifies its own work by writing a file into the watch path and
+looking for the 4663 record that should follow. When that probe found nothing
+it printed `[ FAIL ] End-to-end probe` and then exited `0`.
+
+This is correction 2 again, in a different file and against a more consequential
+check. Everything downstream of this script — the agent's ability to name a
+process, and therefore to suspend anything at all — depends on auditing working,
+and the one check that confirms it reported success to every caller that reads
+an exit code rather than a transcript. An installer that runs this and branches
+on `$LASTEXITCODE` would configure a machine that silently names nobody.
+
+**Replaced by:** the script tracks whether any check failed and exits non-zero
+if one did. A setup that cannot prove auditing works does not report that it
+does.
+
+## 8. A deletion named the detector as the process that did it — F13
+
+**Where:** `services/monitor/app.py`, the `deleted` branch of `handle_event`.
+**Introduced:** with the branch. **Fixed:** 17 September 2026.
+
+Every filesystem deletion the Monitor observed produced an event carrying:
+
+```python
+"process_id": os.getpid(),
+```
+
+That is the *detector's own* process, and the event carried no
+`attribution_confidence` field at all, so nothing downstream could tell that
+the number was a placeholder rather than an answer. It is correction 3's defect
+in a different shape: not a fabricated PID this time but a real one belonging
+to a process that did not do the thing, in the field whose entire purpose is
+naming who did.
+
+It reached `/monitor/events` rather than the hash chain, which is the only
+reason it is not a second F3.
+
+**Replaced by:** `process_id: None`, `attribution_confidence: unknown`, and a
+reason saying that deletions are attributed by the caller when the path is one
+it protects. The agent now does exactly that, and DELETE was added to the
+audited access rights so the question has an answer — see §4 of
+[LIMITATIONS.md](LIMITATIONS.md).
 
 ---
 

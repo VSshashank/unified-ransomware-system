@@ -393,6 +393,49 @@ CLAIMS: list[dict] = [
                 "audit source is C-14's sibling evidence, "
                 "reports/attribution_live_run.json.",
     },
+    {
+        "id": "C-17",
+        "table_9_9_row": "(beyond the table) the floor under any response time",
+        "wording": None,
+        "wording_required": False,
+        "claim": "Windows Security-channel audit records are delivered on a "
+                 "flush timer bounded near one second and independent of write "
+                 "rate. Under an uncapped burst 0 of 120 records arrived inside "
+                 "750 ms and 120 of 120 arrived inside 3000 ms. Time-to-suspend "
+                 "cannot go below this, because the PID arrives with the record.",
+        "requires": "Elevated Windows host with the File System audit "
+                    "subcategory enabled and a SACL on the measured path",
+        "artefact": "reports/attribution_delivery_lag.json",
+        "check": [
+            # The ceiling is the number that matters, and it is asserted as a
+            # bound rather than as an equality: it is a timer, so the exact
+            # figure moves by a few milliseconds between runs while the shape
+            # does not.
+            ("reports/attribution_delivery_lag.json",
+             ["results", 3, "within_750ms"], 0),
+            ("reports/attribution_delivery_lag.json",
+             ["results", 3, "within_3000ms"], 120),
+            ("reports/attribution_delivery_lag.json",
+             ["results", 3, "never_attributed"], 0),
+        ],
+        "tests": [],
+        "note": "This row exists because a constant in this repository was set "
+                "below the floor of the mechanism it reads and nothing caught "
+                "it. ATTRIBUTION_WINDOW_MS was 750 ms against a delivery "
+                "ceiling of ~1010 ms, so under a burst the correlation window "
+                "closed before any record it could have matched arrived - and "
+                "the first Phase 3 acceptance measured the consequence as 40 "
+                "of 40 documents destroyed with nothing suspended. The window "
+                "is now 3000 ms. "
+                "Read the burst row precisely: `within_750ms: 0` is the "
+                "assertion, and it is an assertion that the *old* value could "
+                "not work, not that the new one is sufficient for anything. "
+                "What follows from it is a lower bound on FEBR - the "
+                "attacker's write rate times the delivery lag - which no "
+                "amount of work inside the agent can reduce. Closing that "
+                "needs a mechanism that names the writer synchronously with "
+                "the write; see docs/LIMITATIONS.md section 1.",
+    },
 ]
 
 

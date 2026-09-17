@@ -1,6 +1,6 @@
 {
   "schema": "urds.claim_matrix.v1",
-  "generated_at": "2026-09-05T05:45:27.451952+00:00",
+  "generated_at": "2026-09-17T10:12:08.983100+00:00",
   "claims": [
     {
       "id": "C-01",
@@ -358,33 +358,212 @@
       "table_9_9_row": "(beyond the table) the recovery scope",
       "wording": null,
       "wording_required": false,
-      "claim": "Local snapshot restore is verified 13/13 and five injected failure modes are each reported distinctly, none as verified. VSS-backed restore is NOT measured.",
-      "requires": "Failure injection and VSS status",
-      "artefact": "reports/vss_status.json",
+      "claim": "Local snapshot restore is verified 13/13 and five injected failure modes are each reported distinctly, none as verified. VSS-backed restore IS measured: on an elevated Windows host a real Volume Shadow Copy restored a file that had been encrypted in place, and the SHA-256 round trip returned the original bytes.",
+      "requires": "Failure injection and the elevated VSS round trip",
+      "artefact": "reports/vss_restore_verified.json",
       "check": [
-        "reports/vss_status.json",
         [
-          "platform_status",
-          "elevated"
+          "reports/vss_restore_verified.json",
+          [
+            "platform_status",
+            "elevated"
+          ],
+          true
         ],
-        false
+        [
+          "reports/vss_restore_verified.json",
+          [
+            "attack_changed_the_file"
+          ],
+          true
+        ],
+        [
+          "reports/vss_restore_verified.json",
+          [
+            "original_sha256"
+          ],
+          "b22a3f28897defe4e860e3fdb3c3120e6bb79a26ab6bc54bdec07575375815a0"
+        ],
+        [
+          "reports/vss_restore_verified.json",
+          [
+            "restored_sha256"
+          ],
+          "b22a3f28897defe4e860e3fdb3c3120e6bb79a26ab6bc54bdec07575375815a0"
+        ],
+        [
+          "reports/vss_restore_verified.json",
+          [
+            "round_trip_verified"
+          ],
+          true
+        ]
       ],
       "tests": [
         "services/response/recovery/tests"
       ],
-      "note": "Acceptance row 12, still partial. The blocker is measured rather than asserted: the host reports VSS supported, the shell is not elevated, and both operations refuse for that one reason.",
+      "note": "Acceptance row 12, no longer partial, and this row was changed deliberately rather than by a gate going red. Until 2026-09-17 it asserted the opposite - that VSS-backed restore was NOT measured - by checking vss_status.json for platform_status.elevated == false. The branch that measured the restore wrote its evidence to a different file, so that check would have gone on passing, and the matrix would have stayed green while the claim it made had become untrue. reports/vss_status.json is kept: it is the honest record of the period when elevation was the blocker.",
       "verification": {
         "id": "C-14",
         "status": "ok",
-        "detail": "platform_status.elevated = False"
+        "detail": "platform_status.elevated = True; attack_changed_the_file = True; original_sha256 = 'b22a3f28897defe4e860e3fdb3c3120e6bb79a26ab6bc54bdec07575375815a0'; restored_sha256 = 'b22a3f28897defe4e860e3fdb3c3120e6bb79a26ab6bc54bdec07575375815a0'; round_trip_verified = True"
+      }
+    },
+    {
+      "id": "C-16",
+      "table_9_9_row": "(beyond the table) no invented process in the chain",
+      "wording": null,
+      "wording_required": false,
+      "claim": "No event in the tamper-evident chain names a process that attribution did not resolve to CERTAIN. Across 48 ledger writes driven through the real pipeline, 0 are unsupported.",
+      "requires": "Ledger coverage scan",
+      "artefact": "reports/ledger_coverage.json",
+      "check": [
+        [
+          "reports/ledger_coverage.json",
+          [
+            "process_attribution_integrity",
+            "unsupported"
+          ],
+          0
+        ],
+        [
+          "reports/ledger_coverage.json",
+          [
+            "process_attribution_integrity",
+            "meets_target"
+          ],
+          true
+        ],
+        [
+          "reports/ledger_coverage.json",
+          [
+            "process_attribution_integrity",
+            "events_examined"
+          ],
+          48
+        ]
+      ],
+      "tests": [
+        "services/monitor/tests/test_ledger_pid_integrity.py"
+      ],
+      "note": "C-07 above checks that 36 chained blocks carry all five required fields. That is a count of field *presence*, and it cannot distinguish an attributed PID from an invented one - which is not hypothetical: a fabricated process_id was written into the chain by scripts/si_demo.py and carried in the suite this matrix cites, and C-07 stayed green throughout, because the field was there. This row asserts a value instead. Read the figure precisely: on a host with no Security-log audit source every write resolves to UNKNOWN, so 0 of those 48 events names a process at all and the zero is vacuously satisfied. It measures restraint, not correct attribution. The named regression feeds the scan PIDs that must be flagged, so the zero is known to be a measurement rather than an absence of one; correct attribution under a live audit source is C-14's sibling evidence, reports/attribution_live_run.json.",
+      "verification": {
+        "id": "C-16",
+        "status": "ok",
+        "detail": "process_attribution_integrity.unsupported = 0; process_attribution_integrity.meets_target = True; process_attribution_integrity.events_examined = 48"
+      }
+    },
+    {
+      "id": "C-17",
+      "table_9_9_row": "(beyond the table) the floor under any response time",
+      "wording": null,
+      "wording_required": false,
+      "claim": "Windows Security-channel audit records are delivered on a flush timer bounded near one second and independent of write rate. Under an uncapped burst 0 of 120 records arrived inside 750 ms and 120 of 120 arrived inside 3000 ms. Time-to-suspend cannot go below this, because the PID arrives with the record.",
+      "requires": "Elevated Windows host with the File System audit subcategory enabled and a SACL on the measured path",
+      "artefact": "reports/attribution_delivery_lag.json",
+      "check": [
+        [
+          "reports/attribution_delivery_lag.json",
+          [
+            "results",
+            3,
+            "within_750ms"
+          ],
+          0
+        ],
+        [
+          "reports/attribution_delivery_lag.json",
+          [
+            "results",
+            3,
+            "within_3000ms"
+          ],
+          120
+        ],
+        [
+          "reports/attribution_delivery_lag.json",
+          [
+            "results",
+            3,
+            "never_attributed"
+          ],
+          0
+        ]
+      ],
+      "tests": [],
+      "note": "This row exists because a constant in this repository was set below the floor of the mechanism it reads and nothing caught it. ATTRIBUTION_WINDOW_MS was 750 ms against a delivery ceiling of ~1010 ms, so under a burst the correlation window closed before any record it could have matched arrived - and the first Phase 3 acceptance measured the consequence as 40 of 40 documents destroyed with nothing suspended. The window is now 3000 ms. Read the burst row precisely: `within_750ms: 0` is the assertion, and it is an assertion that the *old* value could not work, not that the new one is sufficient for anything. What follows from it is a lower bound on FEBR - the attacker's write rate times the delivery lag - which no amount of work inside the agent can reduce. Closing that needs a mechanism that names the writer synchronously with the write; see docs/LIMITATIONS.md section 1.",
+      "verification": {
+        "id": "C-17",
+        "status": "ok",
+        "detail": "results.3.within_750ms = 0; results.3.within_3000ms = 120; results.3.never_attributed = 0"
       }
     }
   ],
+  "provenance": {
+    "git": {
+      "available": true,
+      "head": "498201fe2c23701867b0975b872680d34867e0ad",
+      "shallow": false
+    },
+    "artefacts": [
+      {
+        "artefact": "reports/admission_recompute.json",
+        "status": "ok",
+        "detail": "97da6fdfd, 26 commits behind HEAD"
+      },
+      {
+        "artefact": "reports/attribution_delivery_lag.json",
+        "status": "ok",
+        "detail": "498201fe2, 0 commits behind HEAD"
+      },
+      {
+        "artefact": "reports/benign_tradeoff.json",
+        "status": "ok",
+        "detail": "34582a4db, 25 commits behind HEAD"
+      },
+      {
+        "artefact": "reports/capability_calibration.json",
+        "status": "ok",
+        "detail": "97da6fdfd, 26 commits behind HEAD"
+      },
+      {
+        "artefact": "reports/implementation_record.json",
+        "status": "ok",
+        "detail": "53e525efb, 10 commits behind HEAD"
+      },
+      {
+        "artefact": "reports/ledger_coverage.json",
+        "status": "ok",
+        "detail": "6d14b832a, 3 commits behind HEAD"
+      },
+      {
+        "artefact": "reports/load_test.json",
+        "status": "ok",
+        "detail": "09fab7508, 34 commits behind HEAD"
+      },
+      {
+        "artefact": "reports/tamper_sweep.json",
+        "status": "ok",
+        "detail": "429f1231e, 31 commits behind HEAD"
+      },
+      {
+        "artefact": "reports/three_arm_experiment.json",
+        "status": "ok",
+        "detail": "34582a4db, 25 commits behind HEAD"
+      },
+      {
+        "artefact": "reports/vss_restore_verified.json",
+        "status": "ok",
+        "detail": "2213d2796, 5 commits behind HEAD"
+      }
+    ]
+  },
   "summary": {
-    "total": 15,
-    "made": 13,
+    "total": 17,
+    "made": 15,
     "not_claimed": 2,
     "mandatory_wording": 9,
-    "failed_verification": 0
+    "failed_verification": 0,
+    "failed_provenance": 0
   }
 }

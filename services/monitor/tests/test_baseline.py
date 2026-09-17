@@ -175,6 +175,29 @@ def test_a_deleted_file_records_no_baseline(tmp_path):
     assert kinds() == []
 
 
+def test_a_deletion_names_nobody_rather_than_naming_the_detector(tmp_path):
+    """This branch used to stamp `os.getpid()` on every deletion it observed.
+
+    That is the detector's own PID, with no confidence field beside it, in the
+    field whose entire job is saying who did this - a wrong answer wearing the
+    shape of a right one. Nothing deleted the file on the Monitor's behalf.
+    Who did is a question the agent asks of `attribution` when the path is one
+    it protects, and the honest default until it is asked is that nobody has
+    been named.
+    """
+    target = tmp_path / "removed.docx"
+    target.write_bytes(synthetic_corpus.build_docx(40000))
+    target.unlink()
+
+    event = monitor_app.handle_event(str(target), "deleted")
+
+    assert event is not None
+    assert event["process_id"] is None, (
+        f"a deletion named pid {event['process_id']}, which did not delete it")
+    assert event["attribution_confidence"] == "unknown"
+    assert event["attribution_reason"]
+
+
 def test_baseline_logging_can_be_switched_off(monkeypatch, tmp_path):
     """Deviation V-5: the extra ledger traffic is a cost, so it is switchable."""
     monkeypatch.setattr(monitor_app, "BASELINE_LOGGING_ENABLED", False)
