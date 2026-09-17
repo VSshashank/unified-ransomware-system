@@ -152,7 +152,8 @@ ARTEFACTS: list[dict] = [
     },
     {
         "path": "reports/ledger_coverage.json",
-        "backs": "100.0% coverage; 36/36 blocks on 5/5 required fields",
+        "backs": "100.0% coverage; 36/36 blocks on 5/5 required fields; "
+                 "0 of 48 ledger events name an unsupported process",
         "command": "URDS_WRITE_REPORTS=1 python scripts/ledger_coverage.py",
         "seed": "none",
         "reproduction": "deterministic",

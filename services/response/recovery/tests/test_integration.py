@@ -241,8 +241,16 @@ def test_tc05_tampered_ledger_row_is_detected(manager, ledger_client, ledger_app
     take_snapshot(snapshot_root, "snap1", document)
 
     document.write_bytes(os.urandom(1024))
+    # process_id is None, not a number. The value is incidental to what this
+    # test asserts - it checks that rewriting the block is detected - but it
+    # carried the same fabricated PID as scripts/si_demo.py, inside a suite the
+    # claim matrix cites. Evidence a claim rests on does not get to contain
+    # invented facts, however irrelevant they are to the assertion. The value
+    # and its history are in docs/CORRECTIONS.md.
     incriminating_block = ledger_client.log_event(
-        "file_encrypted", {"file_path": str(document), "process_id": 6666, "entropy": 7.99}
+        "file_encrypted",
+        {"file_path": str(document), "process_id": None,
+         "attribution_confidence": "unknown", "entropy": 7.99},
     )
 
     manager.recover("snap1", [str(document)], verify_integrity=True)

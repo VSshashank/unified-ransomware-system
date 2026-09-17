@@ -1,8 +1,8 @@
 {
   "schema": "urds.artefact_manifest.v1",
-  "generated_at": "2026-09-05T09:56:23.153118+00:00",
-  "commit": "34582a4db1fa76b2391e63b0151a7682fb388497",
-  "branch": "feat/admissibility-governance-novelty-v2",
+  "generated_at": "2026-09-17T03:52:06.730106+00:00",
+  "commit": "6d14b832a3b2db668c8ccb587e4b6bb561a245b4",
+  "branch": "fix/evidence-integrity",
   "what_the_two_digests_mean": {
     "sha256": "over the committed bytes; detects an edited artefact",
     "stable_sha256": "over the JSON with the listed volatile paths removed and keys sorted; this is the digest a reproducer compares"
@@ -107,7 +107,7 @@
     },
     {
       "path": "reports/ledger_coverage.json",
-      "backs": "100.0% coverage; 36/36 blocks on 5/5 required fields",
+      "backs": "100.0% coverage; 36/36 blocks on 5/5 required fields; 0 of 48 ledger events name an unsupported process",
       "command": "URDS_WRITE_REPORTS=1 python scripts/ledger_coverage.py",
       "verify_command": null,
       "seed": "none",
@@ -119,9 +119,9 @@
         "**/branch"
       ],
       "present": true,
-      "bytes": 5599,
-      "sha256": "d761f746db294acda890849a213ea31d54730e0f4518e3a8fb7c62c5525fb9b7",
-      "stable_sha256": "f81b68b685ca7d070fc3094b50b7d980fba8022c2759edb86e0932ecca83f2d6"
+      "bytes": 6677,
+      "sha256": "8e66efca42453f69fe940e3cc36c161ffc64bffe720ed87764a7cfc137e91ac4",
+      "stable_sha256": "412ceedb402c00856f4d3d58a7929db7c8910ec7f58f99f5a959861275de8eb8"
     },
     {
       "path": "reports/pipeline_governance.json",
@@ -240,8 +240,8 @@
   "source": [
     {
       "path": "services/monitor/detection.py",
-      "sha256": "02823d885c3a08b12617da8fa7ec179d456fbab59e1b8618ef4f754a7f782181",
-      "bytes": 43744
+      "sha256": "536a83bd7e9ce719017069bed5e99575e85f618d002963ca9ddd34e1d45adc41",
+      "bytes": 44677
     },
     {
       "path": "services/monitor/admissibility.py",
@@ -255,13 +255,13 @@
     },
     {
       "path": "services/monitor/pipeline.py",
-      "sha256": "dcc87bc860f0e955046f96dc623112d1db9758301fc6b70c9884ab16fd6ff35d",
-      "bytes": 13954
+      "sha256": "8067d482ce7cf0d6d0e10eec0d5734b8e8f55f02a6f010d23baf34d0fe89ddbd",
+      "bytes": 16217
     },
     {
       "path": "services/monitor/app.py",
-      "sha256": "bc137c92801550ed6732529a90f2de713124100f2a58bd017f157c0f49d9ab5c",
-      "bytes": 35347
+      "sha256": "240b0bdc6ec04939c34a0e82990ed8b9da8b9dc1558f75cd1866fbe2947b5cf4",
+      "bytes": 38048
     },
     {
       "path": "services/ledger/hash_chain.py",
@@ -275,13 +275,13 @@
     },
     {
       "path": "scripts/capability_calibration.py",
-      "sha256": "df5004a1b2f9847fc775dc6a5df9f3b8a544d5b3336f575c2d03a3c447067eae",
-      "bytes": 60818
+      "sha256": "7ae4987485bed559f5c175b2ae7bb3474456d696efeba5ba2d0eb53d816867e2",
+      "bytes": 62193
     },
     {
       "path": "scripts/admission_recompute.py",
-      "sha256": "56432a07eb02e4c96fe5086b996283ac5746987b954831d7a160c529aa6d74a4",
-      "bytes": 30224
+      "sha256": "98a3eff3edc5d930cae1e28c1d5bd30392dd1b11e9702df9e90df78e2ce247ec",
+      "bytes": 30888
     },
     {
       "path": "scripts/three_arm_experiment.py",
@@ -290,13 +290,13 @@
     },
     {
       "path": "scripts/benign_tradeoff.py",
-      "sha256": "e508347a9681f649d6fe238b3654bdd4da2ea7a73b0176ca65317df28371549d",
-      "bytes": 15490
+      "sha256": "62e7eaeb4c0a25844a146ca4ff9b831046847ece15cf298176015d8220e6a0a6",
+      "bytes": 15857
     },
     {
       "path": "scripts/build_benign_corpus.py",
-      "sha256": "264f30d62abdc5aac2c11e08ad0f8c551f5b1987359a0e13fb44ea9974ca1a03",
-      "bytes": 26491
+      "sha256": "bbb7dcdf3097743bc2d06325c9eacb05baf4372ad6bbf5945238a0e916bb0fed",
+      "bytes": 27159
     }
   ]
 }

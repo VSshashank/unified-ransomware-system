@@ -134,7 +134,17 @@ def main() -> int:
             "event_type": "file_encrypted",
             "event_data": {
                 "file_path": str(document),
-                "process_id": 6666,
+                # This demo performs the write itself and runs no attribution,
+                # so no process was identified and none is named. Until
+                # 2026-09-17 this field held a fabricated PID - a number with
+                # no referent, written into a tamper-evident chain whose whole
+                # value is that what it holds can be trusted. An invented PID
+                # in a hash chain is worse than an absent one: the absence is
+                # legible. The value and its history are in docs/CORRECTIONS.md.
+                "process_id": None,
+                "attribution_confidence": "unknown",
+                "attribution_reason": "si_demo writes the encrypted bytes "
+                                      "itself; no attribution source is running",
                 "user": "admin",
                 "entropy": round(encrypted_entropy, 3),
             },

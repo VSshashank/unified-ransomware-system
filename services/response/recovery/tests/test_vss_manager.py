@@ -224,7 +224,7 @@ Contents of shadow copy set ID: {aaaaaaaa-0000-0000-0000-000000000001}
 
 Contents of shadow copy set ID: {aaaaaaaa-0000-0000-0000-000000000003}
    Contained 1 shadow copies at creation time: 8/6/2026 16:15:23 PM
-      Shadow Copy ID: {66666666-7777-8888-9999-000000000000}
+      Shadow Copy ID: {77777777-8888-9999-aaaa-bbbbbbbbbbbb}
          Original Volume: (C:)\\?\Volume{bbbbbbbb-0000-0000-0000-000000000002}\
          Shadow Copy Volume: \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy2
          Originating Machine: DESKTOP-TEST
@@ -236,7 +236,7 @@ def test_vssadmin_output_parses_into_snapshots():
 
     assert [s["snapshot_id"] for s in snapshots] == [
         "{11111111-2222-3333-4444-555555555555}",
-        "{66666666-7777-8888-9999-000000000000}",
+        "{77777777-8888-9999-aaaa-bbbbbbbbbbbb}",
     ]
     assert snapshots[0]["volume"] == "C:\\"
     assert snapshots[0]["device_object"] == r"\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1"

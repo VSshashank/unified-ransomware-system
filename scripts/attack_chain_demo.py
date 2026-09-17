@@ -16,7 +16,6 @@ import io
 import json
 import math
 import os
-import sys
 import time
 import zipfile
 from collections import Counter
@@ -282,31 +281,53 @@ def main() -> int:
         say("  no response_action blocks in the ledger")
         results["response_action_audited"] = False
 
-    # TC-07 needs a process that actually exists; use a disposable one.
-    import subprocess
+    # TC-07 terminates the process the detector attributed, or it terminates
+    # nothing at all.
+    #
+    # Until 2026-09-17 this block spawned its own `time.sleep(60)` process and
+    # asked the Response service to kill that. The row passed by construction:
+    # the demo was the attacker and the scorer at once, and the figure it
+    # produced - "process terminated, 2ms, target <2000ms" - described nothing
+    # about the system under test. A kill of a process the detector never named
+    # is not a response to an attack; it is a kill.
+    #
+    # So the target is now whatever attribution resolved, and only CERTAIN
+    # authorises it. Anything else records why nothing was killed. Under F2
+    # below that skip makes the run exit non-zero, which is the point: the
+    # honest outcome of a demo that cannot reach a host PID is a red run, not
+    # a green one with an invented victim.
+    attributed_pid = event.get("process_id")
+    confidence = event.get("attribution_confidence", "unknown")
+    say(f"  attribution        : {confidence}")
+    say(f"  attributed pid     : {attributed_pid}")
+    say(f"  attribution reason : {event.get('attribution_reason')}")
+    say(f"  attribution source : {event.get('attribution_source')}")
 
-    victim_process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
-    time.sleep(0.3)
-    kill = client.post(
-        f"{args.gateway}/response/terminate",
-        json={"process_id": victim_process.pid, "incident_id": "inc_demo", "reason": "ransomware_detected", "force": True},
-        headers=auth,
-    )
-    if kill.status_code == 200:
-        body = kill.json()
-        say(f"  terminated pid {body['process_id']} ({body.get('process_name')}) "
-            f"via {body.get('method')} in {body.get('termination_time_ms')}ms (target <2000ms)")
-        results["tc07_process_terminated"] = True
-        results["kill_time_under_2s"] = body.get("termination_time_ms", 9e9) < 2000
-    else:
-        say(f"  terminate returned {kill.status_code}: {kill.text[:200]}")
-        say("  (expected on macOS/Windows hosts: the response service runs in a Linux")
-        say("   container and cannot see host PIDs. Covered by services/response tests.)")
+    if confidence != "certain" or attributed_pid is None:
+        say(f"  no termination attempted: only CERTAIN attribution authorises a kill,")
+        say(f"  and this event resolved to {confidence!r}. Nothing is spawned to stand")
+        say(f"  in for the process that was not identified.")
+        say(f"  (Expected wherever Response runs in a container with its own PID")
+        say(f"   namespace, or where the Security-log audit is not enabled.)")
         results["tc07_process_terminated"] = None
         results["kill_time_under_2s"] = None
-    if victim_process.poll() is None:
-        victim_process.kill()
-        victim_process.wait(timeout=5)
+    else:
+        kill = client.post(
+            f"{args.gateway}/response/terminate",
+            json={"process_id": attributed_pid, "incident_id": "inc_demo",
+                  "reason": "ransomware_detected", "force": True},
+            headers=auth,
+        )
+        if kill.status_code == 200:
+            body = kill.json()
+            say(f"  terminated pid {body['process_id']} ({body.get('process_name')}) "
+                f"via {body.get('method')} in {body.get('termination_time_ms')}ms (target <2000ms)")
+            results["tc07_process_terminated"] = True
+            results["kill_time_under_2s"] = body.get("termination_time_ms", 9e9) < 2000
+        else:
+            say(f"  terminate returned {kill.status_code}: {kill.text[:200]}")
+            results["tc07_process_terminated"] = False
+            results["kill_time_under_2s"] = False
     say()
 
     # --- 8. dashboard --------------------------------------------------------
@@ -378,7 +399,14 @@ def finish(client, args, started_at) -> int:
     print(f"\nEvidence written to {EVIDENCE_PATH}")
 
     (EVIDENCE_PATH.parent / "attack_chain_results.json").write_text(json.dumps(results, indent=2))
-    return 0 if not failures else 1
+
+    # A skipped check is a failed check. The printed summary was corrected once
+    # to stop counting skips as passes - it had headlined "18/18" over a list
+    # showing 16 PASS and 2 SKIP - but the exit code was left alone, so a run
+    # that skipped a capability still exited 0 and still went green in
+    # everything that reads a status rather than a transcript. The two now
+    # agree: an unproven capability is not a passing one.
+    return 0 if not (failures or skipped) else 1
 
 
 if __name__ == "__main__":

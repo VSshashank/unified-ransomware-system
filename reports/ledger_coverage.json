@@ -1,14 +1,23 @@
 {
   "schema": "urds.ledger_coverage/1",
-  "generated_at": "2026-09-05T05:17:48.374998Z",
-  "commit": "429f1231eaf48f49c2b7b47dc8360cb5b1149b8c",
-  "branch": "feat/admissibility-governance-novelty-v2",
+  "generated_at": "2026-09-17T03:51:14.098388Z",
+  "commit": "6d14b832a3b2db668c8ccb587e4b6bb561a245b4",
+  "branch": "fix/evidence-integrity",
   "table_9_8_row": "Mitigation decisions reaching the ledger",
   "target": "100%",
   "measured_coverage": 1.0,
   "meets_target": true,
   "adjudications_made": 24,
   "adjudications_reaching_ledger": 24,
+  "process_attribution_integrity": {
+    "rule": "A ledger event may name a process only when attribution resolved to CERTAIN. process_id None is the honest value for an unattributed write and is not counted against this; a PID asserted without CERTAIN evidence behind it is.",
+    "why_this_row_exists": "The completeness row above counts whether a field is present. It cannot tell an attributed PID from an invented one, and for a period it did not: see docs/CORRECTIONS.md.",
+    "events_examined": 48,
+    "events_naming_a_process": 0,
+    "unsupported": 0,
+    "detail": [],
+    "meets_target": true
+  },
   "record_completeness": {
     "required_fields": [
       "capability_levels",
@@ -70,6 +79,12 @@
           "policy_version": "legacy",
           "reason": "forging the hash rule costs high; avoiding the static_entropy signal costs negligible - the suppression is strictly more expensive, so it applies"
         }
+      },
+      "unsupported_pids": {
+        "events_examined": 12,
+        "events_naming_a_process": 0,
+        "unsupported": 0,
+        "detail": []
       }
     },
     "attenuated": {
@@ -113,6 +128,12 @@
           "policy_version": "legacy",
           "reason": "forging the path rule costs low; avoiding the structural_mismatch signal costs moderate - the suppression is cheaper than the evidence, so the alert stands"
         }
+      },
+      "unsupported_pids": {
+        "events_examined": 24,
+        "events_naming_a_process": 0,
+        "unsupported": 0,
+        "detail": []
       }
     },
     "ungoverned": {
@@ -144,6 +165,12 @@
         },
         "complete": 0,
         "example": null
+      },
+      "unsupported_pids": {
+        "events_examined": 12,
+        "events_naming_a_process": 0,
+        "unsupported": 0,
+        "detail": []
       }
     }
   },

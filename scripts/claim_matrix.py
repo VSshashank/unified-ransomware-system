@@ -352,6 +352,47 @@ CLAIMS: list[dict] = [
                 "reports/vss_status.json is kept: it is the honest record of "
                 "the period when elevation was the blocker.",
     },
+    {
+        "id": "C-16",
+        "table_9_9_row": "(beyond the table) no invented process in the chain",
+        "wording": None,
+        "wording_required": False,
+        "claim": "No event in the tamper-evident chain names a process that "
+                 "attribution did not resolve to CERTAIN. Across 48 ledger "
+                 "writes driven through the real pipeline, 0 are unsupported.",
+        "requires": "Ledger coverage scan",
+        "artefact": "reports/ledger_coverage.json",
+        "check": [
+            ("reports/ledger_coverage.json",
+             ["process_attribution_integrity", "unsupported"], 0),
+            ("reports/ledger_coverage.json",
+             ["process_attribution_integrity", "meets_target"], True),
+            # Pins that the scan examined something. Without this a future
+            # change that quietly stopped collecting events would report
+            # `unsupported: 0` and pass, which is the failure mode this whole
+            # row was added to end - a green check over an absence.
+            ("reports/ledger_coverage.json",
+             ["process_attribution_integrity", "events_examined"], 48),
+        ],
+        "tests": ["services/monitor/tests/test_ledger_pid_integrity.py"],
+        "note": "C-07 above checks that 36 chained blocks carry all five "
+                "required fields. That is a count of field *presence*, and it "
+                "cannot distinguish an attributed PID from an invented one - "
+                "which is not hypothetical: a fabricated process_id was "
+                "written into the chain by scripts/si_demo.py and carried in "
+                "the suite this matrix cites, and C-07 stayed green "
+                "throughout, because the field was there. This row asserts a "
+                "value instead. "
+                "Read the figure precisely: on a host with no Security-log "
+                "audit source every write resolves to UNKNOWN, so 0 of those "
+                "48 events names a process at all and the zero is vacuously "
+                "satisfied. It measures restraint, not correct attribution. "
+                "The named regression feeds the scan PIDs that must be "
+                "flagged, so the zero is known to be a measurement rather "
+                "than an absence of one; correct attribution under a live "
+                "audit source is C-14's sibling evidence, "
+                "reports/attribution_live_run.json.",
+    },
 ]
 
 
