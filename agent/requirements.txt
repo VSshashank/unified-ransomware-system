@@ -1,0 +1,21 @@
+# urds-agent runs natively on the host. It imports the Monitor's, Response
+# service's and ledger's modules rather than duplicating them, so it needs what
+# those modules import at module scope - which is why fastapi and httpx are
+# here for something that serves no HTTP and dials none.
+#
+#   fastapi   recovery/recovery.py declares its APIRouter at import time
+#   httpx     recovery/ledger_client.py; the agent subclasses LedgerClient and
+#             replaces the transport, but the module still imports httpx
+#   watchdog  the filesystem events the protection path is driven by
+#   psutil    suspend, resume, and the process guards
+#   pywin32   the Windows Service host, and the Security-channel subscription
+#             that is the only kernel-grade attribution source. Windows only,
+#             and the agent degrades to detect-and-log without it rather than
+#             guessing a PID.
+
+fastapi==0.115.6
+httpx==0.28.1
+psutil==7.2.2
+pydantic==2.10.4
+watchdog==6.0.0
+pywin32==308; sys_platform == "win32"

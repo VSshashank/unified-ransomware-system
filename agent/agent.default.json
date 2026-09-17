@@ -1,0 +1,23 @@
+{
+  "_what_this_is": "The development configuration, used when neither $URDS_AGENT_CONFIG nor %ProgramData%\\URDS\\agent.json exists. install.ps1 writes a real one pointing at the user's own folders; this one points inside the checkout so that running the agent from a clone can never touch anything outside it. Relative paths here are anchored to the repository root, not the working directory.",
+
+  "_blast_radius": "protected_paths is the whole blast radius. The agent suspends a process only for a write inside one of these roots. agent/config.py refuses a filesystem root, and refuses any path overlapping the Windows, Program Files or common Unix system directories - before the responder exists, not after it has acted.",
+
+  "protected_paths": [
+    "watched_files"
+  ],
+
+  "data_dir": "data/agent",
+
+  "_allowlist_images": "Process images permitted to write to a canary without being suspended. Empty by design: an allowlist that ships with entries is an allowlist nobody has read. Add full image paths only, and only with a reason in the commit message.",
+  "allowlist_images": [],
+
+  "velocity_window_s": 10.0,
+  "velocity_path_threshold": 12,
+  "velocity_fanout_threshold": 3,
+
+  "canaries_per_root": 20,
+
+  "_attribution_timeout_ms": "How long the correlator waits for the Security-log subscription to name the writer of a path. The live run measured 0.158 ms to attribution; this is the ceiling before the answer degrades to UNKNOWN and the responder isolates rather than terminates.",
+  "attribution_timeout_ms": 750.0
+}

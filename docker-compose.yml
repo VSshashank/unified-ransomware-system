@@ -8,6 +8,26 @@ version: "3.8"
 # scripts/verify_vss.py talk to :8003 and :8004 directly) while removing remote
 # reach. Gateway :8000 and dashboard :8501 stay published: they are the intended
 # front doors, and the gateway is the only service that authenticates.
+#
+# WHAT THIS FILE IS, AND WHAT IT IS NOT
+#
+# Compose is the cross-platform demonstration and the CI path. It is **not the
+# protection path**, and it cannot be: a container has its own PID namespace,
+# so the Response service inside one can hold a perfectly correct host PID and
+# still be unable to suspend or kill it. Every operational claim about stopping
+# an encryptor was blocked on that, and no configuration of this file fixes it.
+#
+# The protection path is `agent/`, which runs natively on the host as a Windows
+# Service under SYSTEM, imports these same service modules rather than
+# duplicating them, and writes the ledger directly to SQLite. See
+# `python -m agent --help` and docs/LIMITATIONS.md.
+#
+# `response` is therefore no longer in the default set. It is in the `demo`
+# profile, so it starts for a demonstration or a CI run and does not start
+# implicitly beside an agent that is already the thing responding:
+#
+#     docker compose up                     monitor, ledger, ml, gateway, dashboard
+#     docker compose --profile demo up      the above plus response
 services:
   monitor:
     build: ./services/monitor
@@ -101,6 +121,10 @@ services:
   response:
     build: ./services/response
     container_name: ransomware_response
+    # Demo/CI only - see the note at the top of this file. The container cannot
+    # act on a host PID, so this is the recovery and audit half of the Response
+    # service, not the half that stops an encryptor.
+    profiles: ["demo"]
     ports:
       - "127.0.0.1:8004:8004"
     volumes:
@@ -158,8 +182,17 @@ services:
         condition: service_healthy
       ledger:
         condition: service_healthy
-      response:
-        condition: service_healthy
+      # `response` is deliberately absent, and this is a behaviour change.
+      # depends_on is a start-ordering constraint, and the gateway does not
+      # need the Response service in order to start - it needs it only to serve
+      # /response/* , which since the agent moved to the host is a demo path
+      # rather than the protection path. Listing a profiled service here would
+      # also make the default `docker compose up` fail outright.
+      #
+      # Consequence, stated rather than discovered: with the demo profile off,
+      # a request to /response/* returns an upstream error at request time.
+      # That is the correct answer. The thing that responds is urds-agent, and
+      # it is not in this file.
     restart: unless-stopped
     networks:
       - ransomware_net

@@ -1,0 +1,38 @@
+{
+  "schema": "urds.agent_phase2_acceptance/1",
+  "generated_at": "2026-09-17T04:19:47Z",
+  "commit": "58ce02133c186a32b2d89bf93ec6510d9e69df74",
+  "branch": "fix/evidence-integrity",
+  "_what_this_is": "Phase 2 acceptance, measured against the urds-agent Windows Service running as LocalSystem on an elevated host. This is the measurement that F10 blocked: the Response service in a container can hold a correct host PID and cannot act on it, so no operational termination claim could be made. The agent on the host suspended a real writer on a certain attribution.",
+  "host": {
+    "platform": "Windows",
+    "version": "10.0.26200",
+    "service_account": "LocalSystem",
+    "start_type": "AUTO_START"
+  },
+  "suspend_resume_on_a_real_gui_process": {
+    "process": "Notepad.exe",
+    "pid": 17148,
+    "before": "running",
+    "while_suspended": "stopped",
+    "after_resume": "running",
+    "passed": true
+  },
+  "service_suspends_a_real_writer": {
+    "launcher_pid": 16784,
+    "writer_pid": 30648,
+    "note_on_the_two_pids": "launcher_pid is the venv trampoline Popen returns; writer_pid is the base interpreter it re-executes and is the process that wrote the bytes. Attribution named the writer. The first run of the harness asserted the launcher and reported a false failure against a correct suspension - the same trap reports/attribution_live_run.json already documents.",
+    "attribution_confidence": "certain",
+    "attribution_source": "windows-security-4663",
+    "time_to_suspend_s": 1.146,
+    "febr_files_at_suspend": 6,
+    "files_total_written": 6,
+    "ledger_names_the_real_writer": true,
+    "chain_valid": true,
+    "left_frozen_after_cleanup": false,
+    "passed": true
+  },
+  "_what_this_does_not_show": "That the agent stops an encryptor in time. It does not, on this workload: all 6 files were written before the suspension landed at 1.146s, so FEBR is 6 of 6. The writer completed its writes in about 0.9s and the response arrived after them. Phase 2 moves the protection path onto the host and proves a host PID can be suspended on real evidence; making that suspension arrive early enough is Phase 3's velocity and canary work, and the number to beat is recorded here rather than omitted.",
+  "_second_limitation": "Two of the six writes attributed UNKNOWN - the first and the last. The Monitor's event backlog can exceed the 750ms attribution window, so an event looked up late finds no 4663 inside the window and correctly degrades rather than guessing.",
+  "passed": true
+}
