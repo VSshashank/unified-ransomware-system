@@ -468,7 +468,25 @@ def run(args: argparse.Namespace) -> int:
     try:
         from recovery.vss_manager import VSSManager  # noqa: PLC0415
 
-        vss = VSSManager()
+        # A ledger client that goes nowhere, on purpose.
+        #
+        # `VSSManager()` otherwise builds one pointed at http://localhost:8003
+        # and tries to log `snapshot_created` there. That service is the
+        # demonstration stack's, not the agent's, and it is often not running -
+        # so a passing run printed
+        #
+        #   Failed to log snapshot_created to ledger: Ledger unreachable at
+        #   http://localhost:8003 ... actively refused it
+        #
+        # in the middle of eleven PASS lines. This snapshot is a fixture of the
+        # test, not evidence of anything the agent did; the snapshot that
+        # belongs in the chain is the one the agent takes during the incident,
+        # and the agent writes that one itself, directly to SQLite.
+        class _NoLedger:
+            def try_log_event(self, *args, **kwargs):  # noqa: ANN002, ANN003
+                return None
+
+        vss = VSSManager(ledger_client=_NoLedger())
         volume = str(protected.anchor or "C:\\")
         started = time.perf_counter()
         snapshot_id = vss.create_snapshot(volume)

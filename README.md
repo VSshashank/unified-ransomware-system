@@ -58,9 +58,24 @@ audit trail.
 powershell -ExecutionPolicy Bypass -File uninstall.ps1
 ```
 
-The agent is the protection path and survives reboots. The API services and the
-Streamlit dashboard are the demonstration surface and do not; bring them back
-with `scripts/start_stack.ps1` (`-Stop` to stop them).
+The agent is the protection path and survives reboots. Measured on Windows 11
+build 26200, after an unplanned restart: the machine booted at 23:44:46, the
+service's process existed at 23:44:58 and was watching by 23:45:04 — twelve
+seconds, with nobody logged in — and the same self-test then passed all eleven
+checks against it, up to and including restoring a file from a shadow copy
+byte-identical. The API services and the Streamlit dashboard are the
+demonstration surface and do *not* survive a reboot, deliberately; bring them
+back with `scripts/start_stack.ps1` (`-Stop` to stop them).
+
+If something already owns port 8000 or 8501 — Splunk and a running
+`docker compose` did on the development machine — shift the whole set:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1 -PortOffset 100
+```
+
+The installer refuses a port that is taken and names the process holding it,
+rather than stopping somebody else's software to claim it.
 
 ## Quick Start (containers, any platform)
 
