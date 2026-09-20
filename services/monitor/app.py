@@ -357,7 +357,8 @@ def extract_features(path: str) -> dict:
 
 
 def handle_event(path: str, event_type: str,
-                 attribution_grace_ms: float | None = None) -> dict | None:
+                 attribution_grace_ms: float | None = None,
+                 event_at: float | None = None) -> dict | None:
     """Classify one filesystem event and record it.
 
     Detection latency is measured over exactly this function: from the event
@@ -370,6 +371,13 @@ def handle_event(path: str, event_type: str,
     the event has been queued long enough that the record explaining it has
     already aged out of the lookup window - waiting past that point cannot find
     the write that caused this event, only a later one.
+
+    `event_at` is `time.monotonic()` when this event was observed. It lets
+    attribution reject an audit record that was delivered before the event
+    existed, which is how the previous writer of a path used to be named
+    confidently for somebody else's write. Callers that know it should pass it;
+    the watchdog handlers below do not, because by the time this function runs
+    on their thread the observation and the call are the same moment.
     """
     started = perf_counter()
 
@@ -568,7 +576,8 @@ def handle_event(path: str, event_type: str,
     # into a measurement of the event log's delivery lag.
     if event["suspicious"]:
         event.update(
-            attributor.resolve(path, grace_ms=attribution_grace_ms)
+            attributor.resolve(path, grace_ms=attribution_grace_ms,
+                               event_at=event_at)
             .as_event_fields())
 
     first_sighting = _record(event)

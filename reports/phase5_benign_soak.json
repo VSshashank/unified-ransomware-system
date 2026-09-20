@@ -1,0 +1,226 @@
+{
+  "_what_this_is": "The false-positive rate: suspensions per hour of ordinary work done by third-party tools inside the agent's protected path.",
+  "_what_this_does_not_show": "A rate over the whole corpus the build plan names. Six of its members are not installable or not drivable on this host and are listed under `not_installed`; this is a lower bound on the rate, measured over what could actually be run.",
+  "generated_at": "2026-09-20T10:07:41.620681Z",
+  "commit": "9f0eca8c6967cb3107149148fadb1db3d29bb8ed",
+  "branch": "fix/evidence-integrity",
+  "_provenance": "commit and branch were added after the run, not written by it: benign_soak.py did not stamp them until the same session's later commit. The value is HEAD at the time the run started, which had not moved since and is the tree the measurement was taken on. Every other figure in this file was produced by the run.",
+  "host": "Windows-11-10.0.26200-SP0",
+  "protected_path": "D:\\Unified_Ransomware_Project\\watched_files",
+  "ran_for_seconds": 3611.2,
+  "ran_for_hours": 1.0031,
+  "cycles": 519,
+  "tools": {
+    "7z": "C:\\Program Files\\7-Zip\\7z.exe",
+    "makecab": "C:\\Windows\\System32\\makecab.exe",
+    "robocopy": "C:\\Windows\\System32\\robocopy.exe",
+    "certutil": "C:\\Windows\\System32\\certutil.exe",
+    "git": "C:\\Program Files\\Git\\cmd\\git.EXE",
+    "tar": "C:\\Windows\\system32\\tar.EXE",
+    "npm": "C:\\nvm4w\\nodejs\\npm.CMD"
+  },
+  "workloads": [
+    {
+      "key": "sevenzip-archive",
+      "what": "7-Zip archives a folder of documents",
+      "available": true,
+      "runs": 519,
+      "failures": 0,
+      "seconds": 201.8,
+      "note": ""
+    },
+    {
+      "key": "tar-gzip",
+      "what": "tar + gzip a folder of documents",
+      "available": true,
+      "runs": 519,
+      "failures": 0,
+      "seconds": 48.4,
+      "note": ""
+    },
+    {
+      "key": "makecab",
+      "what": "Windows' own compressor",
+      "available": true,
+      "runs": 519,
+      "failures": 0,
+      "seconds": 17.8,
+      "note": ""
+    },
+    {
+      "key": "git-clone",
+      "what": "git clones a repository",
+      "available": true,
+      "runs": 1,
+      "failures": 0,
+      "seconds": 7.8,
+      "note": ""
+    },
+    {
+      "key": "git-gc",
+      "what": "git repacks a clone",
+      "available": true,
+      "runs": 272,
+      "failures": 247,
+      "seconds": 901.1,
+      "note": "7afa73194d25a4277128fb486.rev: Permission denied\nfatal: unable to rename temporary file to '.git/objects/pack/.tmp-27116-pack-1133cf3c19e882c7afa73194d25a4277128fb486.rev'\nfatal: failed to run repack\n"
+    },
+    {
+      "key": "venv-build",
+      "what": "a build writing thousands of files",
+      "available": true,
+      "runs": 519,
+      "failures": 0,
+      "seconds": 1792.8,
+      "note": ""
+    },
+    {
+      "key": "npm-install",
+      "what": "npm installs a dependency",
+      "available": true,
+      "runs": 0,
+      "failures": 519,
+      "seconds": 589.3,
+      "note": " related to npm not being able to find a file.\nnpm error enoent\nnpm error A complete log of this run can be found in: C:\\Users\\nikhi\\AppData\\Local\\npm-cache\\_logs\\2026-09-20T10_07_26_568Z-debug-0.log\n"
+    },
+    {
+      "key": "binary-copy",
+      "what": "robocopy copies system binaries in",
+      "available": true,
+      "runs": 518,
+      "failures": 0,
+      "seconds": 17.8,
+      "note": ""
+    },
+    {
+      "key": "base64",
+      "what": "certutil base64-encodes a document",
+      "available": true,
+      "runs": 518,
+      "failures": 0,
+      "seconds": 24.1,
+      "note": ""
+    }
+  ],
+  "not_installed": {
+    "ffmpeg-transcode": "ffmpeg is not installed on this host",
+    "veracrypt-container": "VeraCrypt is not installed on this host",
+    "visual-studio-build": "no Visual Studio or MSBuild on this host; `venv-build` and `npm-install` stand in for the file-churn shape, not for the compiler",
+    "windows-update": "cannot be scheduled from a measurement script, and forcing one on somebody's machine is not this script's decision",
+    "browser-cache-churn": "not driven here: it would mean automating the user's browser, and the cache lives outside the protected path anyway",
+    "onedrive-sync": "OneDrive syncs its own folders, not the protected path; pointing it at one would be a configuration change to the machine"
+  },
+  "answer_key_size": 2262,
+  "metrics": {
+    "workload_runs": 3385,
+    "workload_failures": 766,
+    "false_positive_suspensions": 6,
+    "false_positives_per_hour": 5.981,
+    "flagged_file_events": 3204,
+    "flagged_events_per_hour": 3194.085,
+    "suspensions_of_other_software": 0,
+    "ledger_blocks": 184841,
+    "chain_valid": true
+  },
+  "false_positives": [
+    {
+      "block": 21106,
+      "pid": 26532,
+      "image": "C:\\Program Files\\Git\\mingw64\\bin\\git.exe",
+      "decision": "resume"
+    },
+    {
+      "block": 21168,
+      "pid": 26532,
+      "image": "C:\\Program Files\\Git\\mingw64\\bin\\git.exe",
+      "decision": "resume"
+    },
+    {
+      "block": 21262,
+      "pid": 26532,
+      "image": "C:\\Program Files\\Git\\mingw64\\bin\\git.exe",
+      "decision": "resume"
+    },
+    {
+      "block": 21379,
+      "pid": 26532,
+      "image": "C:\\Program Files\\Git\\mingw64\\bin\\git.exe",
+      "decision": "resume"
+    },
+    {
+      "block": 105893,
+      "pid": 25992,
+      "image": "C:\\Program Files\\Git\\mingw64\\libexec\\git-core\\git.exe",
+      "decision": "resume"
+    },
+    {
+      "block": 132993,
+      "pid": 4504,
+      "image": "C:\\Program Files\\Git\\mingw64\\libexec\\git-core\\git.exe",
+      "decision": "resume"
+    }
+  ],
+  "suspensions_of_other_software": [],
+  "flagged_sample": [
+    {
+      "block": 21002,
+      "file": "D:\\Unified_Ransomware_Project\\watched_files\\benign_soak_af3f3e5b\\bundle_47d83e.cab",
+      "verdict": "suspected_encryption",
+      "reason": "entropy 7.94 >= 7.5; no recognised container header"
+    },
+    {
+      "block": 21005,
+      "file": "D:\\Unified_Ransomware_Project\\watched_files\\benign_soak_af3f3e5b\\bundle_47d83e.cab",
+      "verdict": "suspected_encryption",
+      "reason": "entropy 7.94 >= 7.5; no recognised container header"
+    },
+    {
+      "block": 21010,
+      "file": "D:\\Unified_Ransomware_Project\\watched_files\\benign_soak_af3f3e5b\\clone_cd78e6\\.git\\objects\\00\\fed16908954d691888192b5fbda07f09353116",
+      "verdict": "suspected_encryption",
+      "reason": "entropy 7.99 >= 7.5; no recognised container header"
+    },
+    {
+      "block": 21011,
+      "file": "D:\\Unified_Ransomware_Project\\watched_files\\benign_soak_af3f3e5b\\clone_cd78e6\\.git\\objects\\00\\fed16908954d691888192b5fbda07f09353116",
+      "verdict": "suspected_encryption",
+      "reason": "entropy 7.99 >= 7.5; no recognised container header"
+    },
+    {
+      "block": 21012,
+      "file": "D:\\Unified_Ransomware_Project\\watched_files\\benign_soak_af3f3e5b\\clone_cd78e6\\.git\\objects\\00\\fed16908954d691888192b5fbda07f09353116",
+      "verdict": "suspected_encryption",
+      "reason": "entropy 7.99 >= 7.5; no recognised container header"
+    },
+    {
+      "block": 21014,
+      "file": "D:\\Unified_Ransomware_Project\\watched_files\\benign_soak_af3f3e5b\\clone_cd78e6\\.git\\objects\\00\\fed16908954d691888192b5fbda07f09353116",
+      "verdict": "suspected_encryption",
+      "reason": "entropy 7.99 >= 7.5; no recognised container header"
+    },
+    {
+      "block": 21015,
+      "file": "D:\\Unified_Ransomware_Project\\watched_files\\benign_soak_af3f3e5b\\clone_cd78e6\\.git\\objects\\01\\528adb52e7c20b27a729af82287755ebb7d6aa",
+      "verdict": "suspected_encryption",
+      "reason": "entropy 7.56 >= 7.5; no recognised container header"
+    },
+    {
+      "block": 21016,
+      "file": "D:\\Unified_Ransomware_Project\\watched_files\\benign_soak_af3f3e5b\\clone_cd78e6\\.git\\objects\\01\\e6b8729e059042a8dceccb32b565b84272ff77",
+      "verdict": "suspected_encryption",
+      "reason": "entropy 7.86 >= 7.5; no recognised container header"
+    },
+    {
+      "block": 21017,
+      "file": "D:\\Unified_Ransomware_Project\\watched_files\\benign_soak_af3f3e5b\\clone_cd78e6\\.git\\objects\\01\\d61d5c2edbd57ab35c715cc89801006824a3a5",
+      "verdict": "suspected_encryption",
+      "reason": "entropy 7.97 >= 7.5; no recognised container header"
+    },
+    {
+      "block": 21018,
+      "file": "D:\\Unified_Ransomware_Project\\watched_files\\benign_soak_af3f3e5b\\clone_cd78e6\\.git\\objects\\01\\528adb52e7c20b27a729af82287755ebb7d6aa",
+      "verdict": "suspected_encryption",
+      "reason": "entropy 7.56 >= 7.5; no recognised container header"
+    }
+  ]
+}

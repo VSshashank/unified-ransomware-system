@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -240,6 +241,104 @@ def test_the_outcome_is_recorded_for_the_ledger(tmp_path):
     assert recorded["process_id"] is None or recorded["attribution_confidence"] != "certain"
 
 
+# ------------------------------------------- what reaches the hash chain
+
+class _RecordingLedger:
+    """Stands in for the chain, and remembers what was asked of it."""
+
+    def __init__(self) -> None:
+        self.blocks: list[tuple[str, dict]] = []
+
+    def try_log_event(self, event_type, event_data):
+        self.blocks.append((event_type, event_data))
+        return {"id": len(self.blocks)}
+
+
+def _agent_shell(tmp_path):
+    """An `Agent` with nothing started, for driving `_act` directly.
+
+    `Agent.__init__` builds observers, a responder and a dispatcher and would
+    need elevation and a Windows Security subscription to do anything; what is
+    under test here is one method, so the object is made without running it.
+    """
+    from agent.agent import Agent
+
+    agent = Agent.__new__(Agent)
+    agent._lock = threading.Lock()
+    agent._chained_decisions = set()
+    agent.ledger = _RecordingLedger()
+    return agent
+
+
+class _Outcome:
+    def __init__(self, action): self.action = action
+
+
+def test_a_decision_the_pipeline_does_not_carry_still_reaches_the_chain(tmp_path):
+    """The Phase 5 finding: 7-Zip deleted twenty decoys and the chain was silent.
+
+    `app.handle_event` fans out to the ledger only for events it found
+    suspicious, and returns before the fan-out entirely for a deletion. The
+    agent responds to both. Without this the whole of an archive-and-delete
+    attack - seen, attributed to `7z.exe`, responded to - existed only in a
+    text log.
+    """
+    agent = _agent_shell(tmp_path)
+    event = {"file_path": "C:\\p\\decoy.docx", "event_type": "deleted",
+             "suspicious": False, "verdict": "deleted",
+             "process_id": 5844, "process_image": r"C:\Program Files\7-Zip\7z.exe",
+             "attribution_confidence": "certain", "canary_hit": True}
+
+    agent._chain_unsuspicious_decision(event, event["file_path"],
+                                       _Outcome("refused"))
+
+    assert len(agent.ledger.blocks) == 1
+    kind, data = agent.ledger.blocks[0]
+    assert kind == "file_event"
+    assert data["process_id"] == 5844
+    assert data["attribution_confidence"] == "certain"
+    assert data["canary_hit"] is True
+    assert data["verdict"] == "deleted"
+
+
+def test_a_suspicious_event_is_not_chained_twice(tmp_path):
+    """The Monitor's pipeline already writes those, and two blocks is worse."""
+    agent = _agent_shell(tmp_path)
+    agent._chain_unsuspicious_decision(
+        {"file_path": "C:\\p\\a.docx", "suspicious": True},
+        "C:\\p\\a.docx", _Outcome("suspended"))
+    assert agent.ledger.blocks == []
+
+
+def test_one_decoy_touched_forty_times_is_one_block(tmp_path):
+    """A chain that grows per watchdog event can be flooded into uselessness.
+
+    That run produced forty-two log lines for a single decoy. The decision was
+    one decision.
+    """
+    agent = _agent_shell(tmp_path)
+    event = {"file_path": "C:\\p\\decoy.docx", "suspicious": False,
+             "process_id": 5844, "verdict": "deleted"}
+    for _ in range(42):
+        agent._chain_unsuspicious_decision(event, event["file_path"],
+                                           _Outcome("isolate_and_log"))
+    assert len(agent.ledger.blocks) == 1
+
+
+def test_a_different_decision_about_the_same_path_is_a_second_block(tmp_path):
+    """`unknown -> isolate_and_log` then `certain -> suspended` is two facts."""
+    agent = _agent_shell(tmp_path)
+    path = "C:\\p\\decoy.docx"
+    agent._chain_unsuspicious_decision(
+        {"file_path": path, "suspicious": False, "process_id": None},
+        path, _Outcome("isolate_and_log"))
+    agent._chain_unsuspicious_decision(
+        {"file_path": path, "suspicious": False, "process_id": 5844},
+        path, _Outcome("suspended"))
+    assert len(agent.ledger.blocks) == 2
+    assert [b[1]["process_id"] for b in agent.ledger.blocks] == [None, 5844]
+
+
 # ---------------------------------------------------------------- transport
 
 def test_the_transport_routes_the_ledger_leg_to_sqlite(tmp_path):
@@ -286,6 +385,50 @@ def test_the_response_leg_reports_the_action_already_taken(tmp_path):
                        "action_required": "isolate_and_log"})
     assert answer["action"] == "isolate_and_log"
     assert "performed in-process" in answer["note"]
+
+
+# ------------------------------------------------------- attribution timing
+
+def test_every_attribution_question_says_when_its_event_happened():
+    """`event_at` is optional in the module and mandatory here.
+
+    `WriteLog.lookup` keeps the old behaviour when the caller does not say when
+    its event happened, because callers outside the agent - the Monitor's own
+    watchdog handlers, the sweep scripts - ask about a write that has only just
+    occurred. The agent is the caller that parks events and re-asks later, so
+    it is the one for which the default is wrong: an unstamped question there
+    can be answered with the path's previous writer. A call site that loses the
+    argument is silent, correct-looking, and reintroduces the suspension of the
+    wrong process, so it is asserted from the source rather than trusted.
+    """
+    source = (ROOT / "agent" / "agent.py").read_text(encoding="utf-8")
+
+    for call in ("handle_event(", "_attribution_fields("):
+        invocations = [
+            block for block in source.split(call)[1:]
+            # The def itself is not a call.
+            if not block.startswith("self, path")
+        ]
+        assert invocations, f"no {call} call found in agent/agent.py"
+        for block in invocations:
+            head = block[:220]
+            assert "event_at" in head or "queued.queued_at" in head or \
+                   "queued_at)" in head, (
+                f"a {call}...) in agent/agent.py does not pass the moment its "
+                f"event was observed:\n{head.splitlines()[0]}")
+
+    pending_source = (ROOT / "agent" / "pending.py").read_text(encoding="utf-8")
+    assert "self._resolve(parked.path, parked.queued_at)" in pending_source, (
+        "the sweep must re-ask with the moment the event was queued; stamping "
+        "the re-ask with `now` rejects the very record it is waiting for")
+
+
+def test_the_limitation_this_fixed_is_no_longer_described_as_unfixed():
+    """docs/LIMITATIONS.md §3 deferred this to Phase 5. Phase 5 is where it lands."""
+    text = (ROOT / "docs" / "LIMITATIONS.md").read_text(encoding="utf-8")
+    assert "**Not fixed here.**" not in text, (
+        "the confident-wrong-answer path is fixed; LIMITATIONS.md still says "
+        "it is not")
 
 
 # -------------------------------------------------------------- the evidence

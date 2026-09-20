@@ -97,8 +97,11 @@ than as a silent null:
   `unknown` across the board. `install.ps1` raises the log to 128 MB; that
   reduces the window, it does not remove it.
 
-And one condition produces a **confident wrong answer**, which is worse than
-any of the four above and was found while building `install.ps1`'s self-test:
+One further condition *used to* produce a **confident wrong answer**, which is
+worse than any of the four above. It was found while building `install.ps1`'s
+self-test in Phase 4, recorded here unfixed because the fix changes TTS, and
+fixed in Phase 5 with that measurement taken. It is kept in full because the
+shape of the defect is the argument for the fix:
 
 * **the previous writer is still in the window and the current one is not yet.**
   `lookup` says `CERTAIN` when exactly one process wrote the path inside the
@@ -127,11 +130,20 @@ any of the four above and was found while building `install.ps1`'s self-test:
   practice — you save a document, something encrypts it a second later, and
   your editor is what gets suspended — is exactly the shape a user would notice.
 
-  **Not fixed here.** The fix is to refuse `CERTAIN` when the newest matching
-  audit record predates the filesystem event being judged, and park instead.
-  That changes how many events park, which changes TTS, which is a measured
-  claim — so it is a Phase 5 change with its own measurement, not a quiet edit
-  to the attribution path. Recorded here rather than done quickly.
+  **Fixed in Phase 5.** Every entry in the write log is stamped when its audit
+  record was *delivered*, and delivery trails the write. So a record that
+  arrived before the event was even observed cannot be a record of that event.
+  `WriteLog.lookup` now takes `event_at` — the moment the filesystem event was
+  queued — and refuses to answer at all when the newest matching record
+  predates it, returning `unknown` with that as the reason. The event parks and
+  `agent/pending.py` re-asks, carrying the *original* queued moment on every
+  re-ask, so the record the sweep is waiting for is not rejected when it lands.
+
+  The cost is paid only by the events that were previously answered wrongly.
+  Where nothing predates the event — every ordinary detection — the log is
+  either empty or its newest record postdates the event, and the answer is
+  unchanged. The measurement is in `reports/phase5_attack_corpus.json`: TTS
+  before and after the fix, over the same third-party corpus.
 
 **Status:** measured. `reports/attribution_delivery_lag.json`,
 `reports/attribution_live_run.json`, and the `agent_started` and
@@ -351,6 +363,313 @@ larger; `agent/config.py` refuses a filesystem root or any overlap with a
 system directory before the responder is constructed.
 
 **Status:** structural and deliberate.
+
+## 14. An attack that produces a *valid* encrypted archive raises nothing
+
+§6 is about containers the detector cannot validate. This is the other end of
+the same rule, and it is worse: a container it **can** validate is treated as
+benign, so an attacker whose output is well-formed has nothing to hide.
+
+Measured, Phase 5, with 7-Zip pointed at a directory inside the protected path:
+
+```
+7z a -pPASSPHRASE -mhe=on -sdel  →  one 39 KB encrypted archive,
+                                    twelve documents unlinked
+ledger: file_event blocks           0
+        file_baseline for the .7z   1   verdict benign
+```
+
+Archive-and-delete is a real ransomware pattern and not a contrived one: the
+files are gone and the bytes are unrecoverable without the key, exactly as in
+the overwrite case. The detector sees one new, structurally valid `.7z` — which
+is what a person zipping a folder also produces — and a set of deletions, and a
+deletion carries no content to measure. There is no threshold that separates
+these two, because on the content axis they are the same event.
+
+What does catch it is the decoy field, and only if the attacker walks somewhere
+a decoy lives. Pointed at the protected **root**, the same command tripped all
+twenty, the agent named `7z.exe` with `CERTAIN` confidence, and the only reason
+nothing was suspended is §4 — 7-Zip had already exited. Pointed at a
+subdirectory, which is where an attacker would start, nothing fired at all:
+`install.ps1` seeds decoys at the top of each root and not into directories
+created afterwards.
+
+Two things follow, and neither is fixed here. Decoys should be seeded through
+the tree rather than at its top. And an archive being written *while* files
+elsewhere are disappearing is a correlation the system does not currently draw,
+because the archive is judged on its own bytes.
+
+**Status:** measured and **open**. `reports/phase5_attack_corpus.json`, the
+`sevenzip-archive` and `sevenzip-root` arms.
+
+## 15. A bulk restore looks exactly like the attack it is undoing
+
+The agent suspended and then **killed** the process restoring files from a
+shadow copy, 1.4 s in, while it was putting decoys back.
+
+```
+agent.log  suspended pid 21208 (python.exe) for !_urds_canary_00.docx
+           terminated pid=21208 via=sigterm in 19.93ms
+           2 independent signals agreed (canary, path_velocity),
+           including canary
+ledger     block 16297
+```
+
+It was right about the evidence. A process rewriting decoys and dozens of files
+a second is the signature the canary and velocity signals exist to detect, and
+nothing in the *content* of a restored document distinguishes it from a file
+being encrypted — the restored bytes are the original bytes, which is precisely
+what makes them indistinguishable from any other write.
+
+This is not a false positive that a better threshold removes. Recovery and
+ransomware are the same operation performed for opposite reasons, and the only
+things that separate them are provenance — which process, holding what
+authority — and intent, neither of which is on the content axis.
+
+What Phase 5 does about it is throttle: `scripts/adversary_corpus.py` restores
+below the rate the agent's own configuration treats as a signal, reading
+`velocity_path_threshold` and `velocity_window_s` rather than a number typed in.
+That makes the published MTTR a real number for this system rather than an
+artificial one — **you cannot restore faster than the protection will tolerate
+without being stopped by it** — and it does not make the limitation go away. A
+restore tool shipped to an operator would need an explicit exemption
+(`allowlist_images`), and an allowlist is a key to the protected path; the
+decision to grant one is the operator's and belongs in their hands, not in a
+default.
+
+**Status:** measured and **open**. `reports/phase5_attack_corpus.json`,
+`restore_self_suspensions` and `restore_files_per_second_cap`.
+
+---
+
+## 16. Three of the four Windows T1486 atomics cannot be run here
+
+The build plan names Atomic Red Team's T1486 as a corpus member. Red Canary
+publishes ten atomics for that technique and four of them are for Windows. One
+is run; the other three are excluded by the blast-radius rule, not by
+preference, and the exclusion is a limit on what Phase 5 demonstrates rather
+than a judgement about the atomics.
+
+| atomic | what it does | why it is not run |
+|---|---|---|
+| T1486-5 PureLocker Ransom Note | writes a text file to `%USERPROFILE%\Desktop` | the path is hardcoded and is outside every configured protected path; nothing the agent watches would see it |
+| T1486-8 Data Encrypted with GPG4Win | overwrites a file, then `gpg -c` over it | **this is the one that runs**, with `File_to_Encrypt_Location` pointed into the corpus |
+| T1486-9 Data Encrypt Using DiskCryptor | encrypts a whole volume | destroys data outside the protected path, and is not reversible from a file-level snapshot |
+| T1486-10 Akira Ransomware | writes 100 × 1 MB of random bytes to the root of `C:` | hardcoded to `C:\`, outside every protected path |
+
+Two consequences worth stating plainly. The first is that **the entropy case
+this corpus most wants is the one it cannot run**: T1486-10 writes
+high-entropy files with a ransomware extension, and it writes them where the
+agent is not looking. The second is that T1486-8's executor *ignores its own
+`GPG_Exe_Location` input argument* and hardcodes
+`C:\Program Files (x86)\GnuPG\bin\gpg.exe`, so the arm depends on GPG4Win
+being installed at that exact path — a defect in the atomic that this project
+works around rather than patches, because a patched atomic is no longer the
+published one.
+
+---
+
+## 17. Whether a suspension can be *timed* is a different question from whether it happened
+
+The harness reports a suspension from two places that do not agree, and the
+gap between them is a limit on every timing number in Phase 5.
+
+`SuspendWatch` polls the launcher's PIDs for `STATUS_STOPPED` every 10 ms and
+reports only a freeze it saw itself. It is deliberately not allowed to read the
+ledger, because a check that reads the ledger cannot corroborate the ledger.
+The consequence is that a freeze shorter than one poll, or one landing on a
+process already exiting, is invisible to it — and every arm in this corpus
+except two is a new process per file that lives about 65 ms.
+
+The agent's chain records the escalation regardless. So there are three states,
+and the report names which one each arm is in through
+`suspend_moment_source`:
+
+| state | what can be said |
+|---|---|
+| `observed` | the freeze was seen independently and timed; TTS is a measurement |
+| `ledger` | the freeze is in the hash chain, named against the launcher's answer key, and timed from a block stamped *after* the suspend call returned — so TTS is an **upper bound** and FEBR counts at least as many files as really got through |
+| `null` | no suspension by either account |
+
+What cannot be produced at all is a timed suspension of a process that was
+already gone. That is §4's problem, not this one, and no amount of care in the
+harness moves it.
+
+---
+
+## 18. FEBR is counted three ways, and they do not measure the same thing
+
+"Files encrypted before the response fired" sounds like one number. On this
+corpus it has three sources, each with a case it gets right and a case it gets
+wrong, and the report publishes all of them rather than picking one.
+
+| source | how | fails when |
+|---|---|---|
+| **mtime** (`febr_files_before_suspend`) | count files whose modification time precedes the suspension | the encryptor **deletes** the original: the mtime goes with it, so the file is counted whole and FEBR reads as the entire corpus |
+| **launcher** (`febr_from_launcher_writer_count`) | count the writer processes the runner had started by then | the arm is **one process for many files** — 7-Zip's single process says nothing about how far through it got |
+| **whole corpus** (fallback) | every damaged file | nothing was suspended, so it is not a fallback but the right answer |
+
+The launcher count is only computed where the answer key itself shows one
+writer started per seeded file, which is a property of the run rather than a
+claim about the arm. Where the two computable sources disagree, both are
+printed: a gap between them is information about the arm's shape, and
+collapsing it into a single headline would throw that away.
+
+None of the three can time a file the encryptor reached *between* the
+suspension being ordered and it taking effect. That window is small and it is
+not zero, and no instrument here measures it.
+
+---
+
+## 19. The false-positive rate is not zero, and the thing that trips it is git
+
+The build plan asks for zero suspensions over an hour of benign work. Measured
+on this host, with the agent running and nine third-party workloads looping
+inside the protected path for 60.2 minutes [`reports/phase5_benign_soak.json`]:
+
+```
+workload runs                          3,385  over 519 cycles
+suspensions of this run's processes        6  = 5.98 per hour
+  all six                            git.exe
+  all six                            resumed, none terminated
+suspensions of anything else               0
+file events flagged                    3,204  = 3,194 per hour
+chain valid                             true  over 184,841 blocks
+```
+
+**Six is not zero and the bound is missed.** What the number is made of matters
+as much as the number:
+
+* Every suspension was of one tool, `git.exe`, during `git gc` and `git clone`
+  — the workload that writes hundreds of small high-entropy files in a burst,
+  which is the velocity signature the agent is built to catch.
+* Every suspension ended in `resume`. The agent froze a process, looked, and
+  let it go. Nothing benign was terminated, which is the rule in §2 of the
+  build plan working as intended: suspend before you kill, so that being wrong
+  costs milliseconds rather than a process.
+* Nothing outside this run's own processes was suspended at all.
+
+Two things this does not settle. `git gc` failed 247 of its 272 runs with
+`Permission denied` on a `.rev` file it had just written, which is consistent
+with the detector holding the file open to read its entropy — but *consistent
+with* is not *caused by*, no experiment here separates the agent from ordinary
+Windows file-locking, and the honest position is that it is unexplained. And
+the rate is a lower bound: six of the plan's benign corpus members are not
+installable here, and `npm-install` failed all 519 attempts, so it contributed
+nothing.
+
+---
+
+## 20. An alert is not a suspension, and the gap between them is 534 to 1
+
+The same hour produced **3,204 flagged file events and 6 suspensions**. Both
+are published, because a system that raises three thousand alerts and acts on
+six is a different system from one that raises six.
+
+The reasons are worth reading literally:
+
+```
+entropy 7.94 >= 7.5; no recognised container header   ← makecab output
+entropy 7.9x >= 7.5; no recognised container header   ← .git/objects/*
+```
+
+Git's loose objects are raw zlib streams. Cabinet files are a format the
+registry does not carry a validator for. Under every content-only predicate
+this system has, both are indistinguishable from ciphertext — and that is the
+separability result of `docs/THESIS.md` §7.8 arriving from the other
+direction. Chapter 7 reached it by showing four repair arms collapse to 90/90
+on the unvalidated stratum of a constructed corpus. This reached it by pointing
+ordinary tools at a protected directory for an hour and counting.
+
+The response layer is what keeps three thousand alerts from becoming three
+thousand incidents: attribution has to reach `CERTAIN`, signals have to agree,
+and a suspension is reversible. That is a real defence and it is not the same
+as detection being accurate. Anyone reading the 3,204 as a detection figure
+would be reading it exactly backwards.
+
+---
+
+## 21. Reading the evidence can stop the evidence being written
+
+The ledger is a SQLite database and it is deliberately **not** in WAL mode, so
+that a second writer contends rather than quietly succeeding. The cost of that
+choice is that a long *reader* is a wall too: a full-table `SELECT` holds a
+SHARED lock, and the agent's appends queue behind it.
+
+Measured on 20 September 2026, with the ledger at 285,632 blocks in a 180 MB
+file. The attack corpus verified the whole chain once per arm — six full table
+scans with `fetchall`, each recomputing 285,632 hashes — and the agent fell far
+enough behind that five of six arms were published as having detected nothing
+while the blocks proving otherwise were written minutes later
+(`docs/CORRECTIONS.md` correction 16).
+
+Three consequences that outlive that one run:
+
+* **Verification does not scale with the chain.** The cost of asking "is this
+  chain intact" is linear in everything that ever happened, and it is paid
+  against a lock the writer needs. At 285,632 blocks it is seconds; the ledger
+  grew by 184,841 blocks in a single hour of ordinary work.
+* **An hour of benign activity is enough to build a real backlog.** §12 covers
+  the agent dropping writes under saturation and saying so. This is the quieter
+  failure: nothing is dropped, everything is simply late, and anything that
+  reads the chain at the moment of an incident sees a system that noticed
+  nothing.
+* **Nothing here bounds the lag.** The harness now waits for a sentinel and
+  refuses to report an arm it could not drain, which makes the *measurement*
+  honest. It does not make the agent faster, and a real operator reading a
+  dashboard has no sentinel.
+
+---
+
+## 22. Ciphertext below about 356 bytes cannot reach the entropy threshold, ever
+
+The detector flags a file at **7.5 bits per byte**. Shannon entropy over a
+256-symbol alphabet is bounded by `min(log2(N), 8)` for a file of N bytes, so
+the threshold is not merely hard to reach in a small file — below a certain
+size it is **arithmetically unreachable**, whatever the bytes are.
+
+Measured, 200 draws of `os.urandom` at each size:
+
+| bytes | ceiling `log2(N)` | mean H | max H observed | fraction ≥ 7.5 |
+|---|---|---|---|---|
+| 123 | 6.943 | 6.504 | 6.719 | 0 / 200 |
+| 181 | 7.500 | 6.885 | 7.054 | 0 / 200 |
+| 256 | 8.000 | 7.174 | 7.293 | 0 / 200 |
+| 512 | 8.000 | 7.591 | 7.671 | 200 / 200 |
+| 4096 | 8.000 | 7.954 | 7.965 | 200 / 200 |
+
+The smallest file at which a uniform random draw was observed reaching 7.5 is
+**356 bytes**. Below that the threshold is unreachable; between 356 and about
+512 it is reachable but not reliable.
+
+**This is not hypothetical and it is not a corner case.** Red Canary's
+published T1486-8, run unmodified through `Invoke-AtomicTest` against 200 files
+in the protected path, produced **zero detections** — 200 baselines, no flagged
+events, no attribution, no response. The reason is in the ledger:
+
+```
+block 287959  document_0000.csv       entropy 4.73  size 9814  benign
+block 288156  document_0000.csv.gpg   entropy 6.52  size  123  benign
+```
+
+The atomic's executor overwrites the target with a fixed 37-byte string and
+then GPG-encrypts *that*, so its ciphertext is 123 bytes. Across all 199
+`.gpg` files the arm produced, entropy ranged 6.02–6.67 with a mean of 6.50.
+Not one of them could have crossed 7.5 if the encryption had been perfect,
+because 123 bytes cannot carry 7.5 bits per byte.
+
+Two things follow. The first is about this corpus: the arm is reported as
+`detected=False` and it is a real miss, not an artefact — the agent behaved
+correctly given its threshold and the threshold cannot see this. The second is
+general: **an attacker who encrypts in small chunks is invisible to a
+per-file entropy threshold by arithmetic**, and no choice of threshold fixes
+it, because lowering it far enough to catch a 123-byte ciphertext puts it below
+the entropy of ordinary small files.
+
+This is the second measured blind spot in the same signal. The first is
+`base64` (§7 of this document), which lands at 6.000 bits per byte by
+construction. Both point the same way as `docs/THESIS.md` §7.8: content-only
+inspection is the wrong axis, and provenance is the one that is not.
 
 ---
 

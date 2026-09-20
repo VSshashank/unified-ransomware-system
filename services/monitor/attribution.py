@@ -292,6 +292,7 @@ class WriteLog:
         now: float | None = None,
         source: str = "none",
         kernel_grade: bool = False,
+        event_at: float | None = None,
     ) -> Attribution:
         target = _normalise(path)
         window = self.window_ms if window_ms is None else window_ms
@@ -319,6 +320,33 @@ class WriteLog:
                 distinct.append(w.pid)
         newest = hits[-1]
         did = "deleted" if newest.kind == "delete" else "wrote"
+
+        # Every entry in the log is stamped when its audit record was
+        # *delivered*, not when the write happened, and delivery trails the
+        # write by hundreds of milliseconds (docs/LIMITATIONS.md §3). So a
+        # record that arrived before this event was even observed cannot be a
+        # record *of* this event - it is the previous writer of the same path,
+        # still inside the window, answering for somebody else's write.
+        #
+        # That produced the one confident wrong answer the system had: process
+        # A writes, process B overwrites with ciphertext a second later, and
+        # for the ~600-1010 ms before B's record lands the only audited writer
+        # is A. One distinct PID from a kernel-grade source is CERTAIN, and the
+        # agent suspended A. Correct about the evidence, wrong about the world
+        # - block 16095 of this host's ledger is the measured instance.
+        #
+        # Refusing here costs the delivery lag on exactly the events that were
+        # previously answered wrongly: they park and are re-asked, and the
+        # right answer arrives when the record does. Where nothing predates the
+        # event - the common case - nothing changes.
+        if event_at is not None and newest.at < event_at:
+            return _unattributed(
+                f"the newest audited write on this path was delivered "
+                f"{(event_at - newest.at) * 1000.0:.0f}ms before this event was "
+                f"observed, so it cannot be a record of it; no record of this "
+                f"write has arrived yet",
+                source=source,
+            )
 
         if len(distinct) == 1:
             if kernel_grade:
@@ -604,11 +632,18 @@ class Attributor:
         path: str,
         grace_ms: float | None = None,
         window_ms: float | None = None,
+        event_at: float | None = None,
     ) -> Attribution:
         """Who wrote `path`, waiting briefly for a record that is still in flight.
 
         Callers run this *after* recording detection latency. See the module
         docstring for why.
+
+        `event_at` is `time.monotonic()` when the filesystem event being judged
+        was observed. Passing it lets the lookup reject an audit record that
+        was delivered before the event existed - see `WriteLog.lookup`. A
+        caller that does not know when its event happened omits it and gets the
+        older behaviour, which can answer confidently about the wrong process.
         """
         if not self.source.available:
             return _unattributed(
@@ -627,6 +662,7 @@ class Attributor:
                 window_ms=window_ms,
                 source=self.source.name,
                 kernel_grade=self.source.kernel_grade,
+                event_at=event_at,
             )
             waited_ms = (time.monotonic() - started) * 1000.0
 

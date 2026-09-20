@@ -484,6 +484,118 @@ CLAIMS: list[dict] = [
                 "outlived_the_delivery_lag and an arm that did not is reported "
                 "as inconclusive.",
     },
+    # ---- Phase 5: the adversary nobody here wrote ----
+    {
+        "id": "C-19",
+        "table_9_9_row": "(beyond the table) attribution accuracy against third-party encryptors",
+        "wording": None,
+        "wording_required": False,
+        "claim": "Across six arms of third-party encryptors run inside the "
+                 "protected path - OpenSSL, GnuPG, 7-Zip and Red Canary's "
+                 "published Atomic Red Team T1486-8, 1,227 files restored and "
+                 "verified - the agent mis-attributed no file event to any "
+                 "process: 255 of 1,209 events were resolved to a PID with "
+                 "CERTAIN confidence, and every one of those 255 was a process "
+                 "the launcher had recorded starting. It is zero because the "
+                 "system declines to name a writer it cannot prove, not "
+                 "because it identifies them all: 954 events were left "
+                 "unresolved, and under burst the reason given is an empty "
+                 "audit window rather than a disputed one.",
+        "requires": "OpenSSL, GnuPG and 7-Zip on the host; the agent running; "
+                    "elevation for the ledger",
+        "artefact": "reports/phase5_attack_corpus.json",
+        "check": [
+            ("reports/phase5_attack_corpus.json",
+             ["summary", "total_misattributions"], 0),
+            ("reports/phase5_attack_corpus.json",
+             ["summary", "arms_run"], 6),
+            # Nothing was suspended, and the artefact says so rather than
+            # leaving the §5 bound looking untested.
+            ("reports/phase5_attack_corpus.json",
+             ["summary",
+              "a_third_party_encryptor_was_suspended_within_bounds"], False),
+            # Graded against the runner's answer key, not the agent's record.
+            ("reports/phase5_attack_corpus.json",
+             ["arms", 4, "metrics", "attribution_correct"], 20),
+            ("reports/phase5_attack_corpus.json",
+             ["arms", 4, "metrics", "attribution_misattributed"], 0),
+        ],
+        "tests": ["agent/tests/test_phase5.py"],
+        "note": "The number the build plan asks to be zero is zero, and the "
+                "number beside it is the cost of keeping it there. A "
+                "mis-attributed PID in a hash chain is the defect this branch "
+                "exists to fix (docs/CORRECTIONS.md corrections 1 and 11), so "
+                "the ladder refuses rather than guesses - and 79 per cent of "
+                "the events across these arms arrive with no audited write to "
+                "match them. Neither figure can be read without the other, and "
+                "the spread between arms is the shape of it: the in-place arm "
+                "resolved 216 of 296, the gpg loop 0 of 493. "
+                "Two arms produced no events at all and both are real misses "
+                "with measured causes - 7-Zip's output is a structurally "
+                "valid encrypted container (LIMITATIONS 14), and the atomic's "
+                "ciphertext is 123 bytes, which cannot reach a 7.5 bits/byte "
+                "threshold at any quality of encryption (LIMITATIONS 22). "
+                "The bound the plan sets on suspension is asserted here as "
+                "**not met**, so that it cannot read as untested. "
+                "The harness that produced all of this is itself gated by "
+                "agent/tests/test_phase5.py, which exists because five earlier "
+                "runs of it published numbers that were not true - see "
+                "corrections 13 to 17.",
+    },
+    {
+        "id": "C-20",
+        "table_9_9_row": "(beyond the table) false-positive suspensions per hour of ordinary work",
+        "wording": None,
+        "wording_required": False,
+        "claim": "An hour of ordinary third-party work inside the protected "
+                 "path - 7-Zip archiving, tar/gzip, makecab, a git clone and "
+                 "gc, a virtualenv build, bulk binary copying and base64 "
+                 "encoding, 3,385 workload runs over 519 cycles - produced "
+                 "**six** suspensions of processes the harness had started, a "
+                 "rate of 5.98 per hour. The design target was zero and it is "
+                 "not met. All six were git.exe and all six were resumed: no "
+                 "benign process was terminated, and nothing outside the "
+                 "harness's own processes was suspended at all. Alerts are a "
+                 "different figure and a much larger one - 3,204 file events "
+                 "were flagged as suspected encryption in the same hour, "
+                 "almost all of them zlib-compressed git objects and makecab "
+                 "output, which carry ciphertext-grade entropy behind a header "
+                 "the registry does not recognise.",
+        "requires": "The agent running; the benign tools installed; one clear "
+                    "hour with nothing else writing to the protected path",
+        "artefact": "reports/phase5_benign_soak.json",
+        "check": [
+            ("reports/phase5_benign_soak.json",
+             ["metrics", "false_positive_suspensions"], 6),
+            ("reports/phase5_benign_soak.json",
+             ["metrics", "suspensions_of_other_software"], 0),
+            ("reports/phase5_benign_soak.json",
+             ["metrics", "flagged_file_events"], 3204),
+            ("reports/phase5_benign_soak.json",
+             ["metrics", "chain_valid"], True),
+        ],
+        "tests": ["agent/tests/test_phase5.py"],
+        "note": "This row records a missed bound, so it is worth being "
+                "precise about what it does and does not gate. Two of the "
+                "four figures are wall-clock counts from one hour on one host "
+                "and a re-run will not reproduce them; they are pinned "
+                "because the matrix compares values, and a re-run is expected "
+                "to re-stamp them. The two that are structural - nothing "
+                "outside this run's own processes was suspended, and the "
+                "chain verified - are the ones a reader should weigh. "
+                "The finding is 'not zero', not 'exactly six'. "
+                "It is also a lower bound on the rate: six members of the "
+                "build plan's benign corpus are absent from this host - "
+                "ffmpeg, VeraCrypt, Windows Update, a Visual Studio build, "
+                "browser cache churn and OneDrive sync - each named in "
+                "`not_installed` with the reason, and npm-install failed all "
+                "519 attempts on this host so it measured nothing. "
+                "The 3,204 alerts are the more interesting number and they "
+                "corroborate the thesis's separability result (§7.8) from the "
+                "benign side: git's loose objects are zlib streams with no "
+                "recognised header, which is the same shape as ciphertext "
+                "under every content-only predicate this system has.",
+    },
 ]
 
 

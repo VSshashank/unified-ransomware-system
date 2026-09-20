@@ -156,6 +156,25 @@ is strongest in an introduction.
   comparison was run — §9.13 places it out of scope — and the repair that was
   measured does not ship. The defensible statement is that one bypass in one
   monitor was priced, and one repair was rejected on measured cost.
+
+  The frontier that statement sits on is two-axis, and both axes belong in an
+  introduction rather than only in Chapter 7
+  [`reports/three_arm_experiment.json`]:
+
+  | Arm | Attacks flagged | Benign false positives |
+  |---|---|---|
+  | **A — the shipped `legacy` policy** | **10 / 34** | **0 / 275** |
+  | B — exemption deleted | 34 / 34 | 185 / 275 |
+  | C1 — validated-only exemption | 25 / 34 | 90 / 275 |
+  | C — the repair | 34 / 34 | 120 / 275 |
+  | D — repair plus inner-content check | 32 / 34 | 90 / 275 |
+
+  **What ships flags ten of thirty-four attacks, with three families at zero.**
+  That is the configuration this project runs, stated as a number rather than
+  as an absence of complaints, and every arm that improves on it costs at least
+  ninety false positives out of 275. §7.4a gives the decision rule's own blind
+  spot — it prices the right-hand column and never reads the left — and §7.8
+  explains why no threshold closes the gap.
 - **Nothing here is claimed to generalise beyond URDS.** The method might;
   whether it does is not something this work measured.
 - **Patentability and legal novelty are never inferred.** No prior-art search and
@@ -165,10 +184,21 @@ is strongest in an introduction.
   study one mechanism in it. `PROJECT_IMPLEMENTATION_RECORD.md` records who built
   what, including the fact that 90 of the 106 commits on the studied branch carry
   an AI co-authorship trailer.
-- **Recovery is verified locally and not through VSS.** Thirteen of thirteen
-  local restore round-trips verify; snapshot-backed restore through the Volume
-  Shadow Copy Service is not measured, because it needs an elevated shell no
-  recorded run had.
+- **Recovery is verified locally, and now also through VSS.** Thirteen of
+  thirteen local restore round-trips verify. Snapshot-backed restore was
+  carried as unmeasured from Phase 6 — it needs an elevated shell no recorded
+  run had — and is now measured: a real Volume Shadow Copy on `D:`, a real file
+  encrypted in place, restored from
+  `\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy13`, SHA-256 round-trip
+  verified, snapshot deleted afterwards [`reports/vss_restore_verified.json`].
+  Reaching it required fixing a bug that had been silently failing **every**
+  genuine shadow-copy restore: `restore_file` joined a forward-slash relative
+  path onto a GLOBALROOT device object, and Windows' verbatim `\\?\` prefix
+  disables separator normalisation, so the forward slashes stopped being
+  separators. No test caught it because every test used the development
+  fallback root — an ordinary directory, where both separators resolve.
+  Fixed by `join_under_snapshot`; the regression is
+  `services/response/recovery/tests/test_snapshot_paths.py`.
 
 ## 1.4 How to read this document
 
@@ -1458,6 +1488,70 @@ real structural validator for rar, 7z, xz, bzip2, lz4, zstd, gif, mp3, ogg, flac
 and riff — which §9.13 places outside this project's scope, so it is named as the
 fix and not attempted.
 
+## 7.4a D5 has no detection term, and what that licenses
+
+Stated plainly, and first, because an examiner who finds it unaided will read
+it as something the work concealed: **D5 prices false positives and nothing
+else.** It asks whether a repair's benign cost exceeds a tolerance. It does not
+ask what the repair caught. A decision rule shaped that way can refuse an arm
+that strictly raises recall, on cost alone, without the arithmetic ever seeing
+the recall — and on this corpus that is exactly what it does.
+
+The frontier is two-axis and D5 reads one axis of it
+[`reports/three_arm_experiment.json`, `per_arm`]:
+
+| Arm | Attacks flagged | Benign false positives | Benign rate |
+|---|---|---|---|
+| **A** — shipped `legacy` | **10 / 34** | 0 / 275 | 0.00% |
+| B — exemption deleted | 34 / 34 | 185 / 275 | 67.27% |
+| C1 — validated-only exemption | 25 / 34 | 90 / 275 | 32.73% |
+| C — the repair | 34 / 34 | 120 / 275 | 43.64% |
+| D — repair plus inner-content check | 32 / 34 | 90 / 275 | 32.73% |
+
+Read down the first column and the shipped configuration catches **ten of
+thirty-four attacks**, with three families at zero. Read down the second and
+every arm that improves on that number costs at least ninety false positives
+out of 275. D5 sees only the second column.
+
+This is a limitation of the decision rule, not a defect in its application.
+The rule was predeclared and frozen before the arms ran (§4.4), which is what
+makes it evidence at all, and the ninety-false-positive floor is not a tuning
+artefact (§7.4). Naming the rule's blind spot is not a reason to set the rule
+aside afterwards — doing that is what predeclaration exists to prevent — and
+the verdict in §7.7 stands on the rule as written. What is owed to the reader
+is that the rule's shape be on the record beside its output, so that "the
+repair was rejected" is never read as "the repair caught nothing worth having".
+
+## 7.4b Arm D strictly dominates C1, and was excluded as post-hoc
+
+From the same table, at **identical benign cost** — 90 false positives out of
+275, the same ninety files in the same stratum:
+
+| | Attacks flagged | Benign FPs |
+|---|---|---|
+| C1 | 25 / 34 | 90 |
+| **D** | **32 / 34** | **90** |
+
+D catches seven more attacks for nothing. Per family it is never worse than C1:
+equal on A1 (21/21), A3 (2/2) and both controls, and ahead on A2 (3 vs 0), A4
+(3 vs 0) and A7 (1 vs 0). This is strict dominance in the ordinary sense, and
+there is no threshold at which C1 is the better choice.
+
+**Arm D is nonetheless excluded, and the exclusion is correct.** D was
+constructed *after* the attack corpus was known — it adds an inner-content
+check aimed at the families the earlier arms missed — so its 32/34 is a score
+against cases it was designed in response to. Predeclaration is not a
+formality that can be waived when the post-hoc arm wins; an arm that gets to
+see the answers first is not comparable with arms that did not, whatever it
+scores.
+
+So both things are true and both belong in the record: the best-performing arm
+in this experiment is the one the method sidelines, and the method is right to
+sideline it. What that licenses is a *future* experiment — D re-specified in
+advance against a corpus it has not seen — and not a revision of this one.
+Until that experiment exists, D's 32/34 is a hypothesis with a promising
+number attached, which is a different object from a result.
+
 ## 7.5 The one branch favourable to the project
 
 **D3 does not fire.** The null control produces a 67.3% false-positive rate
@@ -1517,6 +1611,63 @@ change to either fails the suite. A negative result that nothing defends decays
 into a footnote; this one is defended by 42 test cases.
 
 ---
+
+---
+
+## 7.8 The finding, restated: this is a separability result
+
+The verdict above is a fact about one repair. It is the smaller of the two
+things this experiment established, and stating it as the headline — *a repair
+that failed its cost bound* — gives a reader the impression that a better-tuned
+repair would have passed. Nothing in the data supports that impression, and one
+column of it rules the possibility out.
+
+Split the benign corpus by whether a structural validator exists for the format
+[`reports/three_arm_experiment.json`, `per_arm[*].benign.by_stratum`]:
+
+| Arm | validated × incompressible (95 files) | unvalidated × incompressible (90 files) |
+|---|---|---|
+| A | 0 | 0 |
+| B | 95 | **90** |
+| C | 30 | **90** |
+| C1 | 0 | **90** |
+| D | 0 | **90** |
+
+**The left column is a spectrum and the right column is a constant.** Where a
+validator exists, the four content-inspecting arms range across the whole
+interval — 95, then 30, then 0, then 0 — and the differences between them are
+exactly the differences in how they inspect content. Where no validator exists,
+every one of them flags all ninety files. Not most. All ninety, four times, for
+four different inspection rules.
+
+A quantity that does not move when the mechanism producing it is replaced four
+times is not being produced by that mechanism. On the unvalidated stratum the
+benign files and the attack files are *identical* under every content-only
+predicate available here: both are high-entropy byte sequences behind a header
+nothing can check. There is no threshold that separates them, because the
+separation does not exist in the data the detector is looking at. That is the
+result, and it is stronger than a rejected repair — it holds for repairs nobody
+has written yet, provided they look only at content.
+
+**What the result implies is its own remedy.** If content cannot separate these
+cases, the evidence has to come from an axis that is not content. Two are
+available and neither is a threshold:
+
+* **Structure** — a real validator for the eleven formats that have none. This
+  converts files from the right column to the left, where content-based
+  inspection demonstrably does work. §9.13 places it outside this project's
+  scope, so it is named and not attempted.
+* **Provenance** — *who wrote the file*, which is orthogonal to what the bytes
+  contain and cannot be forged by choosing a different compression algorithm.
+  That is Phase 3 onwards: kernel-grade attribution from Windows Security 4663,
+  the confidence ladder in `docs/PROCESS_ATTRIBUTION.md`, and the response path
+  that acts only on `CERTAIN`.
+
+Read that way the negative result is not a dead end in the argument; it is the
+step that motivates everything after it. The container exemption was not
+abandoned because a number came out badly. It was abandoned because the
+experiment showed the question cannot be answered where it was being asked, and
+the work moved to where it can be.
 
 # 8. Integration: does the decision reach the hops that act on it
 

@@ -51,6 +51,11 @@ logger = logging.getLogger("urds-agent")
 #: the single query that fills it at startup.
 MAX_BASELINES = int(os.getenv("URDS_MAX_BASELINES", "20000"))
 
+#: Distinct (path, pid, action) decisions remembered before the set is emptied,
+#: so that a long run cannot grow it without bound. Emptying it can only cause
+#: a decision to be chained a second time, never to be dropped.
+MAX_CHAINED_DECISIONS = int(os.getenv("URDS_MAX_CHAINED_DECISIONS", "4096"))
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -129,6 +134,9 @@ class Agent:
         self._running = False
         self.events_seen = 0
         self.responses = 0
+        #: (path, pid, action) triples already written to the chain by
+        #: `_chain_unsuspicious_decision`. See it for why this is deduplicated.
+        self._chained_decisions: set[tuple] = set()
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -292,16 +300,22 @@ class Agent:
         except Exception:  # noqa: BLE001
             return float(self.config.attribution_timeout_ms)
 
-    def _attribution_fields(self, path: str) -> dict:
+    def _attribution_fields(self, path: str, event_at: float | None = None) -> dict:
         """Who wrote this path, asked once and without waiting.
 
         `grace_ms=0` always. The blocking grace was measured on this host and
         catches a minority of records at any rate and none at all under burst;
         `agent/pending.py` carries the numbers. What replaces it is asking
         again, which costs a lock and a bounded scan.
+
+        `event_at` is when the event being judged was queued. Without it the
+        lookup will answer with the path's previous writer while the current
+        one's audit record is still in flight - see `WriteLog.lookup`. Every
+        call site here passes it.
         """
         return (self.monitor_app.attributor
-                .resolve(path, grace_ms=0.0).as_event_fields())
+                .resolve(path, grace_ms=0.0, event_at=event_at)
+                .as_event_fields())
 
     def _process(self, queued: "dispatch.Event") -> dict | None:
         """One filesystem event, from detection to a response or a parking slot.
@@ -313,7 +327,8 @@ class Agent:
         path, kind = queued.path, queued.kind
         try:
             event = self.monitor_app.handle_event(
-                path, kind, attribution_grace_ms=0.0)
+                path, kind, attribution_grace_ms=0.0,
+                event_at=queued.queued_at)
         except Exception:  # noqa: BLE001 - one bad file must not stop the agent
             logger.exception("detection failed for %s", path)
             return None
@@ -338,7 +353,7 @@ class Agent:
         canary_path = self.canaries.is_canary(path)
         if canary_path and event.get("attribution_confidence") != self.attribution.CERTAIN:
             try:
-                event.update(self._attribution_fields(path))
+                event.update(self._attribution_fields(path, queued.queued_at))
             except Exception:  # noqa: BLE001
                 logger.exception("canary attribution failed for %s", path)
 
@@ -408,6 +423,66 @@ class Agent:
 
         logger.warning("%s: %s -> %s (%s)", path, event.get("verdict"),
                        outcome.action, outcome.reason)
+
+        self._chain_unsuspicious_decision(event, path, outcome)
+
+    def _chain_unsuspicious_decision(self, event: dict, path: str,
+                                     outcome) -> None:
+        """Put a decision in the chain that the Monitor's pipeline will not.
+
+        `app.handle_event` fans out to the ledger only for events it found
+        suspicious, and a deletion returns before the fan-out entirely. That is
+        right for the Monitor - a file being removed is not an entropy verdict -
+        and wrong for the agent, because the agent *responds* to those events.
+        Measured, Phase 5: 7-Zip archived the protected root with `-sdel`,
+        deleted all twenty decoys, and the agent saw every one of them, named
+        `7z.exe` correctly 2772 ms later, and recorded `isolate_and_log` and
+        then `refused (PID 5844 does not exist)`. None of it reached the hash
+        chain. The whole attack existed only in a plain text log file that
+        anything running as the user can rewrite, while the chain showed
+        nothing had happened.
+
+        So: one block per *distinct decision*, keyed on the path, the process
+        finally named, and the action taken. Distinct, not per event, because
+        one decoy deletion arrives from the watchdog dozens of times - that run
+        logged forty-two lines for a single file - and a chain that grows by
+        forty-two blocks per touched file can be flooded into uselessness by an
+        attacker who simply rewrites one decoy in a loop. A second, *different*
+        decision about the same path still gets its own block, which is the
+        case that matters: `unknown -> isolate_and_log` followed by
+        `certain -> suspended` is two facts, not one repeated.
+        """
+        if event.get("suspicious"):
+            return  # the pipeline carries this one, and two blocks is worse
+        key = (str(path).lower(), event.get("process_id"), outcome.action)
+        with self._lock:
+            if key in self._chained_decisions:
+                return
+            self._chained_decisions.add(key)
+            if len(self._chained_decisions) > MAX_CHAINED_DECISIONS:
+                self._chained_decisions.clear()
+        self.ledger.try_log_event("file_event", {
+            "file_path": path,
+            "file_hash": event.get("file_hash"),
+            "event_type": event.get("event_type"),
+            "entropy": event.get("entropy"),
+            "verdict": event.get("verdict"),
+            "reason": event.get("reason"),
+            "signal": event.get("signal"),
+            "detection_latency_ms": event.get("detection_latency_ms"),
+            "process_id": event.get("process_id"),
+            "process_image": event.get("process_image"),
+            "attribution_confidence": event.get("attribution_confidence"),
+            "attribution_reason": event.get("attribution_reason"),
+            "attribution_source": event.get("attribution_source"),
+            "canary_hit": event.get("canary_hit", False),
+            "canary_detail": event.get("canary_detail"),
+            "response": event.get("response"),
+            # Why this block exists at all, on the block, so a reader does not
+            # have to know this function to know it is not a pipeline record.
+            "chained_by": "agent: responded to an event the pipeline does not "
+                          "carry",
+        })
 
     def _baseline_for(self, path: str) -> float | None:
         """The entropy the ledger recorded for this path while it was good.

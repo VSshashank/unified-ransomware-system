@@ -41,15 +41,21 @@ class Answers:
     def __init__(self) -> None:
         self._named: dict[str, int] = {}
         self.asked = 0
+        #: Every `event_at` the sweep passed. The re-ask has to carry the
+        #: moment the *event* was queued, not the moment of the re-ask: with
+        #: the latter, a record delivered between the two looks older than the
+        #: question and is rejected for ever.
+        self.event_ats: list[float | None] = []
         self._lock = threading.Lock()
 
     def name(self, path: str, pid: int) -> None:
         with self._lock:
             self._named[path] = pid
 
-    def __call__(self, path: str) -> dict:
+    def __call__(self, path: str, event_at: float | None = None) -> dict:
         with self._lock:
             self.asked += 1
+            self.event_ats.append(event_at)
             pid = self._named.get(path)
         if pid is None:
             return {"process_id": None, "attribution_confidence": "unknown",
@@ -97,6 +103,33 @@ def _wait_for(predicate, timeout=5.0) -> bool:
             return True
         time.sleep(0.005)
     return predicate()
+
+
+# ------------------------------------------------- the question is stamped
+
+def test_every_re_ask_carries_the_moment_the_event_was_queued(running):
+    """Not the moment of the re-ask, or the sweep waits for a record for ever.
+
+    `WriteLog.lookup` now rejects an audit record that was delivered before the
+    event being judged, which is what stopped the previous writer of a path
+    being named for somebody else's write. That makes the timestamp on the
+    question load-bearing: a sweep that stamped each re-ask with `now` would
+    move the question forward past every record as it arrived, and nothing
+    would ever attribute.
+    """
+    answers, responses = Answers(), Responses()
+    queue = running(answers, responses, poll_ms=5.0)
+
+    queued_at = time.monotonic()
+    queue.add({"suspicious": True}, "stamped.docx", "modified", queued_at,
+              canary_path=False)
+
+    assert _wait_for(lambda: answers.asked >= 3), "the sweep did not re-ask"
+    asked_with = list(answers.event_ats)
+
+    assert asked_with, "the re-ask carried no event_at at all"
+    assert all(at == queued_at for at in asked_with), (
+        f"the re-ask must carry the queued moment every time; got {asked_with}")
 
 
 # ------------------------------------------------------- the record arrives
@@ -226,7 +259,7 @@ def test_a_resolver_that_raises_does_not_stop_the_sweep(running):
     responses = Responses()
     state = {"fail": True}
 
-    def resolve(path):
+    def resolve(path, event_at=None):
         if state["fail"]:
             raise OSError("the log went away")
         return {"process_id": 9, "attribution_confidence": "certain"}

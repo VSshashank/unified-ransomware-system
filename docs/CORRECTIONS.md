@@ -1,7 +1,8 @@
 # Corrections
 
-**Dated 17 September 2026.** Ten defects in this repository's evidence: what
-each one was, what it produced, and what replaced it.
+**Dated 17 September 2026, extended 20 September 2026.** Seventeen defects in this
+repository's evidence: what each one was, what it produced, and what replaced
+it.
 
 This document exists because six of the first eight were not failures. They
 were passes. A demonstration that spawns the process it then reports killing does
@@ -17,6 +18,30 @@ Corrections 7 and 8 were found later than the rest, during the work that put
 the agent on a host. Both are earlier corrections recurring in a new file,
 which is the argument for this document existing rather than for the defects
 having been one-off slips.
+
+Corrections 11 to 14 come from Phase 5, and none was found by reading. All
+four were found by running third-party encryptors at the agent and then asking
+the hash chain what it knew. The first is a *correct* answer about the wrong
+process — the first defect here that no rule forbids and no gate could have
+caught. The second is the chain staying silent through an attack the agent
+detected, attributed and responded to, which would have made Phase 5's own
+headline metric uncomputable had it not been found.
+
+The last two are not in the system at all. They are in the harness built to
+measure it: one reported a response that never happened, the other reported no
+response where the chain held one. Both published a number, and neither was
+visible to any gate — the run they came from exited non-zero for other
+reasons, and a harness defect does not announce itself as a harness defect.
+Corrections 15 to 17 are three more from the harness, and 16 is the one worth
+reading if you only read one: the measuring script's own chain verification was
+holding a lock the agent's appends queued behind, so the harness starved the
+thing it was measuring and then published the starvation as a detection
+failure.
+
+Fourteen of the defects in this repository have now been found in the thing
+doing the measuring rather than in the thing measured, and the working rule that came
+out of it is the one to take away from this document: **check the harness
+before believing the verdict, especially a verdict you like.**
 
 Corrections 9 and 10 are two shapes this document did not previously have, and
 both come from the commit that fixed Phase 3's response time. One is a gate that
@@ -372,6 +397,298 @@ sheet.
 
 ---
 
+## 11. A confident answer about the wrong process — F16
+
+**Where:** `services/monitor/attribution.py`, `WriteLog.lookup`.
+**Introduced:** with the window. **Found:** 17 September 2026, while building
+`install.ps1`'s self-test. **Fixed:** 18 September 2026, in Phase 5.
+
+Every entry in the write log is stamped when its audit record was *delivered*,
+and delivery trails the write by 600–1010 ms on this host. `lookup` compared
+those entries against a window and against each other, and never against the
+event it was being asked about. So when process A wrote a file and process B
+overwrote it with ciphertext a second later, the only audited writer on that
+path during the gap before B's record arrived was A — one distinct PID, from a
+kernel-grade source, therefore `CERTAIN`, on A.
+
+Block 16095 of this host's agent ledger is a measured instance:
+
+```
+file_event | verdict suspected_encryption | pid 27792 | conf certain
+  reason: exactly one process wrote this path in the last 3000ms,
+          from windows-security-4663
+```
+
+27792 was the self-test process; the encryptor it had just launched was the
+actual writer. The agent suspended 27792.
+
+This is the family correction 3 belongs to, arrived at from the opposite
+direction. F3 put an invented PID in the chain. This put a *real* PID in the
+chain, correctly derived from real evidence, belonging to a process that had
+not done the thing — and then acted on it. Nothing was guessed and no rule was
+broken, which is what makes it worth writing down: the answer was correct about
+the evidence and wrong about the world, and no gate in the project could have
+distinguished the two.
+
+It was left unfixed for a day on purpose. The fix changes how many events park,
+which changes TTS, which is a measured claim, so it belonged in the phase that
+re-measures TTS rather than in a quiet edit to the attribution path.
+
+**Replaced by:** `lookup` now takes `event_at` — when the filesystem event
+being judged was observed — and refuses to answer at all when the newest
+matching record predates it, returning `unknown` with that as the reason. The
+event parks and `agent/pending.py` re-asks, carrying the *original* queued
+moment on every re-ask so the record it is waiting for is not itself rejected
+when it lands. Where nothing predates the event, which is every ordinary
+detection, the answer is unchanged. Pinned by four tests in
+`services/monitor/tests/test_tc26_attribution.py`, one of which asserts the old
+behaviour on the same evidence so the fix cannot be mistaken for a no-op.
+
+## 12. The chain did not record what the agent decided — F17
+
+**Where:** `agent/agent.py`, `_act`, and `services/monitor/app.py`'s fan-out.
+**Introduced:** with the agent. **Found and fixed:** 18 September 2026, by
+Phase 5's attack corpus.
+
+`app.handle_event` fans out to the ledger only for events it found suspicious,
+and returns before the fan-out entirely for a deletion. That is right for the
+Monitor — a file being removed is not an entropy verdict. It was wrong for the
+agent, which *responds* to those events.
+
+Measured, on this host, with 7-Zip pointed at the protected root:
+
+```
+7z a -p… -mhe=on -sdel  →  55 files archived, all 20 decoys deleted
+agent.log  canary deleted: !_urds_canary_00.docx by pid 5844 (7z.exe)
+           attribution arrived 2772 ms after the write
+           benign -> refused (the response guard refused pid 5844:
+                              PID 5844 does not exist)
+ledger     file_event blocks naming any decoy: 0
+           response_escalation blocks: 0
+```
+
+The agent saw all twenty deletions, named 7-Zip correctly, and recorded its
+decision — in a plain text log file that anything running as the user can
+rewrite. The hash chain, which is the part of this system whose whole claim is
+that it cannot be quietly rewritten, showed that nothing had happened.
+
+Phase 5's own headline metric is attribution accuracy, published from the
+chain. It could not have been computed at all: the first run of the attack
+corpus reported this arm as `detected=False`, because from the chain's point of
+view it was.
+
+**Replaced by:** `Agent._chain_unsuspicious_decision`, which writes a
+`file_event` block for any event the agent responded to that the pipeline will
+not carry, carrying the path, the process finally named, the confidence, the
+decoy detail and the action taken. Deduplicated on (path, PID, action):
+deletions arrive from the watchdog dozens of times — that run logged
+forty-two lines for a single decoy — and a chain that grows by forty-two blocks
+per touched file can be flooded into uselessness by an attacker rewriting one
+decoy in a loop. A second, *different* decision about the same path still gets
+its own block. Pinned by four tests in `agent/tests/test_agent.py`.
+
+---
+
+## 13. A suspension that never happened, reported as a headline metric — F18
+
+**Where:** `scripts/adversary_corpus.py`, `SuspendWatch`. **Introduced:** with
+the Phase 5 harness. **Found and fixed:** 18 September 2026, by reading a
+result that was too good.
+
+`SuspendWatch` polls the PIDs the runner recorded and reports the first one it
+finds in `STATUS_STOPPED`. The `openssl-loop` arm starts two hundred processes
+that live about 65 ms each, and Windows reuses their PIDs immediately. The
+watcher found one of those numbers stopped and timed the response from it:
+
+```
+reports/phase5_attack_corpus.json, run of 18 September 2026 11:57
+  openssl-loop  tts_s                 12.307
+                observed_stopped_pid  6372
+                suspended_pids        []        <- the agent's own chain
+```
+
+A time-to-suspend of 12.3 seconds, from a process the agent had never touched.
+The ledger held no escalation at all for that arm; pid 6372 belonged to
+unrelated software that happened to be suspended when the watcher looked. The
+harness was reporting, as its headline metric, a response that did not occur.
+
+This is the eleventh defect in this project found in the thing doing the
+measuring rather than in the thing measured, and the second caused by a PID
+that was not what it looked like.
+
+**Replaced by:** the watcher now checks a candidate's `create_time()` against
+the moment the runner recorded launching it, rejects anything more than five
+seconds apart, and publishes the rejections rather than dropping them. On the
+re-run the arm reported `tts_s: null` and `suspended_pids: []`, which agree;
+`openssl-inplace` rejected pid 5160, recorded as launched at 1789716640.06 and
+actually created at 1789716650.11 — ten seconds later, and a second phantom
+had the guard not been there. Pinned by
+`test_an_observed_suspension_must_be_the_process_that_was_launched`.
+
+---
+
+## 14. A suspension the chain recorded, reported as no suspension — F19
+
+**Where:** `scripts/adversary_corpus.py`, the FEBR and TTS block.
+**Introduced:** with the Phase 5 harness. **Found:** 20 September 2026, in the
+re-run that fixed correction 13.
+
+Correction 13's fix made the watcher strict, and strictness has a cost that was
+not accounted for. The watcher reports only a freeze it saw itself — which is
+right, because a check that reads the ledger cannot corroborate the ledger —
+and where it saw none, the harness treated the arm as one where the response
+never fired:
+
+```
+reports/phase5_attack_corpus.json, re-run of 18 September 2026 13:14
+  gpg-loop  suspended_pids               [16476]   <- in the launcher's key
+            observed_stopped_pid         null
+            tts_s                        null
+            febr_files_before_suspend    200       <- the whole corpus
+```
+
+The agent suspended the 104th of two hundred gpg processes and the chain
+recorded it. The harness reported FEBR as all two hundred files, because its
+fallback for "no suspension moment" is "every file was lost" — a fallback that
+is right when nothing fired and wrong here, where something did. Both published
+numbers were worse than the truth, which is the direction that does not get
+caught by reading.
+
+**Replaced by:** where the watcher saw nothing and the chain holds a
+`response_escalation` naming a PID **the launcher's answer key already
+contains**, the *moment* is taken from the block and FEBR is recounted against
+it. The identity is never taken from the chain: the agent cannot nominate a PID
+into its own answer key. The source is published as `suspend_moment_source`,
+and because a block is stamped when it is written rather than when the suspend
+call returned, a moment taken this way is late — so the TTS it yields is an
+upper bound and the FEBR is at least as large as the true one. Pinned by
+`test_a_suspension_the_chain_holds_is_not_reported_as_no_suspension` and
+`test_the_bound_is_read_against_whichever_moment_exists`.
+
+---
+
+## 15. The cleanup reported removing what it had left behind — F20
+
+**Where:** `scripts/benign_soak.py`, the working-directory teardown.
+**Introduced:** with the benign soak. **Found and fixed:** 20 September 2026,
+by listing the protected path after a run that said it was clean.
+
+```
+benign_soak.py, end of the 60-minute run
+  removed D:\Unified_Ransomware_Project\watched_files\benign_soak_af3f3e5b
+
+ls watched_files
+  benign_soak_af3f3e5b\clone_cd78e6        139 MB, still there
+```
+
+`shutil.rmtree(workdir, ignore_errors=True)` ignores the errors, and the line
+after it announces a removal that did not happen. Git marks every object under
+`.git/objects` read-only, and Windows refuses to unlink a read-only file, so
+the one workload that clones a repository is the one whose output survives its
+own cleanup.
+
+The consequence was not tidiness. The next thing scheduled in that directory
+was the attack corpus, whose `sevenzip-root` arm archives **the whole protected
+root** and counts what it finds as damage. It would have pulled 139 MB of
+somebody else's repository into an encrypted archive, counted several thousand
+of its files as encrypted, and reported all of it as the arm's result. The
+leftover was found and removed by hand four minutes before that arm's run
+began.
+
+**Replaced by:** `_force_rmtree`, which clears the read-only bit and retries,
+returns whether the tree actually went, and makes the caller print
+`COULD NOT REMOVE ... it is still inside the protected path and the next run
+will see it` when it did not. An ignored error and a confident message are
+worse together than either alone.
+
+---
+
+## 16. The harness read the chain before the agent had finished writing it — F21
+
+**Where:** `scripts/adversary_corpus.py`. **Introduced:** with the Phase 5
+harness. **Found and fixed:** 20 September 2026, by not believing a result.
+
+A six-arm run published five arms as `detected=False` with zero events on the
+corpus. The agent had detected all of them:
+
+```
+reports/phase5_attack_corpus.json, run of 20 September 2026 15:40
+  openssl-loop      file_event blocks on corpus   0     detected=False
+  openssl-inplace   file_event blocks on corpus   0     detected=False
+  gpg-loop          file_event blocks on corpus   0     detected=False
+
+the ledger, queried afterwards over the same window
+  openssl-loop      file_event  398   all suspected_encryption
+  openssl-inplace   file_event  351
+  gpg-loop          file_event  459
+```
+
+Those 1,208 blocks were written **after** the harness had read the chain for
+each arm and moved on to the next. Nothing was missing; the question was asked
+too early, and the silence was then published as a property of the system.
+
+Two things caused the agent to be that far behind, and only one of them is the
+agent's.
+
+**The harness was starving it.** Each arm called `selftest.verify_chain`, which
+`fetchall`s every block in the ledger and recomputes every hash. The ledger had
+reached 285,632 blocks in a 180 MB file - it is deliberately not in WAL mode,
+so a full-table SHARED lock is a wall the agent's own appends queue behind, six
+times per run.
+
+**And an hour of benign work leaves a real backlog.** The soak immediately
+before this run added 184,841 blocks. §12 of `docs/LIMITATIONS.md` already said
+a saturated agent drops writes and says so; this is the quieter version, where
+it drops nothing and is simply minutes late.
+
+**Replaced by** three things. Each arm now verifies only its own window of the
+chain, anchored on the last block before it started, so a rewrite inside the
+window is still caught and the whole-chain walk happens once per run instead of
+once per arm. After each arm the harness writes a sentinel file into the
+protected path and waits for its block: the agent processes its queue in order,
+so the sentinel's arrival means everything before it has been dealt with. And
+an arm whose sentinel never arrives is **out of bounds**, never quietly
+reported - a chain read before its writer finished is not evidence about the
+writer. Pinned by
+`test_the_chain_is_not_read_before_the_agent_has_finished_writing`.
+
+---
+
+## 17. Another workload's backlog, graded against this one's answer key — F22
+
+**Where:** `scripts/adversary_corpus.py`, the corpus filter for root-scope
+arms. **Introduced:** with the Phase 5 harness. **Found and fixed:**
+20 September 2026, in the same run as correction 16.
+
+The same run reported **five mis-attributions** — the one number the build plan
+requires to be zero. All five:
+
+```
+block 282443  makecab.exe  ...\benign_soak_af3f3e5b\bundle_444c85.cab
+block 282445  git.exe      ...\benign_soak_af3f3e5b\clone_cd78e6\.git\objects\pack\tmp_pack_qs86P0
+              reason: exactly one process wrote this path in the last 3000ms,
+                      from windows-security-4663
+```
+
+`makecab.exe` did write that cabinet and `git.exe` did write that pack file.
+The agent was right about both. They were the **benign soak's** files, written
+an hour earlier and still in the queue, and they were graded against an answer
+key belonging to a completely different run.
+
+The arm is `sevenzip-root`, whose scope is the protected root itself, so the
+corpus filter - a prefix match on the target - matched everything in the root
+including another workload's leftovers. A harness that manufactures a
+mis-attribution is worse than one that misses a real one: the number it
+corrupts is the one the whole branch exists to defend.
+
+**Replaced by:** a root-scope arm is graded against the file set it actually
+had - the snapshot taken before it started, plus the corpus directory and the
+archive it is allowed to create - rather than against everything that happens
+to live under the root. Pinned by
+`test_a_root_scoped_arm_is_graded_on_the_files_it_actually_had`.
+
+---
+
 ## What these corrections do not touch
 
 - **`services/response/tests/test_actions.py` spawns a child process and kills
@@ -412,9 +729,22 @@ python scripts/claim_matrix.py
 python scripts/ledger_coverage.py
 ```
 
-The first returns nothing (correction 3). The second reports 16 claims, 0
-failed verification and 0 failed provenance (corrections 4, 5, 6). The third
-reports 48 events examined and 0 unsupported (correction 6).
+The first returns nothing (correction 3). The second reports 20 claims and,
+once Phase 5's two artefacts are committed, 0 failed verification and 0 failed
+provenance (corrections 4, 5, 6). The third reports 48 events examined and 0
+unsupported (correction 6).
+
+Corrections 13 and 14 are in the harness, so they are verified by the tests
+that pin it rather than by an artefact:
+
+```bash
+python -m pytest agent/tests/test_phase5.py -q
+```
+
+`test_an_observed_suspension_must_be_the_process_that_was_launched` fails if
+the creation-time check is removed;
+`test_a_suspension_the_chain_holds_is_not_reported_as_no_suspension` fails if
+the moment is allowed to carry an identity the launcher never recorded.
 
 From `services/monitor`:
 

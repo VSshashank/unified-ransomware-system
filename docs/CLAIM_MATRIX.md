@@ -45,7 +45,7 @@ have required.
 | C-11 | `base64.b64encode(ciphertext)` is below all three entropy thresholds | `capability_calibration.json` → `levels[4].measured_name` = negligible | **ok** |
 | C-12 | The chain detects in-place tampering 20/20 and structural rewriting 0/8 | `tamper_sweep.json` → `structural.detected` = 0 | **ok** |
 | C-13 | Latency holds 100 ms at p95 (94.650 ms) and misses at p99 (110.550 ms) | `load_test.json` → `concurrent_detection.latency.p99_ms` = 110.55 | **ok** |
-| C-14 | Local restore verified 13/13; VSS-backed restore **not** measured | `vss_status.json` → `platform_status.elevated` = false | **ok** |
+| C-14 | Local restore verified 13/13; VSS-backed restore **measured**, round-trip verified | `vss_restore_verified.json` → `round_trip_verified` = true | **ok** |
 
 ---
 
@@ -220,15 +220,28 @@ change and its own measurement.
 ### C-14 — the recovery scope
 
 Local snapshot restore: **13/13** round-trips verified. Failure injection: five
-modes, each reported distinctly, **none reported as verified**. VSS-backed
-restore: **not measured**, and the blocker is measured rather than asserted —
-`vss_status.json` records the host reporting VSS supported, `elevated: false`,
-and both `list_snapshots` and `create_snapshot` refusing for that one reason.
+modes, each reported distinctly, **none reported as verified**.
 
-This is acceptance row 12, still partial. A reader taking the strictest reading
-of §9's "if any are deferred, say Monitor-scoped" should attach *local snapshots*
-to the recovery claim specifically; the ML, ledger and response rows pass on
-their own evidence.
+VSS-backed restore: **measured**, and no longer the partial this row carried
+from Phase 6. `vss_restore_verified.json` records a real Volume Shadow Copy
+created on `D:`, a real file encrypted in place, the restore taken from
+`\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy13`, the SHA-256 round-trip
+verified against the pre-attack digest, and the snapshot deleted afterwards —
+with `elevated: true`, which is the condition the earlier `vss_status.json`
+recorded as the blocker.
+
+**Reaching it found a bug that had been silently failing every genuine
+shadow-copy restore.** `restore_file` joined a forward-slash relative path onto
+a GLOBALROOT device object; Windows' verbatim `\\?\` prefix disables
+separator normalisation, so forward slashes stop being separators and a file
+that was in the snapshot came back as "not present in the snapshot". No test
+caught it because every test used the development fallback root — an ordinary
+directory, where both separators resolve. Fixed by `join_under_snapshot`, with
+the regression in
+`services/response/recovery/tests/test_snapshot_paths.py`.
+
+Acceptance row 12 is closed on this host. What it does not establish is
+breadth: one volume, one file, one snapshot provider.
 
 ---
 

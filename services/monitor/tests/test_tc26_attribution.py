@@ -184,6 +184,85 @@ def test_tc26_g_the_monitor_never_attributes_a_write_to_itself():
     assert os.getpid() in at.log.excluded
 
 
+# ------------------------------------- 2b. a record older than the question
+#
+# The one confident *wrong* answer the system had, found by install.ps1's
+# self-test in Phase 4 and fixed here because the fix changes TTS. Entries are
+# stamped when the audit record was delivered, which trails the write; so a
+# record delivered before the event was observed is a record of the *previous*
+# write to that path, and answering with it names the wrong process with full
+# confidence. docs/LIMITATIONS.md §3 has the measured instance.
+
+
+def test_tc26_r_a_record_that_predates_the_event_is_not_evidence_for_it():
+    """Block 16095's shape: A writes, then B overwrites while A's record stands."""
+    at = build(window_ms=3000)
+    now = time.monotonic()
+    # A's record was delivered 1s ago - well inside the window.
+    at.log.record(RANSOM, BENIGN_PID, image=r"C:\Windows\notepad.exe",
+                  at=now - 1.0)
+    # B overwrote the file 0.2s ago. Its record has not arrived.
+    observed_at = now - 0.2
+
+    answer = at.resolve(RANSOM, grace_ms=0, event_at=observed_at)
+
+    assert answer.confidence == UNKNOWN, (
+        "the only audited writer predates the event being judged, so it cannot "
+        "be the writer of it")
+    assert answer.pid is None, "naming it would be the same defect in another field"
+    assert answer.kill_authorised is False
+    assert "before this event was observed" in answer.reason
+
+
+def test_tc26_r2_without_the_fix_that_same_evidence_reads_as_certain():
+    """The old behaviour, asserted so the fix cannot be mistaken for a no-op."""
+    at = build(window_ms=3000)
+    now = time.monotonic()
+    at.log.record(RANSOM, BENIGN_PID, at=now - 1.0)
+
+    # Identical log, identical window - the only difference is that the caller
+    # did not say when its event happened.
+    answer = at.resolve(RANSOM, grace_ms=0)
+
+    assert answer.confidence == CERTAIN
+    assert answer.pid == BENIGN_PID
+
+
+def test_tc26_r3_the_record_that_does_arrive_still_reaches_certain():
+    """The cost is paid only by the events that were previously wrong."""
+    at = build(window_ms=3000)
+    now = time.monotonic()
+    observed_at = now - 0.8
+    at.log.record(RANSOM, BENIGN_PID, at=now - 1.5)   # A, before the event
+    at.log.record(RANSOM, ATTACKER_PID, at=now - 0.1)  # B, after it
+
+    answer = at.resolve(RANSOM, grace_ms=0, event_at=observed_at)
+
+    # Two distinct writers in the window is PROBABLE by rule 3 above, and that
+    # is the honest answer here - but the newest record now postdates the
+    # event, so the lookup no longer refuses outright.
+    assert answer.confidence == PROBABLE
+    assert answer.pid == ATTACKER_PID
+
+    # And with only B's record present, which is the ordinary case, it is
+    # CERTAIN exactly as before.
+    clean = build(window_ms=3000)
+    clean.log.record(RANSOM, ATTACKER_PID, at=now - 0.1)
+    named = clean.resolve(RANSOM, grace_ms=0, event_at=observed_at)
+    assert named.confidence == CERTAIN
+    assert named.pid == ATTACKER_PID
+
+
+def test_tc26_r4_an_event_with_no_record_at_all_is_unchanged():
+    """Nothing to reject, so the reason must still be the empty-log one."""
+    at = build(window_ms=3000)
+
+    answer = at.resolve(RANSOM, grace_ms=0, event_at=time.monotonic())
+
+    assert answer.confidence == UNKNOWN
+    assert "no audited write" in answer.reason
+
+
 # ---------------------------------------------- 3. no source, no change at all
 
 

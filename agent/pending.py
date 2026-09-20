@@ -80,7 +80,12 @@ class PendingAttribution:
 
     def __init__(self, resolve, respond, window_ms: float,
                  poll_ms: float = POLL_MS, max_pending: int = MAX_PENDING) -> None:
-        #: resolve(path) -> dict of attribution fields, without waiting.
+        #: resolve(path, event_at) -> dict of attribution fields, without
+        #: waiting. `event_at` is when the parked event was queued, and it is
+        #: the queued moment on every re-ask rather than the moment of the
+        #: re-ask: the lookup rejects audit records that predate the event, and
+        #: stamping the question with `now` would reject the record the sweep
+        #: exists to wait for.
         self._resolve = resolve
         #: respond(parked, attributed: bool) -> None. The single place an
         #: event is acted on, whether it named a process or ran out of window.
@@ -171,7 +176,7 @@ class PendingAttribution:
             parked.attempts += 1
             fields = None
             try:
-                fields = self._resolve(parked.path)
+                fields = self._resolve(parked.path, parked.queued_at)
             except Exception:  # noqa: BLE001
                 self.failed += 1
                 logger.debug("re-resolve failed for %s", parked.path,
