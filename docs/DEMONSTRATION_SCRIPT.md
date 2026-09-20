@@ -4,21 +4,26 @@
 
 > ## No video has been recorded.
 >
-> P7.4 asks for a demonstration video. **This session did not produce one**, and
-> no file in this repository is a recording. Two things stood in the way and both
-> are stated rather than worked around: the Docker daemon was not running on the
-> measurement host, so the Compose stack this demonstration drives could not be
-> brought up; and creating a VSS snapshot needs an elevated shell this session did
-> not have, so step 7 could not be performed at all.
+> P7.4 asks for a demonstration video. **No session has produced one**, and no
+> file in this repository is a recording. Writing a screenshot or a hand-made
+> transcript to stand in for one would be a fabricated artefact, and this
+> project's whole method is that a claim is backed by a command that was
+> actually run.
 >
-> What is here instead is the runbook: the exact sequence, the command for each
-> step, what the operator should see, and where the evidence for it lands. A
-> person with a Docker daemon and an Administrator prompt can record it from this
-> document without deciding anything.
+> What is here is the runbook: the exact sequence, the command for each step,
+> what the operator should see, and where the evidence lands. Somebody with a
+> Docker daemon and an Administrator prompt can record it from this document
+> without deciding anything.
 >
-> A screenshot or a transcript written by hand to stand in for a recording would
-> be a fabricated artefact, and this project's whole method is that a claim is
-> backed by a command that was actually run.
+> **The two blockers this document used to name are gone, and saying so is part
+> of keeping it honest.** VSS-backed restore is no longer unverified — it is
+> measured, on an elevated host, in `reports/vss_restore_verified.json`, and
+> step 7 can be performed in full. And step 9 below needs no Docker daemon at
+> all: it is the agent running as a Windows service against third-party
+> encryptors, which is the part of this system that now works end to end.
+>
+> If only ten minutes are available, record **step 9**. It is the run the build
+> plan means by "the run that already works".
 
 ---
 
@@ -148,7 +153,12 @@ would go looking for a backup that is already on disk.
 
 **If unelevated:** run `scripts/verify_vss.py --status-only` instead and show the
 host reporting VSS supported, `elevated: false`, and both operations refusing.
-State on camera that the VSS path is unverified in this project and why.
+State on camera that this recording could not exercise the VSS path, and that
+it *is* measured elsewhere — `reports/vss_restore_verified.json`, a real
+shadow copy on `D:`, a file encrypted in place, restored from
+`\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy13`, SHA-256 round-trip
+verified. Reaching it required fixing a bug that had been silently failing
+every genuine shadow-copy restore; `docs/CLAIM_MATRIX.md` C-14 has it.
 
 ### 8 — The result the project would defend  *(45s)*
 
@@ -160,6 +170,56 @@ facts. On the deployed four-point scale, no cell flips in the predicted
 direction. On the governing document's five-level scale, four do, and the path
 whitelist cancels nothing at all. The answer is a property of the scale, not of
 the system. That is the contribution.
+
+### 9 — The adversary nobody here wrote  *(4 min, needs elevation, no Docker)*
+
+This is the demonstration to record if there is time for one. It needs the
+agent installed as a service and an Administrator prompt; it does not need the
+Compose stack, the dashboard or a browser.
+
+```bash
+.venv\Scripts\python.exe scripts/adversary_corpus.py --arm openssl-inplace --files 200 --write-report
+```
+
+**Expect,** and read it off the screen as it happens:
+
+```
+seeded 200 files into watched_files\phase5_openssl-inplace_...
+pre-attack snapshot {GUID} in 0.7s
+damaged 200/200  detected=True (296 flagged of 296 events)
+attribution 216 correct / 0 wrong / 80 unresolved
+restored 200/200  RPO 3.7s
+```
+
+**Say:** every byte of that attack was written by OpenSSL. The attribution
+column is graded against an answer key the *launcher* wrote — the harness
+recorded the PID the operating system returned for each process as it started
+it — so "216 correct" means 216 events where the agent named a process that
+key already held, and "0 wrong" is the number the whole branch exists to
+defend.
+
+**Then show the two arms that fail, because they are the interesting ones:**
+
+```bash
+.venv\Scripts\python.exe scripts/adversary_corpus.py --arm sevenzip-archive --arm atomic-t1486 --files 200 --write-report
+```
+
+Both report `detected=False`, and the reasons are different and both measured.
+7-Zip's output is a *structurally valid* encrypted container, which the
+detector deliberately treats as benign (`docs/LIMITATIONS.md` §14). Red
+Canary's published T1486-8 produces 123-byte ciphertext, and Shannon entropy
+over 256 symbols is bounded by `log2(N)` — 200 draws of `os.urandom` do not
+reach the 7.5 bits/byte threshold until 356 bytes, so that atomic cannot be
+caught at any quality of encryption (§22).
+
+**Say:** this is what running somebody else's attack buys you. Two of six arms
+walked past the detector, and neither miss is a bug — both are the threshold
+doing exactly what it was told, against an input nobody here chose.
+
+**End on the number the plan asks for and does not get:** no arm was suspended
+within 20 files and 2 seconds, and
+`reports/phase5_attack_corpus.json` says
+`a_third_party_encryptor_was_suspended_within_bounds: false` in as many words.
 
 ---
 
@@ -177,7 +237,8 @@ be said.
 
 ## Recording checklist
 
-- [ ] `docker compose up -d --build`, six containers healthy
+- [ ] For steps 1–8: `docker compose up -d --build`, six containers healthy
+- [ ] For step 9: `sc.exe query URDSAgent` reports RUNNING; no Docker needed
 - [ ] `watched_files/` empty at the start
 - [ ] Dashboard open at `http://localhost:8501`
 - [ ] Administrator prompt if step 7 is included
