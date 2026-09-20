@@ -1,6 +1,6 @@
 # Corrections
 
-**Dated 17 September 2026, extended 20 September 2026.** Eighteen defects in this
+**Dated 17 September 2026, extended 20 September 2026.** Nineteen defects in this
 repository's evidence: what each one was, what it produced, and what replaced
 it.
 
@@ -726,6 +726,49 @@ because it had only ever been exercised somewhere it could not fail.
 **Replaced by:** `--source winget` on the install, with the reason written
 where the next person will read it, and the same flag added to the manual-install
 hint the failure path prints.
+
+---
+
+## 19. The installer's failure message named a remedy that did nothing — F24
+
+**Where:** `install.ps1`, the RAM preflight. **Introduced:** with the
+installer. **Found:** 20 September 2026, on the same clean Windows 11 guest as
+correction 18, by following the instruction it printed.
+
+```
+[ FAIL ] 8 GB RAM or more  -  6 GB
+         This machine reports 6 GB. The agent itself is small; the ml-engine
+         and the model are not. Close other work, or use -NoDashboard, which
+         leaves only the agent running.
+Preflight failed. Nothing has been changed.
+```
+
+So the run was repeated with `-NoDashboard`, exactly as instructed:
+
+```
+[ FAIL ] 8 GB RAM or more  -  6 GB
+         ... or use -NoDashboard, which leaves only the agent running.
+Preflight failed. Nothing has been changed.
+```
+
+The bar was a constant. `-NoDashboard` changes what gets installed — it is
+honoured in two other places in the same script — and the preflight never
+looked at it, so an operator who does what the error says gets the error again,
+word for word, and has no next move.
+
+Nothing was claimed falsely and nothing was installed: the refusal is correct
+behaviour and `Nothing has been changed` is true. What is wrong is that the
+script's own advice is dead. That is a worse failure mode than a blunt refusal,
+because it costs the reader a second run to discover the first one was
+pointless.
+
+**Replaced by:** the floor depends on what is being installed — 4 GB with
+`-NoDashboard`, 8 GB without — and the check's label says which bar it is
+applying, so the transcript shows the reader which run they are looking at. The
+message now ends with what the flag actually does to the bar.
+
+This is the second defect in two runs found only by installing on a machine
+that did not already satisfy the installer.
 
 ---
 

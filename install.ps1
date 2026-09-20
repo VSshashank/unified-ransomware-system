@@ -252,11 +252,20 @@ Write-Result "Windows 10 1809 or later" ($build -ge 17763) `
 Write-Result "64-bit" ($os.OSArchitecture -like '*64*') $os.OSArchitecture `
     "pywin32 and the Security-channel subscription are installed 64-bit here.`nA 32-bit host is not supported."
 
+# The floor depends on what is actually being installed, because the message
+# below used to name a remedy that did nothing: it told the operator to use
+# -NoDashboard and then applied the same 8 GB bar anyway, so following the
+# instruction produced the identical failure. Measured on a 6 GB Windows 11
+# guest, twice, which is how it was found. The agent, the Monitor and the
+# ledger are small; the ml-engine and its model are what need the headroom.
 $ramGB = [Math]::Round($cs.TotalPhysicalMemory / 1GB, 1)
-Write-Result "8 GB RAM or more" ($cs.TotalPhysicalMemory -ge (7.5 * 1GB)) "$ramGB GB" `
+$ramFloorGB = if ($NoDashboard) { 3.5 } else { 7.5 }
+$ramLabel = if ($NoDashboard) { "4 GB RAM or more (-NoDashboard)" }
+            else { "8 GB RAM or more" }
+Write-Result $ramLabel ($cs.TotalPhysicalMemory -ge ($ramFloorGB * 1GB)) "$ramGB GB" `
     ("This machine reports $ramGB GB. The agent itself is small; the ml-engine`n" +
      "and the model are not. Close other work, or use -NoDashboard, which`n" +
-     "leaves only the agent running.")
+     "leaves only the agent running and lowers this bar to 4 GB.")
 
 Write-Result "PowerShell 5.1 or later" ($PSVersionTable.PSVersion.Major -ge 5) `
     $PSVersionTable.PSVersion.ToString() `
