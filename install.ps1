@@ -334,7 +334,15 @@ if (Test-Path $venvPython) {
     if (-not $interpreter) {
         Write-Host "  no Python 3.11+ found; installing with winget" -ForegroundColor Yellow
         if (Get-Command winget -ErrorAction SilentlyContinue) {
+            # --source winget, and not for tidiness. On a clean Windows 11
+            # Enterprise Evaluation image the `msstore` source fails to
+            # validate its server certificate (0x8a15005e); winget then finds
+            # the package in two sources, cannot choose between them, prints
+            # "Please specify one of them using the --source option" and
+            # installs nothing while exiting 0. Measured on the clean VM this
+            # acceptance exists to test, where it stopped the run dead.
             & winget install -e --id Python.Python.3.12 --silent `
+                --source winget `
                 --accept-package-agreements --accept-source-agreements | Out-Null
             # winget puts it on the PATH of *new* processes, not this one.
             $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
@@ -346,7 +354,7 @@ if (Test-Path $venvPython) {
         Write-Result "Python 3.11 or later" $false "not found and could not be installed" `
             ("Install it by hand from https://www.python.org/downloads/ (tick`n" +
              "`"Add python.exe to PATH`"), then re-run this script.`n" +
-             "Or:  winget install -e --id Python.Python.3.12")
+             "Or:  winget install -e --id Python.Python.3.12 --source winget")
     } else {
         Write-Result "Python 3.11 or later" $true $interpreter
         & $interpreter -m venv (Join-Path $RepoRoot '.venv')

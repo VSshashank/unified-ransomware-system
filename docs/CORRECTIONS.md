@@ -1,6 +1,6 @@
 # Corrections
 
-**Dated 17 September 2026, extended 20 September 2026.** Seventeen defects in this
+**Dated 17 September 2026, extended 20 September 2026.** Eighteen defects in this
 repository's evidence: what each one was, what it produced, and what replaced
 it.
 
@@ -686,6 +686,46 @@ had - the snapshot taken before it started, plus the corpus directory and the
 archive it is allowed to create - rather than against everything that happens
 to live under the root. Pinned by
 `test_a_root_scoped_arm_is_graded_on_the_files_it_actually_had`.
+
+---
+
+## 18. `install.ps1` installed nothing and exited zero on a clean machine — F23
+
+**Where:** `install.ps1`, the Python bootstrap. **Introduced:** with the
+installer. **Found:** 20 September 2026, by running it on a clean Windows 11
+guest — which is what Phase 4's acceptance is for, and which had never been
+done until now.
+
+```
+winget install -e --id Python.Python.3.12 --silent --accept-*-agreements
+
+Failed when searching source: msstore
+An unexpected error occurred while executing the command:
+0x8a15005e : The server certificate did not match any of the expected values.
+
+The following packages were found among the working sources.
+Please specify one of them using the --source option to proceed.
+```
+
+On a clean Windows 11 Enterprise Evaluation image the `msstore` source fails
+to validate its server certificate. winget then finds the package in more than
+one source, refuses to choose, prints an instruction to a nobody that is
+reading it — the output goes to `Out-Null` — and **exits zero having installed
+nothing.**
+
+The installer then re-probes for Python, does not find it, and falls through to
+its manual-install message. So it fails honestly in the end, which is why this
+is a defect about *the machine the installer has never run on* rather than a
+silent pass. But the step the acceptance exists to prove — "takes a clean VM to
+a green self-test in one run" — cannot complete, and no amount of running the
+installer on a developer machine that already has Python would ever show it.
+
+This is the fourth time in this project that a step was believed to work
+because it had only ever been exercised somewhere it could not fail.
+
+**Replaced by:** `--source winget` on the install, with the reason written
+where the next person will read it, and the same flag added to the manual-install
+hint the failure path prints.
 
 ---
 
