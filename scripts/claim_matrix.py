@@ -596,6 +596,55 @@ CLAIMS: list[dict] = [
                 "recognised header, which is the same shape as ciphertext "
                 "under every content-only predicate this system has.",
     },
+    {
+        "id": "C-21",
+        "table_9_9_row": "(beyond the table) the installer on a machine that had nothing on it",
+        "wording": None,
+        "wording_required": False,
+        "claim": "`install.ps1` takes a machine with nothing on it to a green "
+                 "end-to-end self-test in one run. Measured on a Windows 11 "
+                 "Enterprise Evaluation guest installed from an ISO in the "
+                 "same session, with no Python, no git and object-access "
+                 "auditing switched off: the installer fetched Python 3.12, "
+                 "built the virtual environment, installed the dependencies, "
+                 "configured the 4663 audit policy on the protected path, "
+                 "registered URDSAgent as LocalSystem, locked the data "
+                 "directory, and ran a self-test that passed 11 of 11 - "
+                 "including that the agent attributed a write to the PID the "
+                 "writer announced for itself, suspended that process before "
+                 "deciding anything, snapshotted during the incident, recorded "
+                 "it in a chain that verifies, and restored the file "
+                 "byte-identical.",
+        "requires": "A clean Windows 11 guest, network access, and one "
+                    "elevation consent",
+        "artefact": "reports/clean_vm_acceptance.json",
+        "check": [
+            ("reports/clean_vm_acceptance.json",
+             ["result", "selftest_passed"], 11),
+            ("reports/clean_vm_acceptance.json",
+             ["result", "selftest_failed"], 0),
+            ("reports/clean_vm_acceptance.json",
+             ["result", "service_account"], "LocalSystem"),
+            # The machine really was clean: auditing off, no prior service.
+            ("reports/clean_vm_acceptance.json",
+             ["guest", "state_before", "audit_was_enabled"], False),
+            ("reports/clean_vm_acceptance.json",
+             ["guest", "state_before", "service_existed"], False),
+        ],
+        "tests": [],
+        "note": "The run used `-NoDashboard`, and that is a caveat rather than "
+                "a footnote: the guest has 6 GB of RAM against the installer's "
+                "8 GB bar, the host could not spare more, and the dashboard "
+                "and ml-engine are therefore neither installed nor exercised "
+                "here. Everything the agent itself needs is. "
+                "Two defects were found by this run and both are fixed in the "
+                "commit the guest installed: the winget call resolved the "
+                "package in two sources and installed it from neither while "
+                "exiting zero, and the preflight told the operator to use a "
+                "flag it then ignored (docs/CORRECTIONS.md 18 and 19). Neither "
+                "could have been found on a machine that already had Python, "
+                "which is the whole argument for this row existing.",
+    },
 ]
 
 

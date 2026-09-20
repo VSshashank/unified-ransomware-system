@@ -1,0 +1,233 @@
+{
+  "schema": "urds.clean_vm_acceptance/1",
+  "_what_this_is": "Phase 4's remaining acceptance: install.ps1 taking a machine with nothing on it to a green end-to-end self-test in one run. The guest was installed from a Windows 11 ISO in this session, had no Python, no git and auditing switched off, and every step below was performed by the installer rather than prepared for it.",
+  "_what_this_does_not_show": "The unflagged install path. The guest has 6 GB of RAM and the host could not spare 8 GB for it, so install.ps1 ran with -NoDashboard - which is the flag its own preflight names, and which it ignored until this run (docs/CORRECTIONS.md correction 19). The Streamlit dashboard and the ml-engine are therefore not installed or exercised here. It also does not show a second run on the same machine: this is a first install, not an upgrade.",
+  "generated_at": "2026-09-20T11:41:18.620238Z",
+  "commit": "e679552c6fc8ba0f05700093cfc0751cf1acdb3d",
+  "branch": "fix/evidence-integrity",
+  "installed_commit": "e679552",
+  "guest": {
+    "os": "Microsoft Windows 11 Enterprise Evaluation",
+    "build": "10.0.26200",
+    "ram_gb": 6,
+    "hostname": "URDS-CLEAN",
+    "hypervisor": "VirtualBox 7.2.0, EFI, TPM 2.0",
+    "state_before": {
+      "python": "absent (only the Store app-execution alias)",
+      "git": "absent",
+      "audit_subcategory": "No Auditing",
+      "audit_was_enabled": false,
+      "service_existed": false
+    }
+  },
+  "invocation": "git clone --branch fix/evidence-integrity --depth 1 <repo> C:\\URDS; powershell -File C:\\URDS\\install.ps1 -Relaunched -NoDashboard",
+  "result": {
+    "preflight_and_install_ok": 26,
+    "selftest_passed": 11,
+    "selftest_failed": 0,
+    "failures_or_warnings": [],
+    "service_state": "Running",
+    "service_account": "LocalSystem",
+    "protected_path": [
+      "C:\\URDS\\watched_files"
+    ],
+    "data_dir_locked": true
+  },
+  "steps_the_installer_performed": [
+    "Windows 10 1809 or later  -  Microsoft Windows 11 Enterprise Evaluation, build 26200",
+    "64-bit  -  64-bit",
+    "4 GB RAM or more (-NoDashboard)  -  6 GB",
+    "PowerShell 5.1 or later  -  5.1.26100.6584",
+    "20 GB free on C:  -  60.3 GB free",
+    "Python 3.11 or later  -  C:\\Users\\urds\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+    "virtual environment  -  C:\\URDS\\.venv\\Scripts\\python.exe",
+    "dependencies  -  6 requirement file(s)",
+    "pywin32  -  win32serviceutil and win32evtlog import",
+    "agent configuration  -  C:\\ProgramData\\URDS\\agent.json",
+    "the agent accepts it  -  resolves C:\\ProgramData\\URDS\\agent.json -> C:\\URDS\\watched_files",
+    "File System audit subcategory (Success)  -  auditpol reports: Success",
+    "SACL applied to the watch path  -  WriteData, AppendData, Delete - inherited by children",
+    "Security log size  -  128 MB",
+    "End-to-end probe  -  a write under the watch path produced a 4663 (Process ID:\t\t0xfc4)",
+    "auditing on C:\\URDS\\watched_files  -  setup_attribution_audit.ps1 exited 0",
+    "Security log raised to 1 GiB  -  1,024 MB (was 20 MB)",
+    "shadow storage on C:  -  maxsize=10%",
+    "signing keys are not the committed defaults  -  rotated: JWT_SECRET, DEV_TOKEN_BOOTSTRAP_SECRET",
+    "data directory is SYSTEM and Administrators only  -  C:\\URDS\\data\\agent - no ledger yet; the service creates it on first start",
+    "registered with the SCM  -  URDSAgent (install)",
+    "start= auto  -  survives a reboot",
+    "restart on failure  -  3 restarts, 60s apart, counter resets daily",
+    "running  -  STATE              : 4  RUNNING",
+    "decoys in place  -  20 canaries across 1 root(s)",
+    "end-to-end self-test  -  scripts/selftest.py exited 0"
+  ],
+  "selftest_assertions": [
+    "configuration resolved  -  C:\\ProgramData\\URDS\\agent.json -> protecting C:\\URDS\\watched_files",
+    "service is running  -  URDSAgent: RUNNING",
+    "attribution is configured on the protected path  -  setup_attribution_audit.ps1 -Verify exited 0",
+    "the agent sees writes to the protected path  -  1 ledger block(s) name urds_selftest_cd12eae5.txt",
+    "pre-damage VSS snapshot  -  {313E08B2-5347-46CB-B70D-CA5176392FD5} of C:\\ in 3.3s",
+    "the writer announced its own PID  -  pid 7992 wrote 1048576 bytes (launcher was pid 5196)",
+    "the agent attributed the write to that PID  -  response_escalation block #6 names pid 7992 (C:\\Users\\urds\\AppData\\Local\\Programs\\Python\\Python312\\python.exe)",
+    "it suspended that process before deciding anything  -  escalated after the suspend, then resume; resumed after 1 call(s); directly observed STOPPED",
+    "it took a VSS snapshot during the incident  -  {22EEDC09-3B27-42E4-8062-EB15850A5ACA} in 0.944s",
+    "the ledger recorded it, and the chain verifies  -  6 blocks, valid=True, 4 appended during this test",
+    "restore round-trips the hash  -  af14ef955381f37d... == af14ef955381f37d..."
+  ],
+  "evidence": {
+    "install_receipt": {
+      "schema": "urds.install-receipt/1",
+      "installed_at": "2026-09-20T11:26:15.7195462Z",
+      "installed_by": "URDS-CLEAN\\urds",
+      "repo": "C:\\URDS",
+      "config_path": "C:\\ProgramData\\URDS\\agent.json",
+      "note": "Prior state of everything this installer changed. uninstall.ps1 reverts from here.",
+      "prior": {
+        "audit_subcategory": "No Auditing",
+        "audit_subcategory_was_enabled": false,
+        "security_log_max_bytes": 20971520,
+        "shadowstorage": {
+          "volume": "C:",
+          "raw": "vssadmin 1.1 - Volume Shadow Copy Service administrative command-line tool\n(C) Copyright 2001-2013 Microsoft Corp.\n\nNo items found that satisfy the query."
+        },
+        "data_dir_acl": "C:\\URDS\\data\\agent BUILTIN\\Administrators:(I)(OI)(CI)(F)\n                   NT AUTHORITY\\SYSTEM:(I)(OI)(CI)(F)\n                   BUILTIN\\Users:(I)(OI)(CI)(RX)\n                   NT AUTHORITY\\Authenticated Users:(I)(M)\n                   NT AUTHORITY\\Authenticated Users:(I)(OI)(CI)(IO)(M)\n\nSuccessfully processed 1 files; Failed processing 0 files",
+        "data_dir": "C:\\URDS\\data\\agent",
+        "service_existed": false
+      },
+      "applied": {
+        "sacl_paths": [
+          "C:\\URDS\\watched_files"
+        ],
+        "security_log_max_bytes": 1073741824,
+        "shadowstorage_maxsize_percent": 10,
+        "rotated_secrets": [
+          "JWT_SECRET",
+          "DEV_TOKEN_BOOTSTRAP_SECRET"
+        ],
+        "data_dir_locked": true,
+        "service_installed": true,
+        "canaries": 20,
+        "selftest_exit": 0,
+        "steps": [
+          {
+            "step": "Windows 10 1809 or later",
+            "ok": true,
+            "detail": "Microsoft Windows 11 Enterprise Evaluation, build 26200"
+          },
+          {
+            "step": "64-bit",
+            "ok": true,
+            "detail": "64-bit"
+          },
+          {
+            "step": "4 GB RAM or more (-NoDashboard)",
+            "ok": true,
+            "detail": "6 GB"
+          },
+          {
+            "step": "PowerShell 5.1 or later",
+            "ok": true,
+            "detail": "5.1.26100.6584"
+          },
+          {
+            "step": "20 GB free on C:",
+            "ok": true,
+            "detail": "60.3 GB free"
+          },
+          {
+            "step": "Python 3.11 or later",
+            "ok": true,
+            "detail": "C:\\Users\\urds\\AppData\\Local\\Programs\\Python\\Python312\\python.exe"
+          },
+          {
+            "step": "virtual environment",
+            "ok": true,
+            "detail": "C:\\URDS\\.venv\\Scripts\\python.exe"
+          },
+          {
+            "step": "dependencies",
+            "ok": true,
+            "detail": "6 requirement file(s)"
+          },
+          {
+            "step": "pywin32",
+            "ok": true,
+            "detail": "win32serviceutil and win32evtlog import"
+          },
+          {
+            "step": "agent configuration",
+            "ok": true,
+            "detail": "C:\\ProgramData\\URDS\\agent.json"
+          },
+          {
+            "step": "the agent accepts it",
+            "ok": true,
+            "detail": "resolves C:\\ProgramData\\URDS\\agent.json -> C:\\URDS\\watched_files"
+          },
+          {
+            "step": "auditing on C:\\URDS\\watched_files",
+            "ok": true,
+            "detail": "setup_attribution_audit.ps1 exited 0"
+          },
+          {
+            "step": "Security log raised to 1 GiB",
+            "ok": true,
+            "detail": "1,024 MB (was 20 MB)"
+          },
+          {
+            "step": "shadow storage on C:",
+            "ok": true,
+            "detail": "maxsize=10%"
+          },
+          {
+            "step": "signing keys are not the committed defaults",
+            "ok": true,
+            "detail": "rotated: JWT_SECRET, DEV_TOKEN_BOOTSTRAP_SECRET"
+          },
+          {
+            "step": "data directory is SYSTEM and Administrators only",
+            "ok": true,
+            "detail": "C:\\URDS\\data\\agent - no ledger yet; the service creates it on first start"
+          },
+          {
+            "step": "registered with the SCM",
+            "ok": true,
+            "detail": "URDSAgent (install)"
+          },
+          {
+            "step": "start= auto",
+            "ok": true,
+            "detail": "survives a reboot"
+          },
+          {
+            "step": "restart on failure",
+            "ok": true,
+            "detail": "3 restarts, 60s apart, counter resets daily"
+          },
+          {
+            "step": "running",
+            "ok": true,
+            "detail": "STATE              : 4  RUNNING"
+          },
+          {
+            "step": "decoys in place",
+            "ok": true,
+            "detail": "20 canaries across 1 root(s)"
+          },
+          {
+            "step": "end-to-end self-test",
+            "ok": true,
+            "detail": "scripts/selftest.py exited 0"
+          }
+        ],
+        "failures": 0
+      },
+      "protected_paths": [
+        "C:\\URDS\\watched_files"
+      ],
+      "completed_at": "2026-09-20T11:31:12.7939172Z"
+    },
+    "transcript_sha256": "92208cef5eab37a8bb2c6b6255bc4461bf465b39763a2fbecdfc04e745d86c08",
+    "transcript_lines": 139
+  }
+}
