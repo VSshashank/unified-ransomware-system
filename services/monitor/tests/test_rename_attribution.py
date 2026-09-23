@@ -94,7 +94,11 @@ def test_a_the_watchdog_handler_passes_both_names(monkeypatch):
 
     monitor_app.MonitorHandler().on_moved(FileMovedEvent(OLD, NEW))
 
-    assert calls == [((NEW, "renamed"), {"renamed_from": OLD})]
+    # The names, not the whole call: other keyword arguments (the correlation
+    # lanes, since defect 3) are not what this test is about.
+    ((args, kwargs),) = calls
+    assert args == (NEW, "renamed")
+    assert kwargs["renamed_from"] == OLD
 
 
 def test_a_a_directory_rename_is_still_ignored(monkeypatch):
