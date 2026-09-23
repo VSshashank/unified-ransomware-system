@@ -129,18 +129,34 @@ legible:
   "error": "could not subscribe to the Security channel: (5, 'EvtSubscribe', 'Access is denied.')",
   "writes_recorded": 0,
   "window_ms": 750,
-  "grace_ms": 250
+  "competition_ms": 3000,
+  "grace_ms": 0,
+  "horizon_ms": 0.0,
+  "pending": {"running": false, "open": 0}
 }
 ```
 
+(`horizon_ms` is the *source's* delivery horizon: `0.0` here because the source
+that failed to start was replaced by `NullSource`; `1500` once the Security
+channel subscription is live.)
+
 ### Configuration
+
+Defaults changed with defect 1 of the Windows integration test (`FIXES.md`).
+Each one is justified in `services/monitor/attribution.py` against the VM's
+measurement of 4663 delivery: 35 writes, min 390 ms, median 1000 ms, max 1032 ms.
 
 | Variable | Default | What it does |
 |---|---|---|
 | `ATTRIBUTION_SOURCE` | `auto` | `auto`, `security`, or `off` |
-| `ATTRIBUTION_WINDOW_MS` | `750` | how far back a write explains this event |
-| `ATTRIBUTION_GRACE_MS` | `250` | how long `resolve()` waits for a record in flight |
-| `ATTRIBUTION_MAX_ENTRIES` | `4096` | ring-buffer bound |
+| `ATTRIBUTION_WINDOW_MS` | `750` | how far before the event, **on the event's own clock**, a write explains it |
+| `ATTRIBUTION_COMPETITION_MS` | `3000` | how far back any *other* writer makes the answer ambiguous (only ever lowers confidence) |
+| `ATTRIBUTION_GRACE_MS` | `0` (was `250`) | how long the first look waits, charged from when the event was observed |
+| `ATTRIBUTION_HORIZON_MS` | `1500` | how late a record may still arrive; nothing is `certain` until it has closed |
+| `ATTRIBUTION_CLOCK_TOLERANCE_MS` | `50` | slack between TimeCreated and the observation time (two 15.625 ms ticks, and margin) |
+| `ATTRIBUTION_SWEEP_MS` | `100` | backstop interval of the open-question sweeper |
+| `ATTRIBUTION_MAX_PENDING` | `4096` | open questions held at once |
+| `ATTRIBUTION_MAX_ENTRIES` | `16384` (was `4096`) | ring-buffer bound; an eviction inside the competition window blocks `certain` |
 
 ---
 
@@ -150,16 +166,29 @@ legible:
 watchdog  ──▶  detection  ──▶  detection_latency_ms recorded
                                         │
                                         ▼               suspicious only
-                              attribution.resolve(path)
+                         first look: attribution.resolve(path,
+                             observed_at, read_at)  - no waiting by default
                                         │
-                        ┌───────────────┴───────────────┐
-                   certain                    probable / unknown
-                        │                               │
-                        ▼                               ▼
-              terminate_process                  isolate_and_log
-                        │                               │
-                        └──────────▶ ledger ◀───────────┘
-                         (confidence + reason travel with the PID)
+                        ┌───────────────┴────────────────────┐
+              final probable / unknown           pending (records still in flight)
+                        │                                    │
+                        ▼                                    ▼
+                 isolate_and_log                      isolate_and_log  ──▶ ledger
+                        │                                    │   (file_event says attribution_pending)
+                        ▼                                    ▼
+                     ledger                 PendingAttribution: re-asked on every
+                                            record, closed when the 1.5 s delivery
+                                            horizon has closed
+                                                             │
+                                  ┌──────────────────────────┴───────────┐
+                  exactly one kernel-grade writer,           anything else (no record,
+                  PID verified as that writer                two writers, writer exited,
+                                  │                          PID reused, unverifiable)
+                                  ▼                                       │
+                    /response/terminate, same incident                    │
+                                  │                                       │
+                                  └──▶ ledger: attribution_escalation ◀───┘
+                                       (a new block, joined by incident_id)
 ```
 
 **Attribution runs after `detection_latency_ms` is recorded, deliberately.**
@@ -168,13 +197,23 @@ Waiting for the Security channel is response-budget work; charging it to Table
 event log's delivery lag. A non-suspicious event never asks at all, so the
 common path costs nothing.
 
-### The race the grace period exists for
+### The race, and the delivery horizon
 
 The audit record and the watchdog event describe the same write and arrive by
-different paths. The audit record is usually first — the access check happens
-before the write completes — but Security-channel delivery is not instant. So
-`resolve()` looks once and, if the source is live and has nothing yet, polls for
-a bounded 250 ms. An unavailable source returns immediately and never burns it.
+different paths, and not together. This section used to say the audit record
+is usually first and that a bounded 250 ms poll covers the rest. The Windows
+integration VM measured otherwise: the Security channel delivered 4663 to the
+subscription **390–1032 ms after the write, median 1000 ms**, so 0 of 35 fresh
+writes were attributed, and the attributions that were made came from the
+*previous* write's record (defect 1, `FIXES.md`).
+
+So records are now stamped with their own `TimeCreated` and matched against the
+event's observation time on the same clock; nothing is `certain` until the
+1.5 s delivery horizon has closed; and the kill, when the evidence supports one,
+is a second action on the same incident rather than the first. The full
+reasoning, and why each default is what it is, is in the module docstring of
+`services/monitor/attribution.py`. An unavailable source still returns
+immediately and never opens a question.
 
 ### What reaches the ledger
 
@@ -218,6 +257,7 @@ is defined is not provable where it is enforced.
 | File | Tests | Covers |
 |---|---|---|
 | `services/monitor/tests/test_tc26_attribution.py` | 28 | confidence ladder, 4663 parser, path normalisation, window expiry, self-exclusion, grace-period race, pipeline gate, bounded buffer, lookup cost |
+| `services/monitor/tests/test_attribution_delivery_lag.py` | 49 | event-time matching, pending until the horizon, stale records, competing and late writers, eviction, TimeCreated parsing, records delivered 0/300/1000/1600 ms late (real time), two writers never certain, identity at escalation (exited, reused, unverifiable), the escalation block, end to end through `handle_event` |
 | `services/response/tests/test_tc26_kill_guard.py` | 11 | reserved PIDs, self and ancestors, name denylist, location guard, lookalike paths, unreadable-image residual |
 | `services/response/recovery/tests/test_snapshot_paths.py` | 6 | verbatim-path separator behaviour, device-object joins, the Linux root left unchanged |
 
@@ -240,6 +280,20 @@ that arrives after the 2-second budget is not an answer.
 ---
 
 ## 6a. Measured on a live elevated host, 16 September 2026
+
+> **Re-verification pending** (defect 1, `FIXES.md`). The figures below were
+> measured under the attribution design that the Windows integration test
+> found defective, and they are left exactly as measured. Two things about them
+> no longer describe the current code. The attribution wait of 0.158 ms means
+> the matching record was already in hand about 7 ms after the write was
+> observed. At the delivery lag since measured on the VM (390–1032 ms, 35
+> writes) that is far more likely to be the record of an *earlier* write by the
+> same process than of this one — fix/evidence-integrity did see occasional
+> ~12 ms deliveries on its host — and this run cannot tell which. And the
+> current design never kills on a first answer from this source: the kill is
+> requested when the 1.5 s delivery horizon closes, so detect → kill is now
+> expected at about 1.6 s, inside the 2 s budget, not at ~198 ms. The
+> maintainer's re-check list in `FIXES.md` has the run that replaces this one.
 
 Run on Windows 11 `10.0.26200` from an Administrator shell: audit policy
 enabled, SACL applied, Monitor and Response native and elevated, ML Engine and

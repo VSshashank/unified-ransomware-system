@@ -20,3 +20,13 @@ pefile==2024.8.26
 # win32evtlog inside `SecurityLogSource.start`, never at module scope, so the
 # module imports cleanly with this line unsatisfied.
 pywin32==308; sys_platform == "win32"
+
+# AS process identity at escalation (defect 1 of the Windows integration test).
+# A kill is now requested one delivery horizon (~1.5 s) after the write, and in
+# that time the writer can exit and Windows can hand its PID to something else.
+# `attribution.probe_process` reads the live process's image path and start
+# time to prove the PID still names the writer before anything is killed.
+# Without psutil that proof is impossible and escalation refuses - fail-closed,
+# but it would make attribution unable to kill at all on a Monitor-only install.
+# Same pin as services/response, so one environment runs both.
+psutil==7.2.2

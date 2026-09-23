@@ -18,7 +18,7 @@ import logging
 import os
 import queue
 import threading
-from collections import deque
+from collections import OrderedDict, deque
 from fnmatch import fnmatch
 from datetime import datetime, timezone
 from time import perf_counter, time
@@ -149,6 +149,23 @@ _file_patterns: list[str] = []
 
 _work: queue.Queue = queue.Queue()
 _worker: threading.Thread | None = None
+
+# Attribution questions left open by a first answer that came back too early to
+# be final (attribution.py, "THE RACE"). An anchor is remembered here when the
+# event is classified and handed to `PendingAttribution` once the pipeline has
+# responded and the incident has an ID - the escalation block has to join to
+# something. Bounded like every other per-event structure in this service.
+MAX_ANCHORS = int(os.getenv("ATTRIBUTION_MAX_ANCHORS", "4096"))
+_ANCHORS: "OrderedDict[str, dict]" = OrderedDict()
+_ANCHORS_LOCK = threading.Lock()
+_pending: attribution.PendingAttribution | None = None
+_PENDING_LOCK = threading.Lock()
+# Escalations get their own worker rather than a place in `_work`. `_work` is
+# the ML -> ledger -> response fan-out for every detection, and during a burst
+# it runs behind; a kill that is due at the horizon cannot wait its turn behind
+# twenty ML calls without missing the 2 s budget.
+_escalations: queue.Queue = queue.Queue()
+_escalator: threading.Thread | None = None
 
 _observer_backend: str = "none"
 _observer_reason: str = ""
@@ -363,6 +380,11 @@ def handle_event(path: str, event_type: str) -> dict | None:
     arriving to a verdict existing. Target is under 100ms.
     """
     started = perf_counter()
+    # When watchdog handed this event over, on the system clock. Attribution
+    # compares audit records against *this* - their own TimeCreated against the
+    # moment the change was reported - and not against whenever it gets round to
+    # looking. See attribution.WriteLog.lookup.
+    observed_at = time()
 
     # The caller asked for a subset of files. Applied here rather than at the
     # watchdog layer so it covers deletions and renames too, and so the filtered
@@ -386,7 +408,18 @@ def handle_event(path: str, event_type: str) -> dict | None:
             "verdict": "deleted",
             "reason": "file removed",
             "timestamp": utc_now(),
-            "process_id": os.getpid(),
+            # None, not os.getpid(). This used to stamp the *Monitor's own* PID
+            # on every deletion it observed, with no confidence beside it - a
+            # wrong answer in the shape of a right one, in the field whose whole
+            # job is naming who did it. Ported from fix/evidence-integrity,
+            # which found it the same way. Deletions are not attributed (a
+            # delete is not a WriteData/AppendData access); the honest value is
+            # that nobody has been named.
+            "process_id": None,
+            "process_image": None,
+            "attribution_confidence": attribution.UNKNOWN,
+            "attribution_reason": "not attempted: deletions are not attributed",
+            "attribution_source": attributor.source.name,
             "user": "system",
         }
         event["detection_latency_ms"] = round((perf_counter() - started) * 1000, 3)
@@ -449,6 +482,13 @@ def handle_event(path: str, event_type: str) -> dict | None:
     # Hashing a file we could not read only pays the retry cost again to reach
     # the same None, and it is on the sub-100ms detection path.
     file_hash = sha256_file(path) if readable else None
+    # The last byte the verdict rests on has now been read. A write that landed
+    # between the notification and this read produced some of what was judged,
+    # so attribution's window runs up to here, not only up to `observed_at`.
+    # Stamped twice: the system clock to compare with TimeCreated, and the
+    # monotonic clock to time the delivery horizon from (attribution.WriteLog.lookup).
+    read_at = time()
+    read_mono = perf_counter()
 
     # Table 5.7's suppression mitigations. Applied after classification, never
     # before it: the verdict and its reason are what get recorded either way, so
@@ -545,8 +585,25 @@ def handle_event(path: str, event_type: str) -> dict | None:
     # for the Security channel to deliver a 4663 is response-budget work;
     # charging it to Table 5.9's <100ms detection target would turn that target
     # into a measurement of the event log's delivery lag.
+    #
+    # This is the *first* answer. Against a channel that delivers ~1 s late it is
+    # almost always pending: it drives the non-destructive response now, and the
+    # question stays open until the delivery horizon closes (`_open_question`).
+    # The grace is charged from when the event was observed, not from here.
     if event["suspicious"]:
-        event.update(attributor.resolve(path).as_event_fields())
+        first = attributor.resolve(
+            path,
+            observed_at=observed_at,
+            read_at=read_at,
+            horizon_from=read_mono,
+            deadline=started + attribution.GRACE_MS / 1000.0,
+        )
+        # A first answer that already authorises a kill (a source with no
+        # delivery lag) is held to the same identity check as an escalation.
+        first, _ = attributor.verify(first)
+        event.update(first.as_event_fields())
+        if PIPELINE_ENABLED and attributor.should_park(first):
+            _remember_anchor(event["event_id"], path, observed_at, read_at, read_mono, first)
 
     first_sighting = _record(event)
 
@@ -640,6 +697,112 @@ def _run_detection(client: httpx.Client, event: dict, features: dict, verdict: d
         if outcome["prediction"]:
             event["prediction"] = outcome["prediction"].get("prediction")
             event["threat_level"] = outcome["prediction"].get("threat_level")
+        if outcome.get("incident_id"):
+            event["incident_id"] = outcome["incident_id"]
+    # Opened only now, after the non-destructive response has gone out and the
+    # incident has an ID: the escalation is a second action on the same
+    # incident, and its ledger block must come after the first one's.
+    _open_question(event, outcome.get("incident_id"))
+
+
+# ------------------------------------------------------- open attribution questions
+
+
+def _remember_anchor(
+    event_id: str, path: str, observed_at: float, read_at: float, read_mono: float, first, also=()
+) -> None:
+    with _ANCHORS_LOCK:
+        _ANCHORS[event_id] = {
+            "path": path,
+            "also": tuple(also),
+            "observed_at": observed_at,
+            "read_at": read_at,
+            "read_mono": read_mono,
+            "first": first,
+        }
+        while len(_ANCHORS) > MAX_ANCHORS:
+            _ANCHORS.popitem(last=False)
+
+
+def _take_anchor(event_id: str | None) -> dict | None:
+    if not event_id:
+        return None
+    with _ANCHORS_LOCK:
+        return _ANCHORS.pop(event_id, None)
+
+
+def _open_question(event: dict, incident_id: str | None) -> None:
+    anchor = _take_anchor(event.get("event_id"))
+    if anchor is None or not incident_id:
+        return
+    question = attributor.question(
+        key=incident_id,
+        path=anchor["path"],
+        observed_at=anchor["observed_at"],
+        read_at=anchor["read_at"],
+        first=anchor["first"],
+        also=anchor["also"],
+        context=event,
+        horizon_from=anchor["read_mono"],
+    )
+    _ensure_pending().add(question)
+
+
+def _ensure_pending() -> attribution.PendingAttribution:
+    global _pending
+    with _PENDING_LOCK:
+        if _pending is None or _pending.attributor is not attributor:
+            if _pending is not None:
+                _pending.stop(timeout=1.0)
+            _pending = attribution.PendingAttribution(attributor, _on_question_closed)
+        if not _pending.running:
+            _pending.start()
+        return _pending
+
+
+def _on_question_closed(question: attribution.Question, answer: attribution.Attribution, outcome: str) -> None:
+    """Runs on the pending thread, so it only hands the work on."""
+    _ensure_escalator()
+    _escalations.put((question, answer, outcome))
+
+
+def _escalate_loop() -> None:
+    client = httpx.Client(timeout=pipeline.DOWNSTREAM_TIMEOUT)
+    try:
+        while True:
+            item = _escalations.get()
+            if item is None:
+                return
+            question, answer, outcome = item
+            event = question.context if isinstance(question.context, dict) else {}
+            try:
+                closed = pipeline.escalate(client, event, question, answer, outcome)
+                with _LOCK:
+                    # The event now carries the closing answer, and says what
+                    # the first one was: `/monitor/events` should show where the
+                    # incident ended up, not where it started.
+                    event.update(answer.as_event_fields())
+                    event["attribution_escalation"] = {
+                        "outcome": outcome,
+                        "result": closed["result"],
+                        "initial_attribution_confidence": question.first.confidence,
+                        "initial_attribution_reason": question.first.reason,
+                        "block_id": (closed["block"] or {}).get("block_id"),
+                        "response_dispatched_at": closed["record"]["response_dispatched_at"],
+                    }
+            except Exception:  # a bad escalation must not kill the worker
+                logger.exception("escalation failed for %s", event.get("file_path"))
+            finally:
+                _escalations.task_done()
+    finally:
+        client.close()
+
+
+def _ensure_escalator() -> None:
+    global _escalator
+    if _escalator is None or not _escalator.is_alive():
+        _escalator = threading.Thread(target=_escalate_loop, name="monitor-escalation", daemon=True)
+        _escalator.start()
 
 
 def _run_governance(client: httpx.Client, event: dict) -> None:
@@ -832,6 +995,10 @@ def monitor_attribution() -> dict:
         "powershell -ExecutionPolicy Bypass -File scripts/setup_attribution_audit.ps1 "
         "-WatchPath <dir>   (Administrator)"
     )
+    # Questions kept open past the first answer, and how each one closed. An
+    # incident isolated on a pending answer and never escalated shows up here as
+    # a close outcome rather than as silence.
+    status["pending"] = _pending.stats() if _pending is not None else {"running": False, "open": 0}
     return status
 
 

@@ -223,6 +223,99 @@ def trigger_response(
     )
 
 
+def request_termination(
+    client: httpx.Client,
+    incident_id: str,
+    answer: "attribution.Attribution",
+) -> dict | None:
+    """Ask the Response service to kill the process an escalation named.
+
+    The gate is applied here again, at the caller, from the `Attribution`
+    itself rather than from a confidence string: an answer that is pending,
+    PROBABLE, UNKNOWN, or CERTAIN without a PID never reaches the Response
+    service at all. `/response/terminate` rather than `/response/trigger`,
+    because the incident already had its response - isolation ran when the first
+    answer came back - and the only thing this adds is the kill. The Response
+    service writes its own `response_action` block for it, with the same
+    incident ID.
+    """
+    if not answer.kill_authorised:
+        return None
+    return _post(
+        client,
+        RESPONSE_URL,
+        "/response/terminate",
+        {
+            "process_id": answer.pid,
+            "incident_id": incident_id,
+            "reason": f"attribution escalated to certain after the delivery horizon: {answer.reason}",
+            "force": True,
+        },
+    )
+
+
+def escalate(
+    client: httpx.Client,
+    event: dict,
+    question: "attribution.Question",
+    answer: "attribution.Attribution",
+    outcome: str,
+) -> dict:
+    """Close an attribution question that was left open, on the chain.
+
+    Written for every question the Monitor kept open, whether or not it ended
+    in a kill: "the horizon closed and no record arrived", "two writers turned
+    up" and "the writer had already exited" are all answers an auditor needs,
+    and without this block they would be indistinguishable from a question
+    nobody asked. It is a *new* block, joined to the incident by `incident_id`;
+    the `file_event` and `response_action` blocks written when the first answer
+    came back are never touched, because they are inside the hash chain.
+    """
+    termination = None
+    dispatched_at = None
+    if answer.kill_authorised:
+        dispatched_at = utc_now()
+        termination = request_termination(client, question.key, answer)
+
+    if not answer.kill_authorised:
+        result = "not_escalated"
+    elif termination is None:
+        # 409 from the guard, or unreachable. The Response service's own block
+        # carries the refusal reason when it was reachable.
+        result = "termination_refused_or_unreachable"
+    else:
+        result = "terminated"
+
+    record = {
+        "incident_id": question.key,
+        "event_id": event.get("event_id"),
+        "file_path": event.get("file_path"),
+        "file_hash": event.get("file_hash"),
+        "observed_at": attribution.iso_utc(question.observed_at),
+        "horizon_closed_at": attribution.iso_utc(question.settle_at),
+        "initial_attribution_confidence": question.first.confidence,
+        "initial_attribution_reason": question.first.reason,
+        "outcome": outcome,
+        "result": result,
+        "action_requested": "terminate_process" if answer.kill_authorised else None,
+        "process_id": answer.pid,
+        "process_image": answer.image,
+        "attribution_confidence": answer.confidence,
+        "attribution_reason": answer.reason,
+        "attribution_source": answer.source,
+        "attribution_candidates": list(answer.candidates),
+        # The matched 4663's own times: when the write happened by the event
+        # log's clock, when it reached the Monitor, and the lag between them.
+        # This is the measurement defect 1 turned on, recorded per incident.
+        "audit_record": answer.audit_record(),
+        "response_dispatched_at": dispatched_at,
+        "termination": termination,
+        "timestamp": utc_now(),
+    }
+    block = log_to_ledger(client, "attribution_escalation", record)
+    return {"record": record, "block": block, "termination": termination, "result": result}
+
+
 def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None = None) -> PipelineResult:
     """ML -> ledger -> response for one detected event.
 
@@ -232,7 +325,7 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
     owns_client = client is None
     client = client or httpx.Client(timeout=DOWNSTREAM_TIMEOUT)
     result = PipelineResult(
-        {"prediction": None, "ledger_block": None, "response": None, "stages": []}
+        {"prediction": None, "ledger_block": None, "response": None, "stages": [], "incident_id": None}
     )
 
     try:
@@ -282,6 +375,11 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
             "attribution_confidence": event.get("attribution_confidence"),
             "attribution_reason": event.get("attribution_reason"),
             "attribution_source": event.get("attribution_source"),
+            # True when this answer was taken before the audit channel could
+            # have delivered everything, and the question was kept open. The
+            # closing answer is a separate `attribution_escalation` block with
+            # this incident's ID.
+            "attribution_pending": event.get("attribution_pending", False),
             "prediction": label,
             "confidence": (prediction or {}).get("confidence"),
             "threat_level": threat_level,
@@ -299,6 +397,7 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
 
         if threat_level in ACTIONABLE_THREAT_LEVELS:
             incident_id = f"inc_{(block or {}).get('block_id', 'na')}_{event.get('event_id', 'na')}"
+            result["incident_id"] = incident_id
             response = trigger_response(
                 client,
                 incident_id,
