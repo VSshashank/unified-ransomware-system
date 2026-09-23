@@ -290,6 +290,7 @@ def escalate(
         "incident_id": question.key,
         "event_id": event.get("event_id"),
         "file_path": event.get("file_path"),
+        "renamed_from": event.get("renamed_from"),
         "file_hash": event.get("file_hash"),
         "observed_at": attribution.iso_utc(question.observed_at),
         "horizon_closed_at": attribution.iso_utc(question.settle_at),
@@ -343,6 +344,10 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
         # file_hash is the field SI's recovery integrity check depends on.
         event_data = {
             "file_path": event.get("file_path"),
+            # The old name when this event is a rename, so a rewrite-then-rename
+            # can be followed from the chain alone: the write happened under
+            # `renamed_from`, the ciphertext sits at `file_path`.
+            "renamed_from": event.get("renamed_from"),
             "file_hash": file_hash,
             "event_type": event.get("event_type"),
             "entropy": verdict.get("entropy"),

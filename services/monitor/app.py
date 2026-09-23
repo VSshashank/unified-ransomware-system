@@ -373,11 +373,16 @@ def extract_features(path: str) -> dict:
     }
 
 
-def handle_event(path: str, event_type: str) -> dict | None:
+def handle_event(path: str, event_type: str, renamed_from: str | None = None) -> dict | None:
     """Classify one filesystem event and record it.
 
     Detection latency is measured over exactly this function: from the event
     arriving to a verdict existing. Target is under 100ms.
+
+    `renamed_from` is the old name when the event is a rename. The event is
+    about the file at `path` - that is what is classified, recorded and
+    reported as `file_path` - but the bytes that made it suspicious were very
+    likely written under the old name, and that is where the audit record is.
     """
     started = perf_counter()
     # When watchdog handed this event over, on the system clock. Attribution
@@ -522,6 +527,11 @@ def handle_event(path: str, event_type: str) -> dict | None:
         "event_id": f"evt_{uuid4().hex[:10]}",
         "file_path": path,
         "event_type": event_type,
+        # The old name, for a rename; None otherwise. Carried because a
+        # "rewrite, then rename to *.locked" attack is recorded under the new
+        # name while its write happened under the old one, and an auditor
+        # reading the chain needs both to follow it.
+        "renamed_from": renamed_from,
         # verdict's entropy, not the raw one: it is None for a file we could not
         # read, where the raw value is a 0.0 that was never measured. The ledger
         # already records the verdict's value, so taking the raw one here made
@@ -590,20 +600,30 @@ def handle_event(path: str, event_type: str) -> dict | None:
     # almost always pending: it drives the non-destructive response now, and the
     # question stays open until the delivery horizon closes (`_open_question`).
     # The grace is charged from when the event was observed, not from here.
+    #
+    # A rename is looked up under both names. The VM's locker run - rewrite,
+    # then rename to *.locked - detected 20 of 20 and correlated 0 of 20,
+    # because the only audited write was on the old name and the lookup asked
+    # about the new one; the rename itself is not a WriteData/AppendData access,
+    # so there is no record for it and `parse_4663` is right to drop one. Asking
+    # about both also counts a writer of *either* name as a competitor, so a file
+    # renamed over one somebody else had just written is not CERTAIN.
     if event["suspicious"]:
+        also = (renamed_from,) if renamed_from else ()
         first = attributor.resolve(
             path,
             observed_at=observed_at,
             read_at=read_at,
             horizon_from=read_mono,
             deadline=started + attribution.GRACE_MS / 1000.0,
+            also=also,
         )
         # A first answer that already authorises a kill (a source with no
         # delivery lag) is held to the same identity check as an escalation.
         first, _ = attributor.verify(first)
         event.update(first.as_event_fields())
         if PIPELINE_ENABLED and attributor.should_park(first):
-            _remember_anchor(event["event_id"], path, observed_at, read_at, read_mono, first)
+            _remember_anchor(event["event_id"], path, observed_at, read_at, read_mono, first, also)
 
     first_sighting = _record(event)
 
@@ -836,8 +856,10 @@ class MonitorHandler(FileSystemEventHandler):
             handle_event(event.src_path, "modified")
 
     def on_moved(self, event):
+        # Both names. The new one is what the event is about; the old one is
+        # where a rewrite-then-rename attack's audited write is (handle_event).
         if not event.is_directory:
-            handle_event(event.dest_path, "renamed")
+            handle_event(event.dest_path, "renamed", renamed_from=event.src_path)
 
     def on_deleted(self, event):
         if not event.is_directory:

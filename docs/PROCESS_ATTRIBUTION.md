@@ -258,6 +258,7 @@ is defined is not provable where it is enforced.
 |---|---|---|
 | `services/monitor/tests/test_tc26_attribution.py` | 28 | confidence ladder, 4663 parser, path normalisation, window expiry, self-exclusion, grace-period race, pipeline gate, bounded buffer, lookup cost |
 | `services/monitor/tests/test_attribution_delivery_lag.py` | 49 | event-time matching, pending until the horizon, stale records, competing and late writers, eviction, TimeCreated parsing, records delivered 0/300/1000/1600 ms late (real time), two writers never certain, identity at escalation (exited, reused, unverifiable), the escalation block, end to end through `handle_event` |
+| `services/monitor/tests/test_rename_attribution.py` | 10 | a rename is looked up under both names (defect 2): write-then-rename by one process is certain, two writers under either name are not, `renamed_from` in the event and on the chain, the VM's locker shape escalating in real time |
 | `services/response/tests/test_tc26_kill_guard.py` | 11 | reserved PIDs, self and ancestors, name denylist, location guard, lookalike paths, unreadable-image residual |
 | `services/response/recovery/tests/test_snapshot_paths.py` | 6 | verbatim-path separator behaviour, device-object joins, the Linux root left unchanged |
 
