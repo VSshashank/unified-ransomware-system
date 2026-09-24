@@ -98,16 +98,31 @@ powershell -ExecutionPolicy Bypass -File scripts/setup_attribution_audit.ps1 -Wa
 
 It enables the File System audit subcategory for Success, applies a
 `WriteData, AppendData` SACL **scoped to the watched directory** (a machine-wide
-rule floods the Security log), raises the Security log size, and then **writes a
-probe file and confirms a 4663 actually came back** — so a green run means the
-pipeline works, not that two commands returned zero.
+rule floods the Security log), raises the Security log size if it is smaller
+than asked for — it never lowers it — and then **writes a probe file and
+confirms a 4663 actually came back** within 4 s — so a green run means the
+pipeline works, not that two commands returned zero. Any failed check makes it
+exit non-zero.
+
+Before it changes anything it records what it found — the log size, the File
+System subcategory's settings, and which audit rights the path already had — in
+`%ProgramData%\URDS\attribution_audit_state.json` (`-StatePath` to move it).
+`-Revert` restores exactly that: it removes only the rights setup added, turns
+Success back off only if setup turned it on, lowers the log only back to the
+recorded size and only if nothing else has changed it since, and leaves both
+machine-wide settings alone until the last path it set up is reverted. With no
+state file it changes nothing and prints the manual steps (defect 5,
+`FIXES.md`).
 
 ```bash
-# check without changing anything
+# check without changing anything; also prints the recorded prior state
 powershell -File scripts/setup_attribution_audit.ps1 -WatchPath D:\watched_files -Verify
 
-# undo both steps
+# restore what setup recorded
 powershell -File scripts/setup_attribution_audit.ps1 -WatchPath D:\watched_files -Revert
+
+# its tests (Pester 3.4, inbox on Windows 10/11; everything that touches the machine is mocked)
+powershell -ExecutionPolicy Bypass -Command "Invoke-Pester scripts/tests"
 ```
 
 Then start the Monitor **from an elevated shell** — the subscription needs the
