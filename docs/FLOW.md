@@ -425,7 +425,11 @@ which writes it into its own `response_action` block.
   hash, and a back-pointer that does not match the real prior block (a deleted or
   reordered row). Stops at the first break and reports its id.
 - `get_blocks(...)` — paginated read with optional `event_type` / `file_path`
-  filters. The SQL `LIKE` is a prefilter; exact matching happens in Python.
+  filters. The SQL `LIKE` is a prefilter on the file's name; the match is made in
+  Python on a key derived from the stored `file_path`, so any spelling of one
+  file finds its blocks, rows stored before the Monitor normalised paths
+  included (`path_keys.py`, defect 4 in `FIXES.md`). Paging and `total` count
+  matches.
 
 ### `main.py` (151 lines)
 

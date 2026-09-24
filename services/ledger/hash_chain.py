@@ -23,8 +23,8 @@ from database import (
     connect,
     create_tables,
     decode_event_data,
-    json_fragment,
 )
+from path_keys import path_key, prefilter, same_file
 
 _BLOCK_COLUMNS = "id, timestamp, event_type, event_data, previous_hash, current_hash"
 
@@ -32,11 +32,6 @@ _BLOCK_COLUMNS = "id, timestamp, event_type, event_data, previous_hash, current_
 def utc_now() -> str:
     """UTC timestamp, ISO-8601 with a Z suffix (matches the other services)."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _like_escape(value: str) -> str:
-    """Escape LIKE wildcards so a path containing % or _ can't widen the match."""
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class HashChainLedger:
@@ -175,6 +170,11 @@ class HashChainLedger:
         Defaults are the plain paginated read the dashboard needs. The optional
         filters exist so recovery can find "the last block about this path"
         in one call instead of paging the whole chain over HTTP.
+
+        `file_path` matches the file in any spelling - separators, case on a
+        Windows path, `.` and `..` - including rows stored before the Monitor
+        normalised paths. path_keys.py has the policy, and why the match is
+        computed from the hashed `event_data` rather than kept in a column.
         """
         clauses: list[str] = []
         params: list[Any] = []
@@ -184,37 +184,57 @@ class HashChainLedger:
             params.append(event_type)
 
         if file_path:
-            # Canonical JSON has no spaces, so this substring is a tight
-            # prefilter. Exact matching still happens in Python below.
-            # JSON-encode first (backslashes get doubled), then escape for LIKE.
+            # A prefilter on the file's name, the one part every spelling
+            # shares; `same_file` below decides. JSON-encoded, then escaped for
+            # LIKE, so a name containing % or _ cannot widen it.
             clauses.append("event_data LIKE ? ESCAPE '\\'")
-            params.append(f'%"file_path":"{_like_escape(json_fragment(file_path))}"%')
+            params.append(prefilter(file_path))
 
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         order = "DESC" if newest_first else "ASC"
 
-        total = self.conn.execute(
-            f"SELECT COUNT(*) AS n FROM blocks{where}", params
-        ).fetchone()["n"]
+        if not file_path:
+            total = self.conn.execute(
+                f"SELECT COUNT(*) AS n FROM blocks{where}", params
+            ).fetchone()["n"]
 
+            rows = self.conn.execute(
+                f"SELECT {_BLOCK_COLUMNS} FROM blocks{where} ORDER BY id {order} LIMIT ? OFFSET ?",
+                (*params, limit, offset),
+            ).fetchall()
+
+            blocks = [self._row_to_block(row) for row in rows]
+            return {"blocks": blocks, "total": total, "offset": offset, "limit": limit}
+
+        # The page is cut *after* matching, and `total` counts matches. This used
+        # to apply LIMIT/OFFSET to the prefilter and then the exact comparison,
+        # so a page could come back short and `total` counted rows the
+        # comparison then dropped - rare while the prefilter was the exact
+        # spelling, routine now that it is only the name.
+        key = path_key(file_path)
         rows = self.conn.execute(
-            f"SELECT {_BLOCK_COLUMNS} FROM blocks{where} ORDER BY id {order} LIMIT ? OFFSET ?",
-            (*params, limit, offset),
+            f"SELECT {_BLOCK_COLUMNS} FROM blocks{where} ORDER BY id {order}", params
         ).fetchall()
 
-        blocks = [self._row_to_block(row) for row in rows]
-        if file_path:
-            blocks = [b for b in blocks if b["event_data"].get("file_path") == file_path]
+        blocks: list[dict] = []
+        total = 0
+        for row in rows:
+            event_data = decode_event_data(row["event_data"])
+            if not same_file(event_data.get("file_path"), key):
+                continue
+            if offset <= total < offset + limit:
+                blocks.append(self._row_to_block(row, event_data))
+            total += 1
 
         return {"blocks": blocks, "total": total, "offset": offset, "limit": limit}
 
     @staticmethod
-    def _row_to_block(row: sqlite3.Row) -> dict:
+    def _row_to_block(row: sqlite3.Row, event_data: Optional[dict] = None) -> dict:
         return {
             "block_id": row["id"],
             "timestamp": row["timestamp"],
             "event_type": row["event_type"],
-            "event_data": decode_event_data(row["event_data"]),
+            "event_data": decode_event_data(row["event_data"]) if event_data is None else event_data,
             "previous_hash": row["previous_hash"],
             "current_hash": row["current_hash"],
             "blockchain_anchor": None,  # Phase 5

@@ -238,6 +238,32 @@ class MonitorStartRequest(BaseModel):
     file_patterns: list[str] = Field(default_factory=list)
 
 
+def normalise_path(path: str) -> str:
+    """The one spelling of a path this service stores - defect 4.
+
+    `os.path.normpath` of the absolute path: the platform's own separator, no
+    `.` or `..`, no doubled or trailing separator. The Windows integration VM
+    stored `C:/URDS-main/watched_files\\tc01\\file.docx` - the watch path had been
+    posted with forward slashes and watchdog joins with backslashes - and the
+    ledger's lookup matched that spelling only, so recovery asked about the
+    spelling anyone would type and verified nothing. Applied to the watch path
+    in `start_monitoring` and to every path in `handle_event`, so the events,
+    the chain and `/monitor/status` all carry the same form.
+
+    Case policy on Windows: case is kept as given - the operator's spelling of
+    the watch path, the filesystem's for the names below it - and never folded
+    here. The stored path is evidence an operator reads beside Explorer, and a
+    directory can be made case-sensitive (fsutil setCaseSensitiveInfo, which
+    WSL uses), where folding would merge two real files into one name.
+    Comparing two spellings is the reader's job, and it is done
+    case-insensitively for Windows paths: services/ledger/path_keys.py.
+
+    Not `realpath`: that resolves junctions, symlinks and subst drives, and
+    would record a path the operator never gave.
+    """
+    return os.path.normpath(os.path.abspath(path))
+
+
 def matches_patterns(path: str, patterns: list[str]) -> bool:
     """True when `path` is one the caller asked to watch.
 
@@ -423,6 +449,12 @@ def handle_event(
     # moment the change was reported - and not against whenever it gets round to
     # looking. See attribution.WriteLog.lookup.
     observed_at = time()
+
+    # One spelling for everything downstream (normalise_path). Watchdog's own
+    # paths are already in it once the watch path is; a direct caller's may not be.
+    path = normalise_path(path)
+    if renamed_from:
+        renamed_from = normalise_path(renamed_from)
 
     # The caller asked for a subset of files. Applied here rather than at the
     # watchdog layer so it covers deletions and renames too, and so the filtered
@@ -998,7 +1030,11 @@ def start_monitoring(payload: MonitorStartRequest) -> JSONResponse:
     global _observer, _monitor_id, _watch_path, STARTED_AT, _observer_backend, _observer_reason
     global _file_patterns
 
-    if not os.path.isdir(payload.watch_path):
+    # Normalised before anything uses it: watchdog builds every event path from
+    # this prefix, so this is where one spelling for the whole run starts.
+    watch_path = normalise_path(payload.watch_path)
+
+    if not os.path.isdir(watch_path):
         return JSONResponse(
             status_code=400,
             content=build_error(
@@ -1015,13 +1051,13 @@ def start_monitoring(payload: MonitorStartRequest) -> JSONResponse:
     _ensure_worker()
     _lanes.start()
 
-    _observer, _observer_backend, _observer_reason = build_observer(payload.watch_path)
-    _observer.schedule(MonitorHandler(), payload.watch_path, recursive=payload.recursive)
+    _observer, _observer_backend, _observer_reason = build_observer(watch_path)
+    _observer.schedule(MonitorHandler(), watch_path, recursive=payload.recursive)
     _observer.start()
-    logger.info("watching %s with the %s backend: %s", payload.watch_path, _observer_backend, _observer_reason)
+    logger.info("watching %s with the %s backend: %s", watch_path, _observer_backend, _observer_reason)
 
     _monitor_id = f"mon_{uuid4().hex[:6]}"
-    _watch_path = payload.watch_path
+    _watch_path = watch_path
     _file_patterns = list(payload.file_patterns)
     STARTED_AT = time()
 
