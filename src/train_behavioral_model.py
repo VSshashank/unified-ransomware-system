@@ -48,6 +48,10 @@ services/ml-engine/features.py and has to be kept in step with FEATURE_NAMES
 below - it is checked by test_feature_contract in the ml-engine suite.
 
     python src/train_behavioral_model.py
+
+writes models/behavioral_model.pkl and models/behavioral_model_metrics.json.
+The committed reports/behavioral_model_metrics.json is rewritten only with
+URDS_WRITE_REPORTS=1 - see write_metrics.
 """
 
 import json
@@ -327,7 +331,6 @@ def per_kind_accuracy(kinds: list[str], y_true: np.ndarray, y_pred: np.ndarray) 
 
 def main() -> int:
     MODEL_DIR.mkdir(exist_ok=True)
-    REPORTS_DIR.mkdir(exist_ok=True)
 
     print("Building synthetic corpus (structurally valid containers + forgeries)...")
     X, y, kinds = build_corpus()
@@ -391,14 +394,35 @@ def main() -> int:
     metrics["trained_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     joblib.dump(model, MODEL_DIR / "behavioral_model.pkl")
-    payload = json.dumps(metrics, indent=2)
-    # models/ is the directory mounted into the ML container, so the metrics go
-    # there as well as reports/ - otherwise /model/metrics has nothing to read.
-    (MODEL_DIR / "behavioral_model_metrics.json").write_text(payload)
-    (REPORTS_DIR / "behavioral_model_metrics.json").write_text(payload)
+    written = write_metrics(json.dumps(metrics, indent=2))
     print(f"\nModel  -> {MODEL_DIR / 'behavioral_model.pkl'}")
-    print(f"Metrics -> {MODEL_DIR / 'behavioral_model_metrics.json'} (+ reports/)")
+    for path in written:
+        print(f"Metrics -> {path}")
+    if len(written) == 1:
+        print("URDS_WRITE_REPORTS is not set: reports/behavioral_model_metrics.json left as committed")
     return 0
+
+
+def write_metrics(payload: str, model_dir: Path = MODEL_DIR, reports_dir: Path = REPORTS_DIR) -> list[Path]:
+    """Write the metrics where the ML engine reads them, and nowhere tracked unless asked.
+
+    models/ is the directory mounted into the ML container, and the engine reads
+    its metrics there first, so that copy is always written - otherwise
+    /model/metrics has nothing to read. reports/behavioral_model_metrics.json is
+    committed evidence: TC-21 and the engine's fallback read it. Every run used
+    to rewrite it, so a plain retrain left a diff in a tracked file that anyone
+    could commit by accident (defect 8 of the Windows integration test; the VM
+    checkout had exactly that diff). It is now written only under
+    URDS_WRITE_REPORTS=1, the rule every benchmark here already follows.
+    """
+    model_dir.mkdir(exist_ok=True)
+    written = [model_dir / "behavioral_model_metrics.json"]
+    written[0].write_text(payload)
+    if os.getenv("URDS_WRITE_REPORTS", "").lower() in {"1", "true", "yes"}:
+        reports_dir.mkdir(exist_ok=True)
+        (reports_dir / "behavioral_model_metrics.json").write_text(payload)
+        written.append(reports_dir / "behavioral_model_metrics.json")
+    return written
 
 
 if __name__ == "__main__":

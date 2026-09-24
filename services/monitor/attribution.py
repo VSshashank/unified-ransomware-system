@@ -946,6 +946,14 @@ class AttributionSource:
         }
 
 
+#: What an Attributor says before any source has been started. The module-level
+#: one is built at import and gets its real source from POST /monitor/start, so
+#: until then /monitor/attribution used to report "no attribution source
+#: configured" - read on the VM as a configuration fault on a host that was
+#: configured correctly and simply not yet watching (defect 8).
+NOT_STARTED = "not started yet: correlation starts with monitoring (POST /monitor/start)"
+
+
 class NullSource(AttributionSource):
     """No attribution available. Every lookup returns UNKNOWN.
 
@@ -1166,7 +1174,7 @@ class Attributor:
         clock: Callable[[], float] | None = None,
     ) -> None:
         self.log = log if log is not None else WriteLog()
-        self.source = source if source is not None else NullSource(self.log)
+        self.source = source if source is not None else NullSource(self.log, NOT_STARTED)
         self.probe = probe if probe is not None else probe_process
         #: The horizon clock: what "has the horizon closed yet" is asked of.
         #: Monotonic by default, and the same one the write log stamps
