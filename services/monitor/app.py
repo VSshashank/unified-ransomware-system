@@ -10,8 +10,11 @@
 Watchdog delivers filesystem events on its own thread. Classification happens
 inline there - it is a couple of reads and a counter, and the detection-latency
 target is measured from the moment the event arrives to the moment the verdict
-exists. The downstream fan-out (ML, ledger, response) is handed to a worker
-thread so a slow ledger cannot stall the watcher.
+exists. Correlation (which process wrote it) runs on path-sharded lanes, not on
+that thread: waiting for an audit record there serialised a 20-file burst into
+one grace period per file (dispatch.py). The downstream fan-out (ML, ledger,
+response) is handed to a worker thread so a slow ledger cannot stall the
+watcher.
 """
 
 import logging
@@ -35,6 +38,7 @@ from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
 
 import attribution
+import dispatch
 import pipeline
 from admissibility import adjudicate
 from attribution import attributor, build_source
@@ -166,6 +170,12 @@ _PENDING_LOCK = threading.Lock()
 # twenty ML calls without missing the 2 s budget.
 _escalations: queue.Queue = queue.Queue()
 _escalator: threading.Thread | None = None
+
+# Correlation - the first attribution look and the hand-off to `_work` - runs
+# on these, sharded by path, not on the watchdog observer thread. Started with
+# the watch and drained when it stops. See dispatch.py for what this cost when
+# it ran inline, measured, and for what "a full lane" does instead of dropping.
+_lanes = dispatch.CorrelationLanes()
 
 _observer_backend: str = "none"
 _observer_reason: str = ""
@@ -373,11 +383,30 @@ def extract_features(path: str) -> dict:
     }
 
 
-def handle_event(path: str, event_type: str, renamed_from: str | None = None) -> dict | None:
+def handle_event(
+    path: str,
+    event_type: str,
+    renamed_from: str | None = None,
+    lanes: dispatch.CorrelationLanes | None = None,
+) -> dict | None:
     """Classify one filesystem event and record it.
 
-    Detection latency is measured over exactly this function: from the event
-    arriving to a verdict existing. Target is under 100ms.
+    Detection latency is measured over exactly the classification part of this
+    function: from the event arriving to a verdict existing. Target is under
+    100ms. It excludes, by design, every queue the event passes through - the
+    time watchdog held it before calling here, the correlation lane, and the
+    pipeline queue - and the attribution wait. Those are reported beside it:
+    `observed_at` (when watchdog handed the event over), `queue_wait_ms` (how
+    long it waited for a correlation lane) and `response_dispatched_at` (when
+    the pipeline asked the Response service to act). The VM's 20-file burst
+    reported 2-17 ms here while its last event was stamped 4.77 s after its
+    write; the new fields are what show that kind of gap.
+
+    `lanes`: when given (the watchdog handler passes the running ones),
+    correlation for a suspicious event is queued on the lane that owns `path`
+    and this returns without waiting for it. When not given - a direct call, as
+    every test makes - correlation runs here before returning, so the returned
+    event is complete.
 
     `renamed_from` is the old name when the event is a rename. The event is
     about the file at `path` - that is what is classified, recorded and
@@ -413,6 +442,7 @@ def handle_event(path: str, event_type: str, renamed_from: str | None = None) ->
             "verdict": "deleted",
             "reason": "file removed",
             "timestamp": utc_now(),
+            "observed_at": attribution.iso_utc(observed_at),
             # None, not os.getpid(). This used to stamp the *Monitor's own* PID
             # on every deletion it observed, with no confidence beside it - a
             # wrong answer in the shape of a right one, in the field whose whole
@@ -576,6 +606,16 @@ def handle_event(path: str, event_type: str, renamed_from: str | None = None) ->
         "entropy_delta": entropy_delta,
         **statistics,
         "timestamp": utc_now(),
+        # When watchdog handed this event over. `timestamp` is when the verdict
+        # was recorded; the gap between the two is watchdog's own delivery, and
+        # `detection_latency_ms` covers neither.
+        "observed_at": attribution.iso_utc(observed_at),
+        # How long correlation waited for its lane; None when there was nothing
+        # to correlate (the event is not suspicious). 0.0 when it ran inline.
+        "queue_wait_ms": None,
+        # When the pipeline sent this incident's first response request; None
+        # until it has (and for events that never need one).
+        "response_dispatched_at": None,
         # watchdog reports *what* changed, never *who* changed it. The answer
         # comes from `attribution`, and it is filled in below rather than here
         # because resolving it may wait for an audit record still in flight.
@@ -591,43 +631,10 @@ def handle_event(path: str, event_type: str, renamed_from: str | None = None) ->
     }
     event["detection_latency_ms"] = round((perf_counter() - started) * 1000, 3)
 
-    # Attribution runs *after* the latency measurement, deliberately. Waiting
-    # for the Security channel to deliver a 4663 is response-budget work;
-    # charging it to Table 5.9's <100ms detection target would turn that target
-    # into a measurement of the event log's delivery lag.
-    #
-    # This is the *first* answer. Against a channel that delivers ~1 s late it is
-    # almost always pending: it drives the non-destructive response now, and the
-    # question stays open until the delivery horizon closes (`_open_question`).
-    # The grace is charged from when the event was observed, not from here.
-    #
-    # A rename is looked up under both names. The VM's locker run - rewrite,
-    # then rename to *.locked - detected 20 of 20 and correlated 0 of 20,
-    # because the only audited write was on the old name and the lookup asked
-    # about the new one; the rename itself is not a WriteData/AppendData access,
-    # so there is no record for it and `parse_4663` is right to drop one. Asking
-    # about both also counts a writer of *either* name as a competitor, so a file
-    # renamed over one somebody else had just written is not CERTAIN.
+    # Correlation runs *after* the latency measurement, deliberately, and off
+    # this thread when the caller gave it lanes. See `_correlate`.
+    job = None
     if event["suspicious"]:
-        also = (renamed_from,) if renamed_from else ()
-        first = attributor.resolve(
-            path,
-            observed_at=observed_at,
-            read_at=read_at,
-            horizon_from=read_mono,
-            deadline=started + attribution.GRACE_MS / 1000.0,
-            also=also,
-        )
-        # A first answer that already authorises a kill (a source with no
-        # delivery lag) is held to the same identity check as an escalation.
-        first, _ = attributor.verify(first)
-        event.update(first.as_event_fields())
-        if PIPELINE_ENABLED and attributor.should_park(first):
-            _remember_anchor(event["event_id"], path, observed_at, read_at, read_mono, first, also)
-
-    first_sighting = _record(event)
-
-    if verdict["suspicious"] and suppression is None and PIPELINE_ENABLED:
         features = {
             "shannon_entropy": entropy,
             "file_size": size,
@@ -638,8 +645,26 @@ def handle_event(path: str, event_type: str, renamed_from: str | None = None) ->
             "ransom_extension": verdict["ransom_extension"],
             **statistics,
         }
-        _work.put(("detection", event, features, verdict))
-    elif BASELINE_LOGGING_ENABLED and PIPELINE_ENABLED and first_sighting and file_hash and not verdict["suspicious"]:
+        event.update(
+            attribution_reason="pending: queued for correlation",
+            attribution_pending=True,
+        )
+
+        def job(queue_wait_ms: float) -> None:
+            _correlate(
+                event, features, verdict, path, renamed_from,
+                observed_at, read_at, read_mono, started, queue_wait_ms,
+            )
+
+    first_sighting = _record(event)
+
+    if job is not None:
+        if lanes is not None:
+            lanes.submit(path, job)
+        else:
+            job(0.0)
+
+    if BASELINE_LOGGING_ENABLED and PIPELINE_ENABLED and first_sighting and file_hash and not verdict["suspicious"]:
         # The first time this path is seen and found benign, record what it
         # hashed to. This is the reference value recovery verifies a restored
         # file against; without it the integrity check has nothing trustworthy
@@ -669,6 +694,62 @@ def handle_event(path: str, event_type: str, renamed_from: str | None = None) ->
         _work.put(("governance", event))
 
     return event
+
+
+def _correlate(
+    event: dict,
+    features: dict,
+    verdict: dict,
+    path: str,
+    renamed_from: str | None,
+    observed_at: float,
+    read_at: float,
+    read_mono: float,
+    started: float,
+    queue_wait_ms: float,
+) -> None:
+    """The first attribution look for one suspicious event, then the hand-off.
+
+    Runs on the lane that owns the event's path (or inline, for a direct call).
+    Attribution is response-budget work: waiting for the Security channel to
+    deliver a 4663 is not detection, and charging it to Table 5.9's <100ms
+    detection target would turn that target into a measurement of the event
+    log's delivery lag.
+
+    This is the *first* answer. Against a channel that delivers ~1 s late it is
+    almost always pending: it drives the non-destructive response now, and the
+    question stays open until the delivery horizon closes (`_open_question`).
+    The grace is charged from when the event was *observed* - `started` is the
+    observation on the performance counter - so an event that waited in its
+    lane has already spent that much of it.
+
+    A rename is looked up under both names. The VM's locker run - rewrite, then
+    rename to *.locked - detected 20 of 20 and correlated 0 of 20, because the
+    only audited write was on the old name and the lookup asked about the new
+    one; the rename itself is not a WriteData/AppendData access, so there is no
+    record for it and `parse_4663` is right to drop one. Asking about both also
+    counts a writer of *either* name as a competitor, so a file renamed over one
+    somebody else had just written is not CERTAIN.
+    """
+    also = (renamed_from,) if renamed_from else ()
+    first = attributor.resolve(
+        path,
+        observed_at=observed_at,
+        read_at=read_at,
+        horizon_from=read_mono,
+        deadline=started + attribution.GRACE_MS / 1000.0,
+        also=also,
+    )
+    # A first answer that already authorises a kill (a source with no delivery
+    # lag) is held to the same identity check as an escalation.
+    first, _ = attributor.verify(first)
+    with _LOCK:
+        event.update(first.as_event_fields())
+        event["queue_wait_ms"] = round(queue_wait_ms, 3)
+    if PIPELINE_ENABLED and attributor.should_park(first):
+        _remember_anchor(event["event_id"], path, observed_at, read_at, read_mono, first, also)
+    if PIPELINE_ENABLED:
+        _work.put(("detection", event, features, verdict))
 
 
 def _record(event: dict) -> bool:
@@ -719,6 +800,8 @@ def _run_detection(client: httpx.Client, event: dict, features: dict, verdict: d
             event["threat_level"] = outcome["prediction"].get("threat_level")
         if outcome.get("incident_id"):
             event["incident_id"] = outcome["incident_id"]
+        if outcome.get("response_dispatched_at"):
+            event["response_dispatched_at"] = outcome["response_dispatched_at"]
     # Opened only now, after the non-destructive response has gone out and the
     # incident has an ID: the escalation is a second action on the same
     # incident, and its ledger block must come after the first one's.
@@ -847,19 +930,21 @@ def _ensure_worker() -> None:
 
 
 class MonitorHandler(FileSystemEventHandler):
+    """Runs on watchdog's observer thread, so it hands correlation to the lanes."""
+
     def on_created(self, event):
         if not event.is_directory:
-            handle_event(event.src_path, "created")
+            handle_event(event.src_path, "created", lanes=_lanes)
 
     def on_modified(self, event):
         if not event.is_directory:
-            handle_event(event.src_path, "modified")
+            handle_event(event.src_path, "modified", lanes=_lanes)
 
     def on_moved(self, event):
         # Both names. The new one is what the event is about; the old one is
-        # where a rewrite-then-rename attack's audited write is (handle_event).
+        # where a rewrite-then-rename attack's audited write is (_correlate).
         if not event.is_directory:
-            handle_event(event.dest_path, "renamed", renamed_from=event.src_path)
+            handle_event(event.dest_path, "renamed", renamed_from=event.src_path, lanes=_lanes)
 
     def on_deleted(self, event):
         if not event.is_directory:
@@ -899,6 +984,7 @@ def start_monitoring(payload: MonitorStartRequest) -> JSONResponse:
         _observer.join(timeout=5)
 
     _ensure_worker()
+    _lanes.start()
 
     _observer, _observer_backend, _observer_reason = build_observer(payload.watch_path)
     _observer.schedule(MonitorHandler(), payload.watch_path, recursive=payload.recursive)
@@ -959,6 +1045,9 @@ def stop_monitoring(payload: MonitorStopRequest | None = None) -> JSONResponse:
         _observer.stop()
         _observer.join(timeout=5)
         _observer = None
+    # After the observer, so nothing new arrives; finishing what is queued
+    # means every detection already seen still gets its response.
+    _lanes.stop(timeout=5)
 
     stopped = _monitor_id
     _monitor_id = None
@@ -1000,6 +1089,10 @@ def monitor_status() -> dict:
         # otherwise.
         "attribution_available": attributor.available,
         "attribution_source": attributor.source.name,
+        # The correlation lanes: how deep they got, how long jobs waited, and
+        # how many ran inline because a lane was full. A burst that backs up
+        # shows here rather than as silently late responses.
+        "correlation": _lanes.stats(),
     }
 
 

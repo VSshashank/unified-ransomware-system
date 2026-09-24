@@ -326,7 +326,14 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
     owns_client = client is None
     client = client or httpx.Client(timeout=DOWNSTREAM_TIMEOUT)
     result = PipelineResult(
-        {"prediction": None, "ledger_block": None, "response": None, "stages": [], "incident_id": None}
+        {
+            "prediction": None,
+            "ledger_block": None,
+            "response": None,
+            "stages": [],
+            "incident_id": None,
+            "response_dispatched_at": None,
+        }
     )
 
     try:
@@ -403,6 +410,11 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
         if threat_level in ACTIONABLE_THREAT_LEVELS:
             incident_id = f"inc_{(block or {}).get('block_id', 'na')}_{event.get('event_id', 'na')}"
             result["incident_id"] = incident_id
+            # When the response was *asked for* - the end of everything the
+            # Monitor controls. With `observed_at` on the event, the gap between
+            # the two is the whole queue-and-fan-out delay that
+            # `detection_latency_ms` deliberately does not include.
+            result["response_dispatched_at"] = utc_now()
             response = trigger_response(
                 client,
                 incident_id,

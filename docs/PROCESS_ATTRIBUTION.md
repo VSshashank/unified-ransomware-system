@@ -164,8 +164,11 @@ measurement of 4663 delivery: 35 writes, min 390 ms, median 1000 ms, max 1032 ms
 
 ```
 watchdog  ──▶  detection  ──▶  detection_latency_ms recorded
-                                        │
+(observer thread)                       │
                                         ▼               suspicious only
+                         correlation lane (dispatch.py), sharded by path
+                                        │   queue_wait_ms
+                                        ▼
                          first look: attribution.resolve(path,
                              observed_at, read_at)  - no waiting by default
                                         │
@@ -196,6 +199,21 @@ Waiting for the Security channel is response-budget work; charging it to Table
 5.9's <100 ms detection target would turn that target into a measurement of the
 event log's delivery lag. A non-suspicious event never asks at all, so the
 common path costs nothing.
+
+**And not on the watchdog thread** (defect 3, `FIXES.md`). Watchdog delivers
+every event on one observer thread, and the first look used to run there, so a
+wait for an audit record held the only thread that consumes events. The VM's
+locker family made 20 changes in about 0.1 s; their detections were stamped
+about one 250 ms grace apart, the last at least 4.77 s after its write, while
+`detection_latency_ms` reported 2–17 ms. The first look and the hand-off to the
+fan-out now run on four path-sharded correlation lanes
+(`services/monitor/dispatch.py`, ported from `agent/dispatch.py` on
+fix/evidence-integrity), so one file's events are still handed on in order. A
+full lane runs the job inline rather than drop a detection, and the grace is
+charged from the observation, so time spent queued is not paid twice. Each event
+now carries what `detection_latency_ms` leaves out: `observed_at`,
+`queue_wait_ms`, `response_dispatched_at` and `attribution_wait_overrun_ms`.
+`/monitor/status` reports the lanes under `correlation`.
 
 ### The race, and the delivery horizon
 
@@ -251,7 +269,9 @@ deliberate.
 
 ## 6. Evidence
 
-**39 tests**, in two services because the gate has two ends — provable where it
+**39 tests** when attribution was added (the first and last rows below; the rows
+between them came with the integration-test fixes in `FIXES.md`), in two
+services because the gate has two ends — provable where it
 is defined is not provable where it is enforced.
 
 | File | Tests | Covers |
@@ -259,6 +279,7 @@ is defined is not provable where it is enforced.
 | `services/monitor/tests/test_tc26_attribution.py` | 28 | confidence ladder, 4663 parser, path normalisation, window expiry, self-exclusion, grace-period race, pipeline gate, bounded buffer, lookup cost |
 | `services/monitor/tests/test_attribution_delivery_lag.py` | 49 | event-time matching, pending until the horizon, stale records, competing and late writers, eviction, TimeCreated parsing, records delivered 0/300/1000/1600 ms late (real time), two writers never certain, identity at escalation (exited, reused, unverifiable), the escalation block, end to end through `handle_event` |
 | `services/monitor/tests/test_rename_attribution.py` | 10 | a rename is looked up under both names (defect 2): write-then-rename by one process is certain, two writers under either name are not, `renamed_from` in the event and on the chain, the VM's locker shape escalating in real time |
+| `services/monitor/tests/test_correlation_lanes.py` | 17 | correlation off the watchdog thread (defect 3): 20 suspicious events in 50 ms against a source that never answers finish inside one grace plus margin, on four lanes or one; per-path order; a full lane runs inline instead of dropping; `observed_at`, `queue_wait_ms`, `response_dispatched_at`, the overrun measurement |
 | `services/response/tests/test_tc26_kill_guard.py` | 11 | reserved PIDs, self and ancestors, name denylist, location guard, lookalike paths, unreadable-image residual |
 | `services/response/recovery/tests/test_snapshot_paths.py` | 6 | verbatim-path separator behaviour, device-object joins, the Linux root left unchanged |
 

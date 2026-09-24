@@ -280,6 +280,12 @@ class Attribution:
     #: The matched record's own TimeCreated, and when it reached the log.
     written_at: float | None = None
     delivered_at: float | None = None
+    #: How far past its deadline the wait actually returned. Counted from the
+    #: deadline, or from when the wait began if the deadline had already passed
+    #: by then - time spent queued before that is `queue_wait_ms`, not this. The
+    #: VM's reboot run saw a 250 ms grace come back after 766 ms with no way to
+    #: tell why (monitor/dispatch.py); this is the number that would have said so.
+    wait_overrun_ms: float = 0.0
 
     @property
     def kill_authorised(self) -> bool:
@@ -301,6 +307,7 @@ class Attribution:
             "attribution_source": self.source,
             "attribution_candidates": list(self.candidates),
             "attribution_waited_ms": round(self.waited_ms, 3),
+            "attribution_wait_overrun_ms": round(self.wait_overrun_ms, 3),
             # Whether the question was left open. A pending first answer is
             # followed, one horizon later, by an `attribution_escalation` block
             # with the same incident ID.
@@ -1268,7 +1275,12 @@ class Attributor:
             # A PROBABLE answer is already evidence; waiting longer can only add
             # more writers to the same path and make it less certain, not more.
             if answer.confidence != UNKNOWN or now >= until:
-                return replace(answer, waited_ms=max(0.0, (now - started) * 1000.0))
+                overrun_ms = max(0.0, now - max(until, started)) * 1000.0 if now >= until else 0.0
+                return replace(
+                    answer,
+                    waited_ms=max(0.0, (now - started) * 1000.0),
+                    wait_overrun_ms=overrun_ms,
+                )
             self.log.wait_for_new(seen, min(until - now, POLL_MS / 1000.0))
 
     def should_park(self, answer: Attribution) -> bool:
