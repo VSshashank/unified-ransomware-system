@@ -170,6 +170,10 @@ _PENDING_LOCK = threading.Lock()
 # twenty ML calls without missing the 2 s budget.
 _escalations: queue.Queue = queue.Queue()
 _escalator: threading.Thread | None = None
+# Started from the request thread (with the worker) and, as a backstop, from
+# the pending thread when a question closes; one lock so they cannot both
+# start one.
+_ESCALATOR_LOCK = threading.Lock()
 
 # Correlation - the first attribution look and the hand-off to `_work` - runs
 # on these, sharded by path, not on the watchdog observer thread. Started with
@@ -902,10 +906,32 @@ def _escalate_loop() -> None:
 
 
 def _ensure_escalator() -> None:
+    """Start the escalation thread if it is not running.
+
+    `_ensure_worker` calls this when the watch starts. It used to be called
+    only when the first question *closed*, and the thread's first act is to
+    build its httpx.Client - an SSL context and the CA bundle - so the first
+    kill of every Monitor run paid for that construction after the delivery
+    horizon, on the one stretch of the path with a deadline. Traced in the end
+    to end test (test_e_a_fresh_writer...): the question closed at +1580 ms and
+    /response/terminate went out at +1767 ms, the 187 ms between them being
+    that construction; an untraced run of the same test missed the 2 s budget
+    at +2134 ms. On the same 4-vCPU host, loaded enough that the base commit's
+    own latency benchmarks were failing, eight constructions took 311-1545 ms
+    (median 735).
+
+    Started with the watch, the client is built while nothing is due: an
+    escalated kill cannot be due until one horizon after the first event. It
+    is still built on the new thread rather than here, so /monitor/start does
+    not wait for it - the gateway proxies that call with a 5 s timeout, and two
+    constructions at the loaded figures above would take most of it. The call
+    in `_on_question_closed` stays, as a backstop for a thread that died.
+    """
     global _escalator
-    if _escalator is None or not _escalator.is_alive():
-        _escalator = threading.Thread(target=_escalate_loop, name="monitor-escalation", daemon=True)
-        _escalator.start()
+    with _ESCALATOR_LOCK:
+        if _escalator is None or not _escalator.is_alive():
+            _escalator = threading.Thread(target=_escalate_loop, name="monitor-escalation", daemon=True)
+            _escalator.start()
 
 
 def _run_governance(client: httpx.Client, event: dict) -> None:
@@ -927,6 +953,9 @@ def _ensure_worker() -> None:
     if _worker is None or not _worker.is_alive():
         _worker = threading.Thread(target=_drain, name="monitor-pipeline", daemon=True)
         _worker.start()
+    # With the worker, when the watch starts, rather than when the first
+    # question closes - see _ensure_escalator for what that cost.
+    _ensure_escalator()
 
 
 class MonitorHandler(FileSystemEventHandler):

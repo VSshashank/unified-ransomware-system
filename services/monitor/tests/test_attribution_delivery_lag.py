@@ -27,12 +27,15 @@ under test, and the real sweeper thread is what has to close on time.
 from __future__ import annotations
 
 import os
+import queue
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
+import httpx
 import pytest
 
 MONITOR_DIR = Path(__file__).resolve().parents[1]
@@ -825,3 +828,64 @@ def test_e_a_record_that_never_arrives_leaves_the_incident_isolated_and_says_so(
     assert capture.posts("/response/terminate") == []
     (trigger,) = capture.posts("/response/trigger")
     assert trigger["action_required"] == "isolate_and_log"
+
+
+# ------------------------------------------ (f) nothing is built on the kill's path
+
+
+def test_f_the_escalation_client_is_built_with_the_worker_not_when_a_question_closes(monkeypatch):
+    """The first kill of a run used to pay for an HTTP client after the horizon.
+
+    The escalation thread was started - and built its httpx.Client - only when
+    the first question closed. Traced in test_e_a_fresh_writer...: 187 ms
+    between the close and /response/terminate; an untraced run missed the 2 s
+    budget at +2134 ms. Asserted here without a timing bound: the thread and
+    its client exist before any question closes, and closing one builds none.
+    """
+    # A queue and a thread of this test's own: an escalation thread an earlier
+    # test left running stays blocked on the old queue and never sees this one.
+    monkeypatch.setattr(monitor_app, "_escalations", queue.Queue())
+    monkeypatch.setattr(monitor_app, "_escalator", None)
+
+    built: list[tuple[str, object]] = []
+    real_client = httpx.Client
+
+    def counting_client(*args, **kwargs):
+        client = real_client(*args, **kwargs)
+        built.append((threading.current_thread().name, client))
+        return client
+
+    monkeypatch.setattr(httpx, "Client", counting_client)
+    used: list[tuple[str, object]] = []
+
+    def escalate(client, event, question, answer, outcome):
+        used.append((threading.current_thread().name, client))
+        return {"result": "not_escalated", "block": None, "record": {"response_dispatched_at": None}}
+
+    monkeypatch.setattr(pipeline, "escalate", escalate)
+
+    monitor_app._ensure_worker()  # what /monitor/start calls
+    escalator = monitor_app._escalator
+    try:
+        assert escalator is not None and escalator.is_alive()
+        # Its client is built on its own thread, now, while nothing is due -
+        # before this fix nothing was built here until a question closed.
+        deadline = time.monotonic() + 10.0
+        while not any(name == "monitor-escalation" for name, _ in built) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        (escalation_client,) = [client for name, client in built if name == "monitor-escalation"]
+        builds_before_close = len(built)
+
+        answer = attribution._unattributed("no record arrived before the horizon closed", source="test")
+        question = SimpleNamespace(context={"file_path": RANSOM}, first=answer)
+        monitor_app._on_question_closed(question, answer, "no_record")
+        monitor_app._escalations.join()
+
+        # Closing the question built nothing: the escalation ran on the thread
+        # started with the worker, with the client it built then.
+        assert len(built) == builds_before_close
+        assert used == [("monitor-escalation", escalation_client)]
+    finally:
+        monitor_app._escalations.put(None)
+        if escalator is not None:
+            escalator.join(timeout=5.0)
