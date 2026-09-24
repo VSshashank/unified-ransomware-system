@@ -1,4 +1,13 @@
-streamlit==1.41.1
+# streamlit 1.51.0, not 1.41.1: the lowest release whose metadata allows
+# Pillow 12. scripts/requirements.txt pins Pillow==12.3.0 on purpose - the
+# benign corpus's per-file hashes are hashes of that encoder's output - and
+# every streamlit from 1.41.1 through 1.50.0 requires `pillow<12`, so one venv
+# holding both failed to resolve (defect 7 of the Windows integration test).
+# Checked against PyPI's published requires_dist for all 40 releases from
+# 1.41.1 to 1.64.0: 1.51.0 is the first with `pillow<13,>=7.1.0`. Its other
+# bounds hold for every pin in this repository (numpy 2.5.1 <3, pandas 2.2.3
+# <3, watchdog 6.0.0 <7, requests 2.32.3 <3) and for python:3.11 (>=3.10).
+streamlit==1.51.0
 streamlit-autorefresh==1.0.1
 plotly==5.24.1
 requests==2.32.3

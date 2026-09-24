@@ -13,7 +13,7 @@ All six services are implemented. Nothing in `services/` is a stub any more.
 | Ledger | 8003 | SI | Real. SQLite hash chain with tamper detection; full-chain verification of 1,000 blocks measured at 3.1ms median (2.1–5.7ms over 50 warm runs) against a <50ms target. |
 | Response | 8004 | AS + SI | Real. AS owns terminate/isolate/trigger (psutil process termination, platform-aware network isolation); SI owns `recovery/` (VSS snapshots, restore, integrity verification). |
 | Gateway | 8000 | SH | Real. JWT auth, per-tier rate limiting, service proxies, and the `/analyze` orchestration. |
-| Dashboard | 8501 | SH | Real. Streamlit, 1s auto-refresh, live event feed and ledger evidence. |
+| Dashboard | 8501 | SH | Real. Streamlit, 1s auto-refresh, live event feed and ledger evidence. Streamlit pin raised to 1.51.0 so one environment can hold Pillow 12 — re-verification pending (`FIXES.md`, defect 7). |
 
 Two things are deliberately *not* real, and both say so at runtime rather than faking a result:
 
