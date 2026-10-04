@@ -1,9 +1,10 @@
 # Fixes from the Windows integration test
 
 Eight defects found by the Windows 11 VM integration test of commit `7dcee2a`,
-fixed on `fix/windows-integration-defects`, one commit per defect. Each entry
-says what changed, where, what tests it, and what can only be confirmed on the
-Windows test VM. Measured figures in the README and `reports/` are unchanged;
+fixed on `fix/windows-integration-defects`, one commit per defect, and two more
+found re-testing this branch on the same VM (9 and 10). Each entry says what
+changed, where, what tests it, and what can only be confirmed on the Windows
+test VM. Measured figures in the README and `reports/` are unchanged;
 claims they no longer describe are marked **re-verification pending**.
 
 | # | Defect | Commit(s) |
@@ -16,6 +17,8 @@ claims they no longer describe are marked **re-verification pending**.
 | 6 | `verify_vss.py --status-only` created a snapshot when elevated | `bd6006f` |
 | 7 | streamlit 1.41.1 vs the Pillow 12.3.0 pin | `fd24a9d` |
 | 8 | Attribution wording before start; training rewrote a tracked report | `8cef7bf` |
+| 9 | The Monitor's reads stopped other processes renaming or deleting a file | `805084f` |
+| 10 | Training mode timed its window and dwell on a slewed wall clock | `db8f38a` (test waits `529d872`) |
 
 ## The safety invariant
 
@@ -347,6 +350,90 @@ conflict; the dashboard is healthy.
 **Check on Windows:** `GET /monitor/attribution` before start shows the new
 wording; a retrain leaves `git status` clean.
 
+## 9. The Monitor's reads stopped anyone renaming or deleting the file
+
+Found re-testing this branch, 2026-10-04, while preparing the defect 2 re-check.
+
+**Measured:** a process writing a file in the watched tree and renaming it
+straight away failed 6 of 6 times with `PermissionError [WinError 32]` while the
+Monitor watched, and succeeded 6 of 6 times with the watch stopped. Python's
+`open` asks for `FILE_SHARE_READ | FILE_SHARE_WRITE` and not
+`FILE_SHARE_DELETE`, so while the Monitor held a just-written file open to
+sample and hash it, no other process could rename or delete it. That is what
+Office's save-to-temp-then-rename, editors' atomic saves and installers do,
+within milliseconds of the write the Monitor is reacting to.
+
+**What changed:** on Windows, `open_for_read` (`services/monitor/detection.py`)
+opens through `CreateFileW` with all three share modes and wraps the handle with
+`msvcrt.open_osfhandle`.
+- A rename or delete that lands mid-read leaves the read going on against the
+  same file.
+- Failures raise what `open` raised (`WinError` maps 32/33/5 to
+  `PermissionError`, 2/3 to `FileNotFoundError`), so the sharing-violation
+  retry and the directory refusal are unchanged.
+- The shared opener is bound to the module's name `open`: that is the seam
+  `test_detection.py`'s lock tests patch, and they pass unedited. POSIX keeps
+  the builtin; it has no share modes.
+- Residual: `pefile.PE(path)` in `pe_features.py` still opens with the builtin.
+  It runs only for on-demand `/features` analysis, not on file events.
+
+**Tests:** `services/monitor/tests/test_read_shares_delete.py` (6). Rename and
+delete while open fail on the old code; write-while-open, missing file,
+directory, and an exclusive lock retried then refused pass on both.
+
+**Verified live on the VM:** 20 of 20 write-then-rename by a separate process
+succeeded with the fixed Monitor watching, and all 20 renames were still
+detected as suspicious. Detection latency benchmark p95 37.8 ms, unchanged.
+
+## 10. Training mode timed its window and dwell on a slewed wall clock
+
+Found re-testing this branch, 2026-10-04.
+
+**Measured:** `test_suppression.py::test_a_file_that_has_dwelled_does_raise_a_ceiling`
+failed in two consecutive Monitor runs in a fresh venv (state `idle`, not
+`active`, after an 80 ms sleep against a 50 ms dwell), then passed 15 of 15 in
+each venv. The VM's wall clock is being slewed:
+
+| Clock | Rate against a pypi.org HTTP `Date`, 41 s |
+|---|---|
+| `time.time()` | 0.801x |
+| `time.perf_counter()` | 1.002x |
+| `time.monotonic()` | 1.002x |
+
+Over an earlier 60 s, `time.time()` gained 26.5 s on `perf_counter` (1.44x).
+Windows Time is not synchronising (source "Local CMOS Clock"); VirtualBox's
+guest time sync (`VBoxService`) steers the clock by changing its rate. No
+backward step was seen. Changing the VM's time sync is a machine setting and is
+out of scope.
+
+**What changed:** `TrainingMode` (`services/monitor/suppression.py`) times both
+of its durations, the window's expiry and each path's dwell, on
+`time.monotonic()`. Neither is reported as a time of day (`status` gives
+`seconds_remaining`).
+- At 0.62x or slower, the old code turned the 80 ms sleep into less than the
+  50 ms dwell, which is the failure above.
+- At 1.44x, a 60 s window closed after about 42 s, and the dwell that keeps a
+  poison write from raising a ceiling shrank by the same factor.
+- The Monitor's `observed_at`/`read_at` stay on the wall clock on purpose: they
+  are compared with 4663 `TimeCreated`, which is wall time. The delivery
+  horizon was already on `perf_counter`.
+
+**Tests:** `services/monitor/tests/test_training_mode_clock.py` (3) freezes the
+wall clock the module sees. All three fail on the old code.
+
+**Test-only follow-up, `529d872`:** five loops measured how long they had waited
+with `time.time()`: the live-watcher wait helpers in `test_api.py` (on `main`),
+`test_path_normalisation.py` and `test_attribution_delivery_lag.py` (this
+branch), the 5 s windows of the CPU and memory benchmarks, and one elapsed-time
+guard. They now use `time.monotonic()` (the guard, the `perf_counter` reading it
+already took). No assertion changed. Wall-clock values handed to the code under
+test stay on the wall clock.
+- Why: on this VM a 5 s wait on `time.time()` lasts about 3.5 to 6.25 s of real
+  time, and a forward step ends it at once.
+- `test_tc01_file_creation_on_the_watched_path_is_detected` failed once in
+  about 210 runs of its scenario on 2026-10-04, with the whole file finishing
+  in 2.7 s: too fast for the 5 s wait to have run out in real time.
+
 ## Suites
 
 Baseline at `7dcee2a` and after this branch, same venv (Python 3.12.10,
@@ -356,7 +443,7 @@ Windows 11, 4 vCPU), `URDS_WRITE_REPORTS` unset:
 |---|---|---|---|
 | gateway | 86 passed | 86 passed | — |
 | ledger | 67 passed | 99 passed | +32 (defect 4) |
-| monitor | 410 passed | 500 passed | +50 (1), +10 (2), +17 (3), +10 (4), +3 (8) |
+| monitor | 410 passed | 509 passed | +50 (1), +10 (2), +17 (3), +10 (4), +3 (8), +6 (9), +3 (10) |
 | ml-engine | 45 passed, 3 skipped | 50 passed, 3 skipped | +5 (8) |
 | response | 112 passed, 2 skipped | 121 passed, 2 skipped | +6 (4), +3 (6) |
 | claim matrix (`--tests`) | 0 failed | 0 failed | — |
@@ -390,3 +477,83 @@ that the **untouched base commit's own** latency benchmarks failed. Measured on
 
 Timing-bound tests on this branch were therefore compared against the base
 commit on the same host at the same time, not against yesterday's numbers.
+
+## Re-test on the Windows VM, 2026-10-04
+
+Same VM (Windows 11 build 26200, VirtualBox, 4 vCPU, 6 GB), quiet: no other
+test runs in parallel. The shell was not elevated, so the elevated half is a
+script for the operator (below).
+
+### Suites, first pass
+
+At `102c147` in `C:\URDS-main\.venv`, every suite passed on the first full
+pass; no re-run was needed: gateway 86, ledger 99, monitor 500, ml-engine 50
+(3 skipped), response 121 (2 skipped), claim matrix 0 failed, Pester 26.
+
+Repeat runs in a fresh venv then found defect 10 and the one `test_tc01`
+failure described there. The suites table above is the state after 9 and 10.
+
+### Caveat: load flakiness
+
+- `test_tc01`'s scenario, 40 runs quiet: the full-size event arrived after a
+  median 23 ms, max 26 ms.
+- 40 runs with four CPU burners on the 4 vCPUs: median 0.96 s, max 2.0 s. Single
+  `handle_event` calls took 950-1900 ms, against 3-17 ms quiet: the watchdog
+  thread was not scheduled.
+- Across those 120 runs and 60 more of the test alone, no event was ever lost,
+  and none would have failed the 5 s wait. The earlier failure needed more than
+  5 s; the host then had other suites running in parallel.
+- The other contributor is the slewed wall clock (defect 10): the waits were
+  timed on it.
+- **Finding, not changed:** with the test process at above-normal priority under
+  the same load, arrival fell to median 0.63 s, max 0.99 s, and the 1 s
+  `handle_event` stalls disappeared. An encryptor saturates the CPU too, so the
+  Monitor's own priority under load is worth a decision. It is a product
+  change outside these defects and is left to the maintainer.
+
+### Caveat: defect 7, fresh venv
+
+A new venv from the base Python 3.12.10, `pip` 26.2.1, then each service's
+requirements and `scripts/requirements.txt`, one file at a time as the VM
+runbook does: every install exit 0, no resolver warning, `pip check`: "No broken
+requirements found". streamlit 1.51.0 with Pillow 12.3.0. The dashboard served
+`/_stcore/health` "ok" and its page from that venv.
+
+### Live check, unelevated
+
+All six services run natively from the fresh venv, with a fresh ledger and
+`RECOVERY_SNAPSHOT_ROOT` as the snapshot source (no VSS). 24 passed, 0 failed,
+4 skipped (they need the audit source):
+
+| Check | Result |
+|---|---|
+| health, all six services and the gateway aggregate | pass |
+| 8: `/monitor/attribution` before start | "not started yet: correlation starts with monitoring (POST /monitor/start)" |
+| 8: retrain, then `git status` | clean; only `models/` written |
+| 4: watch path posted with `/` | stored as `C:\URDS-recheck\unelevated\watch` |
+| 4: recover, four files, four spellings (as recorded, `/`, lower case, the pre-fix mixed form) | `integrity_verified: true` for all four; restored bytes match the baseline |
+| 3: 20 rapid writes by one process | last full-size event 0.23 s after the last write; `queue_wait_ms` on 40 of 40 suspicious events, max 1.7 ms |
+| ledger | every suspicious event has a block; chain verifies |
+| gateway | 401 unauthenticated; 403 admin token without the bootstrap secret; routes and `/analyze` with it |
+
+### Pending: the elevated half
+
+Defects 1, 2, 5 and 6, the safety invariant and the "0 events name the wrong
+PID" row need an elevated shell. They change audit settings, which the operator
+does, not the agent. One script runs them all and records everything under
+`C:\URDS-recheck\run_<time>\`:
+
+1. Record the Security log size, the File System subcategory, the SACLs and the
+   shadow copies.
+2. Defect 5: setup on two test folders, `-Verify`, then revert the second
+   folder alone and check the first is untouched.
+3. Start the stack elevated.
+4. Defect 6: `--status-only`; the shadow copies must not change.
+5. Live checks: defects 1 to 4, 8, the invariant, the wrong-PID count.
+6. Stop the stack, `-Revert`, and compare the machine with step 1.
+
+On this VM the log is already 1 GiB and the subcategory was left on by
+URDSAgent's installer. So the only change it makes is an audit SACL on
+`C:\URDS-recheck\watch` and `watch2`, which `-Revert` removes. That is defect
+5's re-check exactly: the log and the subcategory must be the same afterwards.
+**Result: pending.**
