@@ -350,12 +350,43 @@ async def unhandled_exception_handler(request, exc: Exception) -> JSONResponse:
 # ------------------------------------------------------------------- extraction
 
 
-def extract_features(path: str) -> dict:
-    """Feature vector for one file. Every value is measured, none are invented."""
-    magic = read_magic(path)
+def _size_then_magic(path: str) -> tuple[int | None, bytes]:
+    """The file's size and leading bytes, in the order that cannot invent a lock.
+
+    `looks_unreadable(magic, size)` reads "bytes exist and we got none" as a
+    lock. The leading bytes used to be read first and the size second, so a
+    write landing between the two - a file created and filled, which is what
+    watchdog's `created` fires on - gave an empty read of the empty file and the
+    full size of the written one: "unreadable", with nothing locked. Measured on
+    the Windows test VM, 2026-10-04: `test_tc01` failed in the final full pass
+    on exactly that, the event that saw all 32,768 bytes reporting entropy None.
+    An unreadable reading is never suspicious and nothing re-reads it, so
+    without a later notification the content is never scored.
+
+    So the size comes first: a file that grows between the looks is read as
+    what it now holds. And an empty read of a file that had bytes is checked
+    against the size once more before it counts as a lock - a file truncated in
+    between (an overwrite's first step) is empty, not locked. A real lock still
+    reads as one: bytes on disk before and after, none obtainable.
+    (tests/test_unreadable_is_a_lock_not_a_race.py)
+    """
     try:
         size = os.path.getsize(path)
     except OSError:
+        return None, b""
+    magic = read_magic(path)
+    if not magic and size > 0:
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            return None, b""
+    return size, magic
+
+
+def extract_features(path: str) -> dict:
+    """Feature vector for one file. Every value is measured, none are invented."""
+    size, magic = _size_then_magic(path)
+    if size is None:
         size = 0
 
     # read_magic already waited out the lock budget. If it came back empty on a
@@ -500,10 +531,8 @@ def handle_event(
     if not os.path.isfile(path):
         return None
 
-    magic = read_magic(path)
-    try:
-        size = os.path.getsize(path)
-    except OSError:
+    size, magic = _size_then_magic(path)
+    if size is None:
         return None
 
     # read_magic already waited out the lock budget; see extract_features.
