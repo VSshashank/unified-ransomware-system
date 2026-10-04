@@ -23,6 +23,7 @@ claims they no longer describe are marked **re-verification pending**.
 | 12 | "Unreadable" was reported for a file being written, with nothing locked | `d6313f1` |
 | 13 | The dashboard never rendered, and while open it saturated the gateway | `820d7a4` |
 | 14 | Fabricated evidence (X1): a self-spawned TC-07 victim, skips that exited 0, invented PIDs in the chain | `9e3ecb6`, `fa8ec86`, manifest `6aa0fe9` |
+| 15 | The two demos wrote `reports/` without `URDS_WRITE_REPORTS` (F7) | `50ef61b` |
 
 ## The safety invariant
 
@@ -739,6 +740,42 @@ not loosened in general.
 - The PIDs in the gateway and Response tests' API request bodies, and in the
   ledger's storage tests, are inputs to the code under test, not records of
   what a process did.
+
+## 15. The two demos wrote `reports/` without `URDS_WRITE_REPORTS` (F7)
+
+Found reading the code for the full VM test of 2026-10-04 (F7 in
+`reports/VM_TEST_REPORT_2026-10-04.md`); neither demo was run then.
+
+**What was wrong:** `scripts/attack_chain_demo.py` wrote
+`reports/attack_chain_evidence.txt` and `attack_chain_results.json`, and
+`scripts/si_demo.py` wrote `reports/si_demo_evidence.txt`, on every run. Every
+other script that writes `reports/` does so only when `URDS_WRITE_REPORTS=1`
+(`scripts/verify_reproduction.py:301` is the pattern), so running either demo
+to check something would change tracked evidence and leave `git status` dirty.
+
+**What changed:**
+- Both demos always print the transcript, and write it only:
+  - to `reports/` when `URDS_WRITE_REPORTS=1`, or
+  - to `--out PATH` when given; the attack demo puts
+    `<name>_results.json` beside it.
+- Otherwise they say where the transcript went (stdout) and how to keep a
+  copy.
+- Functions: `evidence_targets` and `finish` in the attack demo,
+  `write_transcript` in `si_demo.py`.
+- `docs/FLOW.md`, `docs/DEMONSTRATION_SCRIPT.md` and `README-SI.md` say so.
+- This is the commit after X1 because it touches the same two files; X1 had
+  already made the exit codes honest.
+
+**Tests:** `services/monitor/tests/test_demo_reports_gate.py` (6). It runs the
+attack demo's `finish()`, and `si_demo.main()` against a stub HTTP client, with
+the evidence paths pointed at a temporary directory, with the variable unset,
+set, and with `--out`. **4 fail on `786dd42`:** both demos wrote by default,
+and neither knew `--out`. The two "writes when asked" cases pass on both.
+Proof: `C:\URDS-recheck\v2\base_proofs\f7_reports_gate_base.txt`.
+
+**Check on Windows:** run both demos against the live stack with the variable
+unset: `git status` stays clean. Then run once with it set: the transcripts
+show only real PIDs. That run also regenerates the evidence X1 withdrew.
 
 ## Suites
 
