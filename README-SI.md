@@ -54,7 +54,8 @@ With both services running:
 python scripts/si_demo.py --db data/ledger/ledger.db
 ```
 
-Writes a before/after transcript to `reports/si_demo_evidence.txt`: file hash and
+Prints a before/after transcript, and writes it to `reports/si_demo_evidence.txt`
+only under `URDS_WRITE_REPORTS=1` (or wherever `--out PATH` says): file hash and
 entropy before the attack, after encryption, and after recovery, then the chain
 verification and the tamper detection. Latest run is committed there. Until
 2026-10-04 the demo wrote an invented `process_id` into its `file_encrypted`
@@ -275,7 +276,7 @@ services/response/recovery/
   ledger_client.py   HTTP client for the ledger
   tests/             54 tests, including TC-04/TC-05 integration
 scripts/
-  si_demo.py         TC-04 + TC-05 demo, writes reports/si_demo_evidence.txt
+  si_demo.py         TC-04 + TC-05 demo; reports/si_demo_evidence.txt under URDS_WRITE_REPORTS=1
   verify_vss.py      Phase 3 hardware check (needs elevation + pywin32)
 ```
 

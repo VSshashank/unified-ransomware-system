@@ -2,10 +2,13 @@
 
 Drops a high-entropy file into the watched path and follows it all the way
 through: Monitor detects -> ML classifies -> Ledger records -> Response acts ->
-Dashboard-visible within 1s. Writes a transcript to
-reports/attack_chain_evidence.txt.
+Dashboard-visible within 1s. Prints a transcript, and writes it to
+reports/attack_chain_evidence.txt (with the results beside it) only when
+URDS_WRITE_REPORTS=1, like every other script that writes the tracked
+evidence; --out PATH writes it there instead.
 
     python scripts/attack_chain_demo.py
+    python scripts/attack_chain_demo.py --out run/attack_chain.txt
 
 Start the stack first: docker compose up -d --build
 
@@ -196,6 +199,11 @@ def main() -> int:
     # Host path, and the path the same directory has inside the containers.
     parser.add_argument("--watch-host", default=str(REPO_ROOT / "watched_files"))
     parser.add_argument("--watch-container", default="/watch")
+    parser.add_argument(
+        "--out",
+        help="Write the transcript here (and <name>_results.json beside it) instead of reports/. "
+             "Without it the transcript goes to reports/ only when URDS_WRITE_REPORTS=1.",
+    )
     args = parser.parse_args()
 
     client = httpx.Client(timeout=15.0)
@@ -504,12 +512,37 @@ def finish(client, args, started_at) -> int:
     if failures:
         say(f"failed: {', '.join(failures)}")
 
-    EVIDENCE_PATH.parent.mkdir(exist_ok=True)
-    EVIDENCE_PATH.write_text("\n".join(transcript) + "\n")
-    print(f"\nEvidence written to {EVIDENCE_PATH}")
-
-    (EVIDENCE_PATH.parent / "attack_chain_results.json").write_text(json.dumps(results, indent=2))
+    targets = evidence_targets(getattr(args, "out", None))
+    if targets is None:
+        print("\nURDS_WRITE_REPORTS is not set: the transcript above was not written to reports/ "
+              "(pass --out PATH to keep a copy elsewhere)")
+    else:
+        transcript_path, results_path = targets
+        transcript_path.parent.mkdir(parents=True, exist_ok=True)
+        transcript_path.write_text("\n".join(transcript) + "\n")
+        results_path.write_text(json.dumps(results, indent=2))
+        print(f"\nEvidence written to {transcript_path} and {results_path.name}")
     return exit_code(results)
+
+
+def write_reports_enabled() -> bool:
+    return os.getenv("URDS_WRITE_REPORTS", "").lower() in {"1", "true", "yes"}
+
+
+def evidence_targets(out: str | None) -> tuple[Path, Path] | None:
+    """Where the transcript and results go, or None for stdout only.
+
+    The two files under reports/ are tracked evidence. Running the demo used
+    to overwrite them unconditionally (F7 in reports/VM_TEST_REPORT_2026-10-04.md),
+    while every other script that writes reports/ does so only under
+    URDS_WRITE_REPORTS=1 - so a run to check something changed the evidence.
+    """
+    if out:
+        transcript_path = Path(out)
+        return transcript_path, transcript_path.with_name(transcript_path.stem + "_results.json")
+    if write_reports_enabled():
+        return EVIDENCE_PATH, EVIDENCE_PATH.parent / "attack_chain_results.json"
+    return None
 
 
 if __name__ == "__main__":

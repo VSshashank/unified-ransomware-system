@@ -533,8 +533,8 @@ chain verification, ML metrics.
 
 | File | What it drives | Talks to |
 |---|---|---|
-| `attack_chain_demo.py` | Full end-to-end chain, 19 checks. The suspicious writes come from separate writer processes; TC-07 passes only if the system's own `certain` attribution named that writer and the system terminated it, and the demo terminates nothing itself (`docs/CORRECTIONS.md`). Exits 0 only when every check ran and passed. Writes `reports/attack_chain_evidence.txt`. | Gateway :8000 and dashboard :8501 **only** |
-| `si_demo.py` | TC-04 recovery and TC-05 tamper detection. Restores the tampered row in a `finally` so consecutive runs both pass. Exits 0 only when both ran and passed. | Ledger :8003, response :8004 **directly** |
+| `attack_chain_demo.py` | Full end-to-end chain, 19 checks. The suspicious writes come from separate writer processes; TC-07 passes only if the system's own `certain` attribution named that writer and the system terminated it, and the demo terminates nothing itself (`docs/CORRECTIONS.md`). Exits 0 only when every check ran and passed. Writes `reports/attack_chain_evidence.txt` only under `URDS_WRITE_REPORTS=1`, or `--out PATH`. | Gateway :8000 and dashboard :8501 **only** |
+| `si_demo.py` | TC-04 recovery and TC-05 tamper detection. Restores the tampered row in a `finally` so consecutive runs both pass. Exits 0 only when both ran and passed. Writes `reports/si_demo_evidence.txt` only under `URDS_WRITE_REPORTS=1`, or `--out PATH`. | Ledger :8003, response :8004 **directly** |
 | `verify_vss.py` | TC-04 / VSS acceptance. Requires an elevated shell. | Ledger :8003 |
 | `ransomware_simulator.py` | TC-01 stand-in. Manifest-guarded, reversible. | Filesystem only |
 | `simulator_sweep.py` | Every simulated family past a live Monitor. Writes `reports/simulator_families.json`. | Filesystem only |

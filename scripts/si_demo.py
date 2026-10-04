@@ -1,9 +1,12 @@
 """TC-04 / TC-05 demo against running services.
 
-Drives the real ledger (8003) and response (8004) services over HTTP and writes
-a before/after transcript to reports/si_demo_evidence.txt for the demo chapter.
+Drives the real ledger (8003) and response (8004) services over HTTP and prints
+a before/after transcript for the demo chapter. It writes the transcript to the
+tracked reports/si_demo_evidence.txt only when URDS_WRITE_REPORTS=1; --out PATH
+writes it there instead.
 
     python scripts/si_demo.py --db data/ledger/ledger.db
+    python scripts/si_demo.py --db data/ledger/ledger.db --out run/si_demo.txt
 
 Start the services first - see README-SI.md. The --db path is only needed for
 the TC-05 step, which edits the SQLite file directly to simulate an attacker
@@ -53,6 +56,11 @@ def main() -> int:
     parser.add_argument("--db", default=str(REPO_ROOT / "data" / "ledger" / "ledger.db"))
     parser.add_argument("--snapshot-root", default=str(REPO_ROOT / "data" / "snapshots"))
     parser.add_argument("--workspace", default=str(REPO_ROOT / "data" / "si_demo"))
+    parser.add_argument(
+        "--out",
+        help="Write the transcript here instead of reports/. Without it the transcript goes to "
+             "reports/ only when URDS_WRITE_REPORTS=1.",
+    )
     args = parser.parse_args()
 
     client = httpx.Client(timeout=10.0)
@@ -244,11 +252,30 @@ def main() -> int:
     say(f"TC-05 tamper detection          : {'PASS' if tc05 else ('SKIPPED' if tc05 is None else 'FAIL')}")
     say("=" * 72)
 
-    EVIDENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    EVIDENCE_PATH.write_text("\n".join(transcript), encoding="utf-8")
-    print(f"\nEvidence written to {EVIDENCE_PATH}")
-
+    write_transcript(args.out)
     return exit_code(tc04, chain_ok, tc05)
+
+
+def write_transcript(out: str | None) -> Path | None:
+    """Write the transcript where asked, and say where it went.
+
+    reports/si_demo_evidence.txt is tracked evidence. Running the demo used to
+    overwrite it unconditionally (F7 in reports/VM_TEST_REPORT_2026-10-04.md);
+    every other script that writes reports/ does so only under
+    URDS_WRITE_REPORTS=1.
+    """
+    if out:
+        target = Path(out)
+    elif os.getenv("URDS_WRITE_REPORTS", "").lower() in {"1", "true", "yes"}:
+        target = EVIDENCE_PATH
+    else:
+        print("\nURDS_WRITE_REPORTS is not set: the transcript above was not written to reports/ "
+              "(pass --out PATH to keep a copy elsewhere)")
+        return None
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(transcript), encoding="utf-8")
+    print(f"\nEvidence written to {target}")
+    return target
 
 
 def exit_code(tc04: bool, chain_ok: bool, tc05: bool | None) -> int:

@@ -42,8 +42,8 @@ Everything else works unelevated.
 ## The sequence
 
 Total running time about six minutes. `scripts/attack_chain_demo.py` performs
-steps 1–6 unattended and writes a transcript to
-`reports/attack_chain_evidence.txt`; the steps are broken out here so a narrator
+steps 1–6 unattended and prints a transcript, which it writes to
+`reports/attack_chain_evidence.txt` when run with `URDS_WRITE_REPORTS=1`; the steps are broken out here so a narrator
 can talk over them. Its suspicious writes come from separate writer processes, and
 its TC-07 passes only if the system attributed that writer as `certain` and
 terminated it; the demo terminates nothing itself. The transcript committed on
@@ -188,5 +188,6 @@ be said.
 - [ ] `reports/` present, so the artefacts can be opened on screen
 - [ ] Whitelist reset between steps 4 and 5:
       `curl -X POST http://localhost:8001/monitor/whitelist -d "{\"paths\":[],\"hashes\":[]}"`
-- [ ] After recording, `reports/attack_chain_evidence.txt` holds the transcript of
+- [ ] Run with `URDS_WRITE_REPORTS=1`, so that after recording
+      `reports/attack_chain_evidence.txt` holds the transcript of
       steps 1–6 as the machine saw them
