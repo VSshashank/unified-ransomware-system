@@ -44,7 +44,11 @@ Everything else works unelevated.
 Total running time about six minutes. `scripts/attack_chain_demo.py` performs
 steps 1–6 unattended and writes a transcript to
 `reports/attack_chain_evidence.txt`; the steps are broken out here so a narrator
-can talk over them.
+can talk over them. Its suspicious writes come from separate writer processes, and
+its TC-07 passes only if the system attributed that writer as `certain` and
+terminated it; the demo terminates nothing itself. The transcript committed on
+16 August 2026 came from the earlier version, which started its own process to
+kill, and is withdrawn (`docs/CORRECTIONS.md`).
 
 ### 1 — A legitimate file is not an alert  *(30s)*
 

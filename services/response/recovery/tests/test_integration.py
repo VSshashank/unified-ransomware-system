@@ -119,7 +119,11 @@ def test_tc04_file_recovered_to_pre_attack_state(manager, ledger_client, tmp_pat
         "file_encrypted",
         {
             "file_path": str(document),
-            "process_id": 4321,
+            # None: the test makes the write itself and nothing attributed it.
+            # It held an invented 4321, the same pattern as the PID in
+            # test_tc05 below (docs/CORRECTIONS.md, 3).
+            "process_id": None,
+            "attribution_confidence": "unknown",
             "user": "admin",
             "entropy": round(encrypted_entropy, 3),
         },
@@ -241,18 +245,26 @@ def test_tc05_tampered_ledger_row_is_detected(manager, ledger_client, ledger_app
     take_snapshot(snapshot_root, "snap1", document)
 
     document.write_bytes(os.urandom(1024))
+    # process_id is None, not a number. The value is incidental to what this
+    # test asserts - that rewriting the block is detected - but it held the
+    # same invented PID as scripts/si_demo.py, in a suite the claim matrix
+    # cites (C-14). Evidence a claim rests on does not get to contain invented
+    # facts, however irrelevant to the assertion (docs/CORRECTIONS.md, 3).
     incriminating_block = ledger_client.log_event(
-        "file_encrypted", {"file_path": str(document), "process_id": 6666, "entropy": 7.99}
+        "file_encrypted",
+        {"file_path": str(document), "process_id": None,
+         "attribution_confidence": "unknown", "entropy": 7.99},
     )
 
     manager.recover("snap1", [str(document)], verify_integrity=True)
     assert ledger_client.verify_chain()["valid"] is True
 
-    # The attacker rewrites the block that records the encryption.
+    # The attacker rewrites the block that records the encryption. The forgery
+    # names no process either: any edit is what is detected.
     conn = sqlite3.connect(str(db_path))
     conn.execute(
         "UPDATE blocks SET event_data = ? WHERE id = ?",
-        ('{"entropy":1.2,"file_path":"/harmless.txt","process_id":1}', incriminating_block),
+        ('{"entropy":1.2,"file_path":"/harmless.txt","process_id":null}', incriminating_block),
     )
     conn.commit()
     conn.close()

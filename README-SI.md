@@ -56,7 +56,13 @@ python scripts/si_demo.py --db data/ledger/ledger.db
 
 Writes a before/after transcript to `reports/si_demo_evidence.txt`: file hash and
 entropy before the attack, after encryption, and after recovery, then the chain
-verification and the tamper detection. Latest run is committed there.
+verification and the tamper detection. Latest run is committed there. Until
+2026-10-04 the demo wrote an invented `process_id` into its `file_encrypted`
+event; it now records `None` with `attribution_confidence: unknown`, because it
+makes the write itself and nothing attributes it (`docs/CORRECTIONS.md`). The
+committed transcript does not show that field and its figures do not depend on
+it. The script exits 0 only when TC-04, the chain check and TC-05 all ran and
+passed.
 
 ---
 

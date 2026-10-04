@@ -8,15 +8,22 @@ reports/attack_chain_evidence.txt.
     python scripts/attack_chain_demo.py
 
 Start the stack first: docker compose up -d --build
+
+The suspicious writes are made by separate writer processes, never by this
+script, so the process attribution names is a process this script can check
+the answer against - and so a Monitor with a live attribution source does not
+name this script as the attacker. TC-07 is judged from what the system did to
+that writer. This script terminates nothing itself (docs/CORRECTIONS.md, 1).
 """
 
 import argparse
-import hashlib
 import io
 import json
 import math
 import os
+import subprocess
 import sys
+import threading
 import time
 import zipfile
 from collections import Counter
@@ -30,6 +37,119 @@ EVIDENCE_PATH = REPO_ROOT / "reports" / "attack_chain_evidence.txt"
 
 transcript: list[str] = []
 results: dict[str, bool | None] = {}
+
+# The writer: random bytes into one file, report the write, then stay alive
+# for `hold` seconds the way an encryptor still working would, and exit on its
+# own. It is the process detection and attribution have to find; nothing here
+# kills it, and it never outlives `hold`.
+WRITER_SOURCE = (
+    "import hashlib, os, sys, time\n"
+    "path, size, hold = sys.argv[1], int(sys.argv[2]), float(sys.argv[3])\n"
+    "payload = os.urandom(size)\n"
+    "with open(path, 'wb') as handle:\n"
+    "    handle.write(payload)\n"
+    "print('WROTE', hashlib.sha256(payload).hexdigest(), flush=True)\n"
+    "time.sleep(hold)\n"
+)
+
+#: How long the attack's writer stays alive after its write: past the Monitor's
+#: 1.5 s delivery horizon and the escalation, with room for a slow host.
+ATTACKER_HOLD_SECONDS = 10.0
+
+
+class Writer:
+    """A writer process, and when it was seen to write and to exit."""
+
+    def __init__(self, path: Path, size: int, hold_seconds: float) -> None:
+        self.process = subprocess.Popen(
+            [sys.executable, "-c", WRITER_SOURCE, str(path), str(size), str(hold_seconds)],
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        line = (self.process.stdout.readline() or "").split()
+        # perf_counter, not time.time(): the test VM's wall clock is slewed.
+        self.wrote_at = time.perf_counter()
+        if len(line) != 2 or line[0] != "WROTE":
+            raise RuntimeError(f"writer pid {self.process.pid} did not report its write: {line!r}")
+        self.sha256 = line[1]
+        self.exited_at: float | None = None
+        self._watch = threading.Thread(target=self._wait, daemon=True)
+        self._watch.start()
+
+    def _wait(self) -> None:
+        self.process.wait()
+        self.exited_at = time.perf_counter()
+
+    @property
+    def pid(self) -> int:
+        return self.process.pid
+
+    def finish(self, timeout: float) -> int | None:
+        """Wait for the writer to end by itself. Never kills it."""
+        self._watch.join(timeout=timeout)
+        return self.process.poll()
+
+
+def judge_tc07(events: list[dict], writer_pid: int, writer_ended_early: bool) -> tuple[dict, list[str]]:
+    """TC-07, the offending process is terminated, from what the system did.
+
+    `events` are every Monitor event for the attacked file, after their
+    attribution questions closed. Only an answer of `certain` that names the
+    writer, followed by the system's own termination, passes. A `certain`
+    answer naming any other process is a failure. Anything short of `certain`
+    is a skip with the reason, and a skip is not a pass (`exit_code`).
+    Nothing in here, or anywhere in this script, asks for a termination.
+    """
+    lines: list[str] = []
+    named = [
+        e for e in events
+        if e.get("attribution_confidence") == "certain" and e.get("process_id") is not None
+    ]
+    if not named:
+        newest = events[0] if events else {}
+        lines.append(f"  attribution        : {newest.get('attribution_confidence', 'no event')}")
+        lines.append(f"  attribution reason : {newest.get('attribution_reason')}")
+        lines.append(f"  attribution source : {newest.get('attribution_source')}")
+        lines.append("  no termination to check: only a CERTAIN attribution authorises one, and")
+        lines.append("  none of this file's events resolved to it. Nothing was killed in its place.")
+        lines.append("  (Expected where the Monitor has no Security-log audit source: unelevated,")
+        lines.append("   no SACL on the watch path, or a container with its own PID namespace.)")
+        return {
+            "tc07_attributed_pid_is_the_writer": None,
+            "tc07_process_terminated": None,
+        }, lines
+
+    wrong = sorted({e["process_id"] for e in named if e["process_id"] != writer_pid})
+    lines.append(f"  writer pid         : {writer_pid}")
+    lines.append(f"  attributed (certain): {sorted({e['process_id'] for e in named})}")
+    if wrong:
+        lines.append(f"  WRONG PROCESS: attribution named {wrong}, which did not write the file")
+    outcomes = sorted({(e.get("attribution_escalation") or {}).get("result") or "-" for e in named})
+    lines.append(f"  escalation results : {outcomes}")
+    terminated = any(
+        (e.get("attribution_escalation") or {}).get("result") == "terminated"
+        and e["process_id"] == writer_pid
+        for e in named
+    )
+    lines.append(f"  writer ended before its hold expired: {writer_ended_early}")
+    return {
+        "tc07_attributed_pid_is_the_writer": not wrong,
+        "tc07_process_terminated": bool(terminated and writer_ended_early and not wrong),
+    }, lines
+
+
+def exit_code(outcomes: dict) -> int:
+    """0 only when every check ran and passed.
+
+    A skipped check is `None`, a failed one `False`. The exit code used to
+    count only the failures, so a run that could not exercise a capability at
+    all still exited 0 to everything that reads a status rather than a
+    transcript (docs/CORRECTIONS.md, 2). A run with no checks is not a pass
+    either.
+    """
+    if not outcomes:
+        return 1
+    return 0 if all(value is True for value in outcomes.values()) else 1
 
 
 def say(line: str = "") -> None:
@@ -49,8 +169,8 @@ def entropy_of(data: bytes) -> float:
 
 
 def wait_for(predicate, timeout=20.0, interval=0.25):
-    deadline = time.time() + timeout
-    while time.time() < deadline:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
         try:
             value = predicate()
             if value:
@@ -159,11 +279,11 @@ def main() -> int:
     # --- 3. the attack -------------------------------------------------------
     rule("3. ATTACK: high-entropy write into the watched path")
     victim = Path(args.watch_host) / "annual_report.docx.locked"
-    payload = os.urandom(400_000)
-    dropped_at = time.time()
-    victim.write_bytes(payload)
-    expected_hash = hashlib.sha256(payload).hexdigest()
-    say(f"  wrote {victim.name} ({len(payload)} bytes, entropy {entropy_of(payload):.3f})")
+    # A separate process writes it - see the module docstring.
+    attacker = Writer(victim, 400_000, ATTACKER_HOLD_SECONDS)
+    expected_hash = attacker.sha256
+    say(f"  writer pid {attacker.pid} wrote {victim.name} ({victim.stat().st_size} bytes, "
+        f"entropy {entropy_of(victim.read_bytes()):.3f})")
     say(f"  sha256     : {expected_hash}")
     say()
 
@@ -282,38 +402,49 @@ def main() -> int:
         say("  no response_action blocks in the ledger")
         results["response_action_audited"] = False
 
-    # TC-07 needs a process that actually exists; use a disposable one.
-    import subprocess
+    # TC-07: was the process that wrote the file terminated - by the system,
+    # on its own attribution? Until 2026-09-17 on fix/evidence-integrity, and
+    # until this port here, this block spawned `time.sleep(60)` and asked the
+    # Response service to kill *that*, recording a kill time from it: a
+    # process that wrote nothing and was never detected or attributed
+    # (docs/CORRECTIONS.md, 1). Now the Monitor's answer for this file is read
+    # after its attribution question has closed, and checked against the
+    # writer this script started. Nothing is killed from here.
+    def closed_events():
+        events = [
+            e for e in client.get(f"{args.gateway}/monitor/events", params={"limit": 200},
+                                  headers=auth).json()["events"]
+            if e["file_path"].endswith(victim.name)
+        ]
+        if events and not any(e.get("attribution_pending") for e in events):
+            return events
+        return None
 
-    victim_process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
-    time.sleep(0.3)
-    kill = client.post(
-        f"{args.gateway}/response/terminate",
-        json={"process_id": victim_process.pid, "incident_id": "inc_demo", "reason": "ransomware_detected", "force": True},
-        headers=auth,
+    events = wait_for(closed_events, timeout=15.0) or []
+    ended_early = attacker.finish(timeout=3.0) is not None and (
+        attacker.exited_at is not None
+        and attacker.exited_at - attacker.wrote_at < ATTACKER_HOLD_SECONDS - 0.5
     )
-    if kill.status_code == 200:
-        body = kill.json()
-        say(f"  terminated pid {body['process_id']} ({body.get('process_name')}) "
-            f"via {body.get('method')} in {body.get('termination_time_ms')}ms (target <2000ms)")
-        results["tc07_process_terminated"] = True
-        results["kill_time_under_2s"] = body.get("termination_time_ms", 9e9) < 2000
+    verdicts, lines = judge_tc07(events, attacker.pid, ended_early)
+    for line in lines:
+        say(line)
+    results.update(verdicts)
+    if verdicts["tc07_process_terminated"]:
+        lifetime = attacker.exited_at - attacker.wrote_at
+        say(f"  writer gone {lifetime * 1000:.0f}ms after it reported its write (target <2000ms)")
+        results["kill_time_under_2s"] = lifetime < 2.0
     else:
-        say(f"  terminate returned {kill.status_code}: {kill.text[:200]}")
-        say("  (expected on macOS/Windows hosts: the response service runs in a Linux")
-        say("   container and cannot see host PIDs. Covered by services/response tests.)")
-        results["tc07_process_terminated"] = None
-        results["kill_time_under_2s"] = None
-    if victim_process.poll() is None:
-        victim_process.kill()
-        victim_process.wait(timeout=5)
+        results["kill_time_under_2s"] = None if verdicts["tc07_process_terminated"] is None else False
     say()
 
     # --- 8. dashboard --------------------------------------------------------
     rule("8. DASHBOARD FRESHNESS (TC-09)")
     probe = Path(args.watch_host) / "dashboard_probe.bin"
-    probe_written = time.time()
-    probe.write_bytes(os.urandom(120_000))
+    # Written by a writer of its own that exits at once, so a Monitor with a
+    # live attribution source does not name this script; timed from the
+    # writer's report of the write, on perf_counter.
+    probe_writer = Writer(probe, 120_000, 0.0)
+    probe_written = probe_writer.wrote_at
     seen = wait_for(
         lambda: next(
             (e for e in client.get(f"{args.gateway}/monitor/events", params={"limit": 50}, headers=auth).json()["events"]
@@ -324,7 +455,7 @@ def main() -> int:
         interval=0.05,
     )
     if seen:
-        lag = time.time() - probe_written
+        lag = time.perf_counter() - probe_written
         say(f"  event queryable through the gateway {lag * 1000:.0f}ms after the write")
         say(f"  dashboard auto-refresh interval: 1000ms (services/dashboard/app.py)")
         results["tc09_dashboard_within_1s"] = lag < 1.0
@@ -378,7 +509,7 @@ def finish(client, args, started_at) -> int:
     print(f"\nEvidence written to {EVIDENCE_PATH}")
 
     (EVIDENCE_PATH.parent / "attack_chain_results.json").write_text(json.dumps(results, indent=2))
-    return 0 if not failures else 1
+    return exit_code(results)
 
 
 if __name__ == "__main__":

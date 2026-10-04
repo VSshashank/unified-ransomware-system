@@ -134,7 +134,15 @@ def main() -> int:
             "event_type": "file_encrypted",
             "event_data": {
                 "file_path": str(document),
-                "process_id": 6666,
+                # This demo makes the write itself and runs no attribution, so
+                # no process was identified and none is named. This field held
+                # an invented PID until the port of fix/evidence-integrity's
+                # 58ce021: a number with no referent, in the chain whose value
+                # is that what it holds can be trusted (docs/CORRECTIONS.md, 3).
+                "process_id": None,
+                "attribution_confidence": "unknown",
+                "attribution_reason": "si_demo writes the encrypted bytes itself; "
+                                      "no attribution source is running",
                 "user": "admin",
                 "entropy": round(encrypted_entropy, 3),
             },
@@ -199,8 +207,12 @@ def main() -> int:
             conn.execute(
                 "UPDATE blocks SET event_data = ? WHERE id = ?",
                 (
+                    # The attacker's forgery: the entropy lowered to hide the
+                    # encryption. Any edit is what TC-05 detects; the forged
+                    # row names no process, so it cannot put one in the chain
+                    # even for the moment before it is restored.
                     json.dumps(
-                        {"entropy": 1.1, "file_path": str(document), "process_id": 4, "user": "admin"},
+                        {"entropy": 1.1, "file_path": str(document), "process_id": None, "user": "admin"},
                         sort_keys=True,
                         separators=(",", ":"),
                     ),
@@ -236,7 +248,16 @@ def main() -> int:
     EVIDENCE_PATH.write_text("\n".join(transcript), encoding="utf-8")
     print(f"\nEvidence written to {EVIDENCE_PATH}")
 
-    return 0 if (tc04 and chain_ok and tc05 is not False) else 1
+    return exit_code(tc04, chain_ok, tc05)
+
+
+def exit_code(tc04: bool, chain_ok: bool, tc05: bool | None) -> int:
+    """0 only when every check ran and passed.
+
+    `tc05 is not False` used to let a skipped TC-05 (no --db) exit 0, the same
+    skip-counted-as-pass that attack_chain_demo.py had (docs/CORRECTIONS.md, 2).
+    """
+    return 0 if (tc04 is True and chain_ok is True and tc05 is True) else 1
 
 
 if __name__ == "__main__":

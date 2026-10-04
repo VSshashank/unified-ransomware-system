@@ -66,7 +66,7 @@ Windows-sourced path would never have been re-rooted into a snapshot there eithe
 | 5–8 | Shannon entropy | Real and correct | Unchanged, now tested against known values (uniform = 8.0, single byte = 0.0) | `test_detection.py` (35) |
 | 5–8 | False-positive mitigation (magic bytes) | Magic bytes were read but **never used** — no mitigation existed | 20 container signatures; high entropy explained by format is benign | `test_tc03_*` |
 | 9–12 | Response terminate/isolate | **Placeholders** returning fixed dicts | Real: SIGTERM → SIGKILL via psutil, with guards; platform-aware isolation | `test_actions.py` (18) |
-| 13–16 | `file_hash` in ledger `event_data` | **Absent entirely** — SI's dependency unmet | Present on every event, full 64-char SHA-256 | `reports/attack_chain_evidence.txt` §6 |
+| 13–16 | `file_hash` in ledger `event_data` | **Absent entirely** — SI's dependency unmet | Present on every event, full 64-char SHA-256 | `reports/attack_chain_evidence.txt` §6 (transcript withdrawn 2026-10-04, `docs/CORRECTIONS.md`; **re-verification pending**) |
 | — | Detection latency <100 ms | Unverified | **p95 34.5 ms**, mean 15.1 ms, max 59.9 ms (40 samples, 4 KB–2 MB) | `reports/as_benchmarks.json` |
 | — | Process kill time <2 s | Unverified | **0.5 ms** | `reports/as_benchmarks.json` |
 | — | False positive rate <5 % | Unverified | **0 % (0/40)**, with 32 of 40 deliberately high-entropy | `reports/as_benchmarks.json` |
@@ -111,7 +111,7 @@ reported here because the number would otherwise look better than the work.
 |---|---|---|---|---|
 | 1–4 | Docker Compose, 6 services | Wired with health checks, but **monitor and ml_engine images could not build** (missing `watchdog`; xgboost needs Python ≥3.12) | Clean `up -d --build`, **all six healthy** | `docker compose ps` |
 | 5–8 | Gateway routes match OpenAPI | `/ledger/verify` and `/ledger/blocks` **missing** | Added (SI's handlers); parity now asserted **both directions** | `test_gateway.py` |
-| 9–12 | Dashboard real-time <1 s (TC-09) | Unverified | Event queryable **78 ms** after write; 1 s auto-refresh | `reports/attack_chain_evidence.txt` §8 |
+| 9–12 | Dashboard real-time <1 s (TC-09) | Unverified | Event queryable **78 ms** after write; 1 s auto-refresh | `reports/attack_chain_evidence.txt` §8 (transcript withdrawn 2026-10-04, `docs/CORRECTIONS.md`; **re-verification pending**) |
 | 9–12 | Bad/missing JWT → 401 (TC-10) | Missing-token only | Missing, malformed, wrong-secret, expired — all 401 | `test_gateway.py` (4 tests) |
 | 13–16 | README accuracy | Described Ledger/Response as "clearly marked stubs" — **stale** | Rewritten per-service with real state | `README.md` |
 | 13–16 | `len(hash) == 32` assertions | — | **None exist anywhere.** No change needed | verified |
@@ -205,7 +205,7 @@ adversarial-ML robustness.
 | TC-08 | Chain verifies <50 ms | **PASS** | 2.3 ms / 1000 blocks; live: 19 blocks in 0.17 ms |
 | TC-09 | Dashboard reflects event <1 s | **PASS** | 78 ms; 1 s auto-refresh |
 | TC-10 | Bad/missing JWT → 401 | **PASS** | 4 gateway tests + live |
-| TC-11 | Full attack chain end to end | **PASS** | **18/18** — `reports/attack_chain_evidence.txt` |
+| TC-11 | Full attack chain end to end | **PASS** | **18/18** — `reports/attack_chain_evidence.txt`. Withdrawn 2026-10-04: 16 PASS + 2 SKIP (D-3), and its TC-07 came from a process the demo started itself (`docs/CORRECTIONS.md`); **re-verification pending** |
 | TC-12 | Blockchain anchoring | **OUT OF SCOPE** — Phase 5. Not attempted | — |
 
 **11 of 11 in-scope test cases pass** (TC-07 fully verified at the unit level; skipped through
