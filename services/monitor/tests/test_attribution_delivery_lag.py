@@ -483,7 +483,7 @@ def test_b_two_writers_in_different_flushes_are_never_certain(first_lag, second_
         # certain" has to hold at the moments in between as well.
         while not closed.wait(timeout=0.05):
             seen.append(at.recheck(question))
-            assert time.time() - observed < 5.0
+            assert time.perf_counter() - observed_mono < 5.0
     finally:
         pending.stop()
         at.source.cancel()
@@ -762,8 +762,8 @@ def live_monitor(monkeypatch, capture):
 
 
 def _wait_for(predicate, timeout: float) -> bool:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
         if predicate():
             return True
         time.sleep(0.01)

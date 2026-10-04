@@ -138,8 +138,8 @@ def client(monkeypatch):
 
 
 def _wait_for_event(name: str, timeout: float = 5.0) -> dict | None:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
         for event in list(monitor_app.EVENTS):
             if event["file_path"].endswith(name) and event["file_size"] > 0:
                 return event

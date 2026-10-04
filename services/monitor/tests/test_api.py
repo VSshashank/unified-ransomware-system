@@ -40,8 +40,8 @@ def clean_state():
 
 def wait_for_event(predicate, timeout=5.0, interval=0.02):
     """Watchdog is asynchronous; poll rather than sleep a fixed amount."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
         for event in list(monitor_app.EVENTS):
             if predicate(event):
                 return event
