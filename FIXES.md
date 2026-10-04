@@ -1,8 +1,8 @@
 # Fixes from the Windows integration test
 
 Eight defects found by the Windows 11 VM integration test of commit `7dcee2a`,
-fixed on `fix/windows-integration-defects`, one commit per defect, and two more
-found re-testing this branch on the same VM (9 to 12). Each entry says what
+fixed on `fix/windows-integration-defects`, one commit per defect, and five more
+found re-testing this branch on the same VM (9 to 13). Each entry says what
 changed, where, what tests it, and what can only be confirmed on the Windows
 test VM. Measured figures in the README and `reports/` are unchanged;
 claims they no longer describe are marked **re-verification pending**.
@@ -21,6 +21,7 @@ claims they no longer describe are marked **re-verification pending**.
 | 10 | Training mode timed its window and dwell on a slewed wall clock | `db8f38a` (test waits `529d872`) |
 | 11 | A probable answer named a writer that came after the event | `ec21a43` |
 | 12 | "Unreadable" was reported for a file being written, with nothing locked | `d6313f1` |
+| 13 | The dashboard never rendered, and while open it saturated the gateway | `820d7a4` |
 
 ## The safety invariant
 
@@ -514,6 +515,100 @@ records a stale `file_size` beside the content it scored. The two baselines
 under "Minor findings" are that case. Recovery verifies the hash, which covers
 the full content.
 
+## 13. The dashboard never rendered, and while open it saturated the gateway
+
+Found by the full VM test of `5952218`, 2026-10-04 (F1 in
+`reports/VM_TEST_REPORT_2026-10-04.md`).
+
+**Measured:** `http://127.0.0.1:8501` showed its title and caption and nothing
+else. While it was open, every gateway caller waited: `/health` 5.5-10.3 s
+(0.81-0.88 s closed), one proxied GET 2.4-2.7 s (0.2 s closed). Two causes.
+The page needed both to fail: with either one fixed it rendered on this VM
+(live check below). Both are fixed.
+- `call_downstream` built an `httpx.AsyncClient` per call. Building one loads
+  certifi's CA bundle into a new SSL context, 267-376 ms here (8 samples),
+  synchronously on the event loop, so every request queued behind it.
+  `/health` paid it four times, one service after another.
+- The dashboard reran the whole page every second (`st_autorefresh`). A
+  full-page rerun cancels the run in progress at its next element
+  (`on_scriptrunner_yield` in Streamlit 1.51), so a run longer than the
+  interval never drew past the title. The six gateway calls each run made kept
+  the gateway saturated, which kept every run longer than the interval.
+
+The Monitor already builds its escalation thread's client ahead of time for
+the same reason (`_ensure_escalator`); the gateway did not. Detection, attribution,
+response and recovery never used the gateway, so they were not affected.
+
+**What changed:**
+- Gateway (`routers/proxy.py`, `main.py`): one client, built at startup in
+  `lifespan`, reused by every downstream call and closed at shutdown. Idle
+  connections expire at 4 s, before uvicorn's default 5 s keep-alive closes
+  them from the service's end. `/health` asks the four services at once
+  (`asyncio.gather`); the response is unchanged.
+- Dashboard (`app.py`): the live panels are one
+  `st.fragment(run_every="1s")`. A fragment's timed rerun does not preempt the
+  run in progress, and a pending one is not queued twice, so a slow run is
+  late rather than lost. Still a 1 s refresh, as the README states. The body
+  moved into the function, so `git diff -w` shows the change. The helpers stay
+  at module level: `scripts/pipeline_governance.py` lifts two of them by AST.
+  `streamlit-autorefresh` is no longer imported and leaves
+  `requirements.txt`; removing a pin cannot create a resolver conflict.
+
+**Tests:**
+- `services/gateway/tests/test_downstream_client.py` (5). `call_downstream`
+  stays real; every client the gateway builds is counted and given an
+  in-process transport. On the base commit, 4 fail: startup builds no client,
+  the same 13 requests build 22, and `/health` has 1 service in flight instead
+  of 4. The one-service-down case passes on both.
+- `services/dashboard/tests/test_render.py` (3). Runs the real script with
+  Streamlit's `AppTest` against a stubbed gateway. It checks that every panel
+  is drawn, that a refresh makes the same six calls as before, and that a
+  gateway that is down is reported. These pass on the base commit too:
+  `AppTest` has no browser and no timer, so they guard the render path, not
+  the refresh timing. The timing was checked live (below).
+- The dashboard is not in the CI matrix, and `scripts/verify_reproduction.py`
+  gives that as its reason for not installing it. Adding a job is the
+  maintainer's call.
+
+**Live check on the VM** (run `f1_20261004_192031`). The fixed stack ran on
+8000-8004. The base commit's gateway ran on 8010 against the same services,
+with four dashboards, one per old/new combination. Latency was timed with
+`perf_counter`, one dashboard open at a time:
+
+| Gateway latency, median (range) | Base gateway | Fixed gateway |
+|---|---|---|
+| `/health`, no dashboard open | 819 ms (791-863) | 18 ms (14-31) |
+| `/monitor/events`, no dashboard open | 205 ms (197-221) | 10 ms (8-13) |
+| `/health`, the matching dashboard open | 6,939 ms (6,215-7,787) | 19 ms (15-47) |
+| `/monitor/events`, the matching dashboard open | 2,317 ms (1,672-2,536) | 10 ms (7-26) |
+
+| Dashboard on gateway | Rendered | Refreshes |
+|---|---|---|
+| base on base (as tested) | title only, after 30 s | none drawn |
+| fixed on fixed | every panel, banner "Threat Detected" | 19 in 20 s |
+| fixed on base | every panel | 9 in 20 s, as fast as the base gateway answers; its `/health` fell to 1,388 ms median, because runs no longer pile up |
+| base on fixed | every panel | about 1 a second |
+
+A refresh was counted as one `POST /predict` in the gateway's access log; each
+refresh ends with one. The browser pane was hidden for all four
+(`visibilityState: hidden`), so the conditions were the same for each.
+
+The other paths that now share the client were checked on the fixed stack:
+- `/analyze` worked for a document and for random bytes.
+- A forged token got a 401, and its `auth_failure` block reached the ledger.
+- `/health` was healthy after idle gaps of 4.5, 5.0, 5.2, 5.5, 6.0 and 8.0 s.
+
+That is 9 of 9 checks passed. The gateway logged 1,275 requests and no error.
+
+**Not changed:**
+- Each refresh still makes its six gateway calls one after another. The two
+  measured, `/health` and `/monitor/events`, now take 18 and 10 ms.
+- Now that the page renders, the dashboard logs a caught pyarrow
+  `ArrowTypeError` for its two-column "Field / Value" tables, which mix text
+  and numbers. Streamlit converts the column to text and the table shows. The
+  base dashboard logs the same once it can reach those tables (base on fixed,
+  above). It is log noise.
+
 ## Suites
 
 Baseline at `7dcee2a` and after this branch, same venv (Python 3.12.10,
@@ -521,13 +616,14 @@ Windows 11, 4 vCPU), `URDS_WRITE_REPORTS` unset:
 
 | Suite | Baseline (`7dcee2a`) | This branch | New tests |
 |---|---|---|---|
-| gateway | 86 passed | 86 passed | — |
+| gateway | 86 passed | 91 passed | +5 (13) |
 | ledger | 67 passed | 99 passed | +32 (defect 4) |
 | monitor | 410 passed | 516 passed | +50 (1), +10 (2), +17 (3), +10 (4), +3 (8), +6 (9), +3 (10), +4 (11), +3 (12) |
 | ml-engine | 45 passed, 3 skipped | 50 passed, 3 skipped | +5 (8) |
 | response | 112 passed, 2 skipped | 121 passed, 2 skipped | +6 (4), +3 (6) |
 | claim matrix (`--tests`) | 0 failed | 0 failed | — |
 | Pester (`scripts/tests`) | — | 26 passed | +26 (5) |
+| dashboard (`services/dashboard`, new) | — | 3 passed | +3 (13) |
 
 The Monitor figure is from a re-run. In the full pass, it had two failures:
 `test_detection_latency_under_100ms` (p95 143.1 ms) and
@@ -572,7 +668,7 @@ pass; no re-run was needed: gateway 86, ledger 99, monitor 500, ml-engine 50
 
 Repeat runs in a fresh venv then found defect 10 and the one `test_tc01`
 failure described there; that failure is defect 12. The suites table above is
-the state after 9 to 12.
+the state after 9 to 13.
 
 ### Caveat: load flakiness
 

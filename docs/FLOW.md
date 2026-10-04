@@ -127,11 +127,11 @@ The only authenticated entry point. Everything else binds to loopback.
 
 | File | Responsibility |
 |---|---|
-| `main.py` | App assembly, `/health`, `/auth/token`, `/analyze`, the four exception handlers, request-ID middleware, and the startup secret check. |
+| `main.py` | App assembly, `/health` (the four services asked at once), `/auth/token`, `/analyze`, the four exception handlers, request-ID middleware, and the startup secret check. |
 | `auth.py` | JWT mint/decode, `get_current_user` (401), `require_role` (403), bootstrap-secret comparison, `verify_jwt_secret_configuration`. |
 | `models.py` | Pydantic request/response shapes. `TokenRequest` defaults are the least-privileged role. |
 | `rate_limit.py` | Token-bucket limiter. `RATE_LIMITS` by tier; `resolve_tier()` maps role→tier. |
-| `routers/proxy.py` | `call_downstream()` (httpx, 5 s timeout) and `proxy_request()`, which forwards the query string and converts downstream ≥400 into the project error envelope. |
+| `routers/proxy.py` | `call_downstream()` (one httpx client, built at startup and shared; 5 s timeout) and `proxy_request()`, which forwards the query string and converts downstream ≥400 into the project error envelope. |
 | `routers/monitor.py` | `/monitor/start` (admin+enterprise), `/monitor/stop` (**admin only**), `/status`, `/events`. |
 | `routers/ml.py` | `/predict` (admin+enterprise), `/model/metrics` (any role). |
 | `routers/ledger.py` | `/ledger/log` (admin+enterprise), `/entries`, `/verify`, `/blocks` (any role). |
@@ -505,8 +505,9 @@ as a column on the recent-events table. The outcome is read from the adjudicatio
 record and **never inferred from `suspicious`**, because a cancelled alert and a
 benign file both report `suspicious: false`.
 
-Streamlit, 1 s auto-refresh. Mints its own `admin` token directly with `jose`
-(lines 18–27) using the shared `JWT_SECRET`, then calls the gateway over HTTP.
+Streamlit; the live panels are a fragment refreshed every 1 s. Mints its own
+`admin` token directly with `jose` (lines 21–30) using the shared `JWT_SECRET`,
+then calls the gateway over HTTP.
 Panels: service health, live event feed, entropy timeline, ledger evidence and
 chain verification, ML metrics.
 
