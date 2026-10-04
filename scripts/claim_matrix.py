@@ -327,6 +327,46 @@ CLAIMS: list[dict] = [
                 "shell is not elevated, and both operations refuse for that "
                 "one reason.",
     },
+    {
+        "id": "C-16",
+        "table_9_9_row": "(beyond the table) no invented process in the chain",
+        "wording": None,
+        "wording_required": False,
+        "claim": "No event in the tamper-evident chain names a process that "
+                 "attribution did not resolve to CERTAIN. Across 48 ledger "
+                 "writes driven through the real pipeline, 0 are unsupported.",
+        "requires": "Ledger coverage scan",
+        "artefact": "reports/ledger_coverage.json",
+        "check": [
+            ("reports/ledger_coverage.json",
+             ["process_attribution_integrity", "unsupported"], 0),
+            ("reports/ledger_coverage.json",
+             ["process_attribution_integrity", "meets_target"], True),
+            # Pins that the scan examined something. Without this a change that
+            # quietly stopped collecting events would report `unsupported: 0`
+            # and pass - a green check over an absence.
+            ("reports/ledger_coverage.json",
+             ["process_attribution_integrity", "events_examined"], 48),
+        ],
+        "tests": ["services/monitor/tests/test_ledger_pid_integrity.py",
+                  "services/response/tests/test_chain_pid_fields.py"],
+        "note": "Ported from fix/evidence-integrity's 58ce021 "
+                "(docs/CORRECTIONS.md). C-07 counts field *presence*, and "
+                "cannot tell an attributed PID from an invented one; an "
+                "invented process_id was in the chain via scripts/si_demo.py "
+                "and the suite C-14 cites while C-07 stayed green. This row "
+                "asserts a value. Read the figure precisely: no audit source "
+                "runs in this scan, so every answer is UNKNOWN, no event names "
+                "a process, and the zero measures restraint rather than "
+                "correct attribution. On this branch the live chain broke the "
+                "rule by design - the 2026-10-04 elevated run named a process "
+                "in 703 blocks, 649 unsupported (PROBABLE PIDs, and 0 for "
+                "'nobody') - so the chain was changed to fit it "
+                "(pipeline.chained_pid, FIXES.md defect 14); the named "
+                "regressions drive the real pipeline with a kernel-grade source "
+                "through those cases, and `ledger_coverage.py --ledger-db` "
+                "applies the rule to a live run's ledger.",
+    },
 ]
 
 
@@ -361,42 +401,55 @@ def check_claim(claim: dict) -> dict:
                             else "artefact present; no figure to check")
         return result
 
-    rel, path, expected = claim["check"]
-    target = ROOT / rel
-    if not target.is_file():
-        result["status"] = "FAIL"
-        result["detail"] = f"evidence file missing: {rel}"
-        return result
-    try:
-        found = dig(json.loads(target.read_text(encoding="utf-8")), list(path))
-    except json.JSONDecodeError as exc:
-        result["status"] = "FAIL"
-        result["detail"] = f"{rel} is not valid JSON: {exc}"
-        return result
+    # One check, or a list of them that must all hold (C-16 pins three values
+    # in one artefact, so that a scan which examined nothing cannot pass).
+    checks = claim["check"] if isinstance(claim["check"], list) else [claim["check"]]
+    details = []
+    for rel, path, expected in checks:
+        ok, detail = check_figure(rel, path, expected)
+        if not ok:
+            result["status"] = "FAIL"
+            result["detail"] = detail
+            return result
+        details.append(detail)
+    result["detail"] = "; ".join(details)
+    return result
 
-    if isinstance(found, KeyError):
-        result["status"] = "FAIL"
-        result["detail"] = f"{rel}: no such path {'.'.join(map(str, path))}"
-        return result
 
+def _matches(found, expected) -> bool:
     # A tuple of expected values means the claim itself states more than one
     # acceptable outcome, each for a documented reason - see C-15, where the
     # figure differs depending on whether a gitignored trained model is
     # present. Any value outside the tuple is still a failure.
     if isinstance(expected, tuple):
-        same = found in expected
-    elif isinstance(expected, float) and isinstance(found, (int, float)):
-        same = abs(found - expected) < 1e-6
-    else:
-        same = found == expected
+        return any(_matches(found, option) for option in expected)
+    # True == 1 and False == 0 in Python, so a count of 0 would satisfy a
+    # quoted `False`, and `True` a count of 1. A boolean matches only a
+    # boolean.
+    if isinstance(expected, bool) or isinstance(found, bool):
+        return type(found) is type(expected) and found == expected
+    if isinstance(expected, float) and isinstance(found, (int, float)):
+        return abs(found - expected) < 1e-6
+    return found == expected
 
-    if not same:
-        result["status"] = "FAIL"
-        result["detail"] = (f"{rel}:{'.'.join(map(str, path))} is {found!r}, "
-                            f"claim quotes {expected!r}")
-    else:
-        result["detail"] = f"{'.'.join(map(str, path))} = {found!r}"
-    return result
+
+def check_figure(rel: str, path, expected) -> tuple[bool, str]:
+    """Does the artefact at `rel` hold `expected` at `path`?"""
+    target = ROOT / rel
+    if not target.is_file():
+        return False, f"evidence file missing: {rel}"
+    try:
+        found = dig(json.loads(target.read_text(encoding="utf-8")), list(path))
+    except json.JSONDecodeError as exc:
+        return False, f"{rel} is not valid JSON: {exc}"
+
+    if isinstance(found, KeyError):
+        return False, f"{rel}: no such path {'.'.join(map(str, path))}"
+
+    if not _matches(found, expected):
+        return False, (f"{rel}:{'.'.join(map(str, path))} is {found!r}, "
+                       f"claim quotes {expected!r}")
+    return True, f"{'.'.join(map(str, path))} = {found!r}"
 
 
 def run_tests(claim: dict) -> dict | None:

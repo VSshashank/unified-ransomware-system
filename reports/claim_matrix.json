@@ -1,6 +1,6 @@
 {
   "schema": "urds.claim_matrix.v1",
-  "generated_at": "2026-09-05T05:45:27.451952+00:00",
+  "generated_at": "2026-10-04T15:27:18.959355+00:00",
   "claims": [
     {
       "id": "C-01",
@@ -24,7 +24,8 @@
         "id": "C-01",
         "status": "ok",
         "detail": "totals.contributors = 4"
-      }
+      },
+      "test_run": null
     },
     {
       "id": "C-02",
@@ -51,6 +52,12 @@
         "id": "C-02",
         "status": "ok",
         "detail": "by_population.ungoverned.adjudicated = 0"
+      },
+      "test_run": {
+        "services/monitor/tests/test_tc18_admission_matrix.py": {
+          "returncode": 0,
+          "summary": "21 passed in 0.03s"
+        }
       }
     },
     {
@@ -77,6 +84,12 @@
         "id": "C-03",
         "status": "ok",
         "detail": "summary.levels_measured = 10"
+      },
+      "test_run": {
+        "services/monitor/tests/test_tc14_unvalidated_closure.py": {
+          "returncode": 0,
+          "summary": "24 passed in 0.25s"
+        }
       }
     },
     {
@@ -104,6 +117,12 @@
         "id": "C-04",
         "status": "ok",
         "detail": "levels.0.measured_name = 'negligible'"
+      },
+      "test_run": {
+        "services/monitor/tests/test_tc18_admission_matrix.py": {
+          "returncode": 0,
+          "summary": "21 passed in 0.03s"
+        }
       }
     },
     {
@@ -131,7 +150,8 @@
         "id": "C-15",
         "status": "ok",
         "detail": "summary.with_empirical_source_trail = 10"
-      }
+      },
+      "test_run": null
     },
     {
       "id": "C-05",
@@ -161,6 +181,12 @@
         "id": "C-05",
         "status": "ok",
         "detail": "per_arm.C.attack.by_family.A1_header_over_ciphertext.flagged = 21"
+      },
+      "test_run": {
+        "services/monitor/tests/test_tc14_unvalidated_closure.py": {
+          "returncode": 0,
+          "summary": "24 passed in 0.26s"
+        }
       }
     },
     {
@@ -189,6 +215,12 @@
         "id": "C-06",
         "status": "ok",
         "detail": "bound_1.by_arm.C.upper_limit_pp = 25.3235"
+      },
+      "test_run": {
+        "services/monitor/tests/test_tc19_benign_bound.py": {
+          "returncode": 0,
+          "summary": "18 passed in 0.23s"
+        }
       }
     },
     {
@@ -216,6 +248,16 @@
         "id": "C-07",
         "status": "ok",
         "detail": "record_completeness.complete_blocks = 36"
+      },
+      "test_run": {
+        "services/monitor/tests/test_tc23_chained_record.py": {
+          "returncode": 0,
+          "summary": "6 passed in 1.42s"
+        },
+        "services/gateway/tests/test_tc25_full_traverse.py": {
+          "returncode": 0,
+          "summary": "8 passed, 1 warning in 0.10s"
+        }
       }
     },
     {
@@ -233,7 +275,8 @@
         "id": "C-08",
         "status": "ok",
         "detail": "not claimed"
-      }
+      },
+      "test_run": null
     },
     {
       "id": "C-09",
@@ -250,7 +293,8 @@
         "id": "C-09",
         "status": "ok",
         "detail": "not claimed"
-      }
+      },
+      "test_run": null
     },
     {
       "id": "C-10",
@@ -275,6 +319,12 @@
         "id": "C-10",
         "status": "ok",
         "detail": "flip_count = 16"
+      },
+      "test_run": {
+        "services/monitor/tests/test_tc18_admission_matrix.py": {
+          "returncode": 0,
+          "summary": "21 passed in 0.03s"
+        }
       }
     },
     {
@@ -300,7 +350,8 @@
         "id": "C-11",
         "status": "ok",
         "detail": "levels.4.measured_name = 'negligible'"
-      }
+      },
+      "test_run": null
     },
     {
       "id": "C-12",
@@ -326,6 +377,12 @@
         "id": "C-12",
         "status": "ok",
         "detail": "structural.detected = 0"
+      },
+      "test_run": {
+        "services/ledger/tests/test_tamper_sweep.py": {
+          "returncode": 0,
+          "summary": "25 passed in 1.90s"
+        }
       }
     },
     {
@@ -351,7 +408,8 @@
         "id": "C-13",
         "status": "ok",
         "detail": "concurrent_detection.latency.p99_ms = 110.55"
-      }
+      },
+      "test_run": null
     },
     {
       "id": "C-14",
@@ -377,12 +435,73 @@
         "id": "C-14",
         "status": "ok",
         "detail": "platform_status.elevated = False"
+      },
+      "test_run": {
+        "services/response/recovery/tests": {
+          "returncode": 0,
+          "summary": "72 passed, 1 warning in 6.83s"
+        }
+      }
+    },
+    {
+      "id": "C-16",
+      "table_9_9_row": "(beyond the table) no invented process in the chain",
+      "wording": null,
+      "wording_required": false,
+      "claim": "No event in the tamper-evident chain names a process that attribution did not resolve to CERTAIN. Across 48 ledger writes driven through the real pipeline, 0 are unsupported.",
+      "requires": "Ledger coverage scan",
+      "artefact": "reports/ledger_coverage.json",
+      "check": [
+        [
+          "reports/ledger_coverage.json",
+          [
+            "process_attribution_integrity",
+            "unsupported"
+          ],
+          0
+        ],
+        [
+          "reports/ledger_coverage.json",
+          [
+            "process_attribution_integrity",
+            "meets_target"
+          ],
+          true
+        ],
+        [
+          "reports/ledger_coverage.json",
+          [
+            "process_attribution_integrity",
+            "events_examined"
+          ],
+          48
+        ]
+      ],
+      "tests": [
+        "services/monitor/tests/test_ledger_pid_integrity.py",
+        "services/response/tests/test_chain_pid_fields.py"
+      ],
+      "note": "Ported from fix/evidence-integrity's 58ce021 (docs/CORRECTIONS.md). C-07 counts field *presence*, and cannot tell an attributed PID from an invented one; an invented process_id was in the chain via scripts/si_demo.py and the suite C-14 cites while C-07 stayed green. This row asserts a value. Read the figure precisely: no audit source runs in this scan, so every answer is UNKNOWN, no event names a process, and the zero measures restraint rather than correct attribution. On this branch the live chain broke the rule by design - the 2026-10-04 elevated run named a process in 703 blocks, 649 unsupported (PROBABLE PIDs, and 0 for 'nobody') - so the chain was changed to fit it (pipeline.chained_pid, FIXES.md defect 14); the named regressions drive the real pipeline with a kernel-grade source through those cases, and `ledger_coverage.py --ledger-db` applies the rule to a live run's ledger.",
+      "verification": {
+        "id": "C-16",
+        "status": "ok",
+        "detail": "process_attribution_integrity.unsupported = 0; process_attribution_integrity.meets_target = True; process_attribution_integrity.events_examined = 48"
+      },
+      "test_run": {
+        "services/monitor/tests/test_ledger_pid_integrity.py": {
+          "returncode": 0,
+          "summary": "18 passed in 2.03s"
+        },
+        "services/response/tests/test_chain_pid_fields.py": {
+          "returncode": 0,
+          "summary": "6 passed, 1 warning in 0.90s"
+        }
       }
     }
   ],
   "summary": {
-    "total": 15,
-    "made": 13,
+    "total": 16,
+    "made": 14,
     "not_claimed": 2,
     "mandatory_wording": 9,
     "failed_verification": 0

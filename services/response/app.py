@@ -57,6 +57,14 @@ class TerminateRequest(BaseModel):
     incident_id: str
     reason: str
     force: bool = True
+    # What authorised the kill, when attribution did: the Monitor's escalation
+    # sends `certain` and its source. Recorded on the block so the chain says
+    # on what evidence a process was killed. A kill asked for without them -
+    # an operator's, through the gateway, which does not forward them - is
+    # recorded with none, and the C-16 scan reports that block as naming a
+    # process without attribution (scripts/ledger_coverage.py).
+    attribution_confidence: str | None = None
+    attribution_source: str | None = None
 
 
 class IsolateRequest(BaseModel):
@@ -82,6 +90,9 @@ class TriggerRequest(BaseModel):
     attribution_confidence: str | None = None
     attribution_reason: str | None = None
     process_image: str | None = None
+    # Every PID whose audited write fell in the window: the evidence behind a
+    # PROBABLE answer. Recorded instead of `process_id` when nothing is killed.
+    attribution_candidates: list[int] | None = None
 
 
 def utc_now() -> str:
@@ -149,6 +160,8 @@ def terminate(payload: TerminateRequest) -> JSONResponse:
                 "action": "terminate",
                 "incident_id": payload.incident_id,
                 "process_id": payload.process_id,
+                "attribution_confidence": payload.attribution_confidence,
+                "attribution_source": payload.attribution_source,
                 "reason": payload.reason,
                 "outcome": "refused",
                 "detail": str(exc),
@@ -168,6 +181,8 @@ def terminate(payload: TerminateRequest) -> JSONResponse:
             "action": "terminate",
             "incident_id": payload.incident_id,
             "process_id": payload.process_id,
+            "attribution_confidence": payload.attribution_confidence,
+            "attribution_source": payload.attribution_source,
             "process_name": result["process_name"],
             "reason": payload.reason,
             "outcome": "terminated",
@@ -210,8 +225,9 @@ def trigger(payload: TriggerRequest) -> JSONResponse:
     """
     actions_taken: list[str] = []
     details: dict = {}
+    kill_requested = payload.action_required == "terminate_process"
 
-    if payload.action_required == "terminate_process":
+    if kill_requested:
         # Attempt it even for an implausible PID: the guard's refusal reason is
         # what makes the incident record explain why nothing was killed.
         try:
@@ -237,7 +253,17 @@ def trigger(payload: TriggerRequest) -> JSONResponse:
         {
             "action": "trigger",
             "incident_id": payload.incident_id,
-            "process_id": payload.process_id,
+            # The PID only when a kill was asked for: it is then the target, and
+            # the block says what was done to it. Otherwise the caller's PID is
+            # a candidate, not an identification, and goes in the candidates
+            # (C-16, scripts/ledger_coverage.py). A process_id of 0 - "nobody
+            # was attributed" - used to be recorded as the number 0.
+            "process_id": payload.process_id if kill_requested else None,
+            "attribution_candidates": (
+                list(payload.attribution_candidates)
+                if payload.attribution_candidates is not None
+                else ([payload.process_id] if payload.process_id > 0 and not kill_requested else [])
+            ),
             "process_image": payload.process_image,
             "attribution_confidence": payload.attribution_confidence,
             "attribution_reason": payload.attribution_reason,

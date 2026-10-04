@@ -12,9 +12,10 @@ python scripts/claim_matrix.py --tests
 ```
 
 Exit status is 1 if any claim fails, which makes this the regression on the
-thesis itself. Last run at commit `2a7a1c4`, 5 September 2026: **14 claims, 0
-failed, 12 made, 2 recorded as not claimed, 9 carrying mandatory wording, and
-every named regression passing.**
+thesis itself. Last run on `fix/windows-integration-defects`, 4 October 2026,
+when C-16 was added: **16 claims, 0 failed, 14 made, 2 recorded as not claimed,
+9 carrying mandatory wording, and every named regression passing.** (The
+5 September run at `2a7a1c4` had 14; C-15 and C-16 came later.)
 
 Two rows record claims that are **not** made. A matrix listing only what is
 claimed cannot show that a forbidden claim was avoided deliberately rather than
@@ -37,7 +38,7 @@ have required.
 | C-08 | Ransomware detection improved generally | **not claimed** | External detector comparison | — no comparison was run | **not claimed** |
 | C-09 | Patentability or legal novelty | **never inferred from this work** | Formal legal and prior-art review | — no review was conducted | **not claimed** |
 
-## Six results beyond Table 9.9's eight rows
+## Results beyond Table 9.9's eight rows
 
 | ID | Claim | Checked against | Result |
 |---|---|---|---|
@@ -46,6 +47,7 @@ have required.
 | C-12 | The chain detects in-place tampering 20/20 and structural rewriting 0/8 | `tamper_sweep.json` → `structural.detected` = 0 | **ok** |
 | C-13 | Latency holds 100 ms at p95 (94.650 ms) and misses at p99 (110.550 ms) | `load_test.json` → `concurrent_detection.latency.p99_ms` = 110.55 | **ok** |
 | C-14 | Local restore verified 13/13; VSS-backed restore **not** measured | `vss_status.json` → `platform_status.elevated` = false | **ok** |
+| C-16 | No event in the chain names a process that attribution did not resolve to CERTAIN; 48 writes, 0 unsupported | `ledger_coverage.json` → `process_attribution_integrity.unsupported` = 0, `meets_target` = true, `events_examined` = 48 | **ok** |
 
 ---
 
@@ -229,6 +231,34 @@ This is acceptance row 12, still partial. A reader taking the strictest reading
 of §9's "if any are deferred, say Monitor-scoped" should attach *local snapshots*
 to the recovery claim specifically; the ML, ledger and response rows pass on
 their own evidence.
+
+### C-16 — no invented process in the chain
+
+Ported from `fix/evidence-integrity`'s `58ce021` (`docs/CORRECTIONS.md`). C-07
+counts whether five fields are *present* on each chained block, and a block
+carrying an invented PID satisfies it perfectly: an invented `process_id` was
+written into the chain by `scripts/si_demo.py` and by a recovery test this
+matrix cites, and C-07 stayed green throughout. C-16 asserts a value instead:
+an event may name a process only when attribution resolved to CERTAIN. `None`
+is not an offence; "no process was identified" has to stay expressible.
+
+Read the figure precisely. The scan drives the real pipeline with no audit
+source, so every answer is UNKNOWN and none of the 48 writes names a process:
+the zero measures restraint, not correct attribution. `events_examined` is
+pinned so that a scan which stopped collecting cannot pass. The named
+regressions feed the rule PIDs that must be flagged, and drive the pipeline
+with a kernel-grade source through the cases that broke it.
+
+On this branch the live chain broke the rule by design until the port: the
+2026-10-04 elevated run named a process in 703 blocks, 649 of them unsupported
+(PROBABLE answers' PIDs, and `0` for "nobody"). The chain was changed to fit
+the rule (`pipeline.chained_pid`, `FIXES.md` defect 14): a PROBABLE answer's
+PIDs are recorded as `attribution_candidates`, which the rule does not read.
+The same rule runs over a live run's ledger:
+
+```bash
+python scripts/ledger_coverage.py --ledger-db <run>/data/ledger.db
+```
 
 ---
 

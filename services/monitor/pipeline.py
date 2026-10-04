@@ -69,6 +69,23 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def chained_pid(pid: int | None, confidence: str | None) -> int | None:
+    """The PID a ledger block may name: a CERTAIN answer's, or none.
+
+    Claim C-16 (scripts/ledger_coverage.py, docs/CORRECTIONS.md): an event in
+    the chain names a process only when attribution resolved to CERTAIN. A
+    PROBABLE answer's PIDs still go on the block, as `attribution_candidates` -
+    every PID whose audited write fell in the window, which is the evidence -
+    and the event on /monitor/events still names the one the answer picked.
+    What the chain does not do is put that pick in `process_id`, the field that
+    means "this process did it". The 2026-10-04 elevated run's chain did so in
+    649 of its 703 blocks that named a process.
+    """
+    if pid and confidence == attribution.CERTAIN:
+        return pid
+    return None
+
+
 class PipelineResult(dict):
     """Plain dict; named so logs and tests read clearly."""
 
@@ -182,6 +199,7 @@ def trigger_response(
     attribution_confidence: str = attribution.UNKNOWN,
     attribution_reason: str | None = None,
     process_image: str | None = None,
+    attribution_candidates: list | None = None,
 ) -> dict | None:
     """Ask the Response service to act on one incident.
 
@@ -214,6 +232,10 @@ def trigger_response(
             "attribution_confidence": attribution_confidence,
             "attribution_reason": attribution_reason,
             "process_image": process_image,
+            # The evidence behind a PROBABLE answer. The Response service puts
+            # these, not `process_id`, on its block when it does not kill
+            # (chained_pid, C-16).
+            "attribution_candidates": list(attribution_candidates or []),
             # The governance record travels with the incident. An operator rule
             # that was consulted and outranked is why this response is firing at
             # all, and the Response service's own ledger entry should say so
@@ -250,6 +272,11 @@ def request_termination(
             "incident_id": incident_id,
             "reason": f"attribution escalated to certain after the delivery horizon: {answer.reason}",
             "force": True,
+            # What authorised it, so the Response service's own block says so.
+            # A kill asked for with neither is an operator's, and the C-16 scan
+            # reports its block as naming a process without attribution.
+            "attribution_confidence": answer.confidence,
+            "attribution_source": answer.source,
         },
     )
 
@@ -299,7 +326,9 @@ def escalate(
         "outcome": outcome,
         "result": result,
         "action_requested": "terminate_process" if answer.kill_authorised else None,
-        "process_id": answer.pid,
+        # Only a CERTAIN answer's PID (chained_pid). A PROBABLE one's - two
+        # writers, or a writer that exited - is in attribution_candidates.
+        "process_id": chained_pid(answer.pid, answer.confidence),
         "process_image": answer.image,
         "attribution_confidence": answer.confidence,
         "attribution_reason": answer.reason,
@@ -378,7 +407,10 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
             "validation_state": verdict.get("validation_state"),
             "policy_version": verdict.get("policy"),
             "detection_latency_ms": event.get("detection_latency_ms"),
-            "process_id": event.get("process_id"),
+            # Only a CERTAIN answer's PID; a PROBABLE answer's are the
+            # candidates below (chained_pid, C-16).
+            "process_id": chained_pid(event.get("process_id"), event.get("attribution_confidence")),
+            "attribution_candidates": list(event.get("attribution_candidates") or []),
             # Attribution travels into the chain with the event it explains. A
             # PID in the ledger with no confidence beside it cannot be audited
             # later: the reader cannot tell whether a kill was declined because
@@ -424,6 +456,7 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
                 attribution_confidence=event.get("attribution_confidence", attribution.UNKNOWN),
                 attribution_reason=event.get("attribution_reason"),
                 process_image=event.get("process_image"),
+                attribution_candidates=event.get("attribution_candidates"),
             )
             if response:
                 result["response"] = response

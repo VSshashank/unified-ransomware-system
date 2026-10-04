@@ -106,6 +106,57 @@ re-lettered to `{77777777-8888-9999-aaaa-bbbbbbbbbbbb}` so that
 exception. That change is cosmetic and is recorded only so it is not mistaken
 for a substantive one later.
 
+## 4. A completeness row that counted fields, not values
+
+**Where:** `scripts/ledger_coverage.py` and claim C-07.
+
+C-07 asserts that 36 chained adjudication blocks carry all five required
+fields. It counts *presence*. A block carrying the invented PID from
+correction 3 satisfies it perfectly, and C-07 was green the whole time that
+number sat in the chain. Deleting the number does not fix this: the next
+invented value would be just as invisible.
+
+**Replaced by:** a scan that asserts a value, not a field count
+(`unsupported_pid`): *a ledger event may name a process only when attribution
+resolved to `CERTAIN`.* It is reported as `process_attribution_integrity` and
+bound to a new claim, **C-16**. `ledger_coverage.py --ledger-db <file>` runs the
+same rule over a real run's ledger.
+
+**Read C-16's figure precisely.** The scan drives the real pipeline with no
+audit source, so every answer is `UNKNOWN` and none of the 48 events names a
+process. "0 unsupported" is therefore vacuously met: it measures restraint, not
+correct attribution. A scan that never looked would report the same zero. So
+`services/monitor/tests/test_ledger_pid_integrity.py` feeds it PIDs that must be
+flagged, and C-16 also pins `events_examined == 48`.
+
+**What porting it found on this branch.** The rule was written for a branch
+whose agent never put a PID it was unsure of in the chain. This branch did, by
+design. Run over the 2026-10-04 elevated run's ledger (1,556 blocks), it found
+703 blocks naming a process, **649 of them unsupported**:
+
+| Blocks | What they held |
+|---|---|
+| 299 | a Response `trigger` block with `process_id: 0`, the number used for "nobody was attributed" |
+| 260 | an `attribution_escalation` block naming a PROBABLE answer's PID (two writers, or a writer that had exited) |
+| 54 | a Response `terminate` block naming its target, with nothing saying what authorised the kill |
+| 18 + 18 | a `file_event` block and its `trigger` block naming the first answer's PROBABLE PID |
+
+The rule was not loosened to fit the chain. The chain was changed to fit the
+rule (`pipeline.chained_pid`; `FIXES.md`, defect 14):
+- `process_id` on a block now means "this process did it". It is set only on a
+  CERTAIN answer, or as the target of a kill that was asked for.
+- A PROBABLE answer's PIDs are recorded as `attribution_candidates`. That is
+  every PID whose audited write fell in the window: the evidence, which the
+  rule does not read.
+- A trigger with nobody attributed records `None`, not `0`.
+- A terminate block records the confidence and source that authorised it. A
+  kill requested without them is an operator's, through the gateway, which
+  does not forward them. Such a block is still recorded, and the scan reports
+  it as naming a process without attribution, which is what it is.
+- The Response service still receives a PROBABLE PID with an isolate-and-log
+  trigger (`test_tc26_attribution.py`), and `/monitor/events` still names the
+  PID a PROBABLE answer picked. What changed is only what the chain asserts.
+
 ## The tracked evidence the old code produced
 
 - `reports/attack_chain_evidence.txt` and `reports/attack_chain_results.json`

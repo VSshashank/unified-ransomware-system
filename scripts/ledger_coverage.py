@@ -17,17 +17,27 @@ real `handle_event` with the fan-out pointed at a stub that records every
 and the report says, per population, how many events produced an adjudication and
 how many of those adjudications arrived at the ledger.
 
-    .venv\\Scripts\\python.exe scripts/ledger_coverage.py
+It also asserts a *value* on every ledger write, not just a field count: an
+event may name a process only when attribution resolved to CERTAIN
+(`unsupported_pid`, claim C-16; ported from fix/evidence-integrity's 58ce021,
+docs/CORRECTIONS.md). The same rule can be run over a real ledger:
 
-Writes reports/ledger_coverage.json only when URDS_WRITE_REPORTS=1.
+    .venv\\Scripts\\python.exe scripts/ledger_coverage.py
+    .venv\\Scripts\\python.exe scripts/ledger_coverage.py --ledger-db <run>\\data\\ledger.db
+
+Writes reports/ledger_coverage.json only when URDS_WRITE_REPORTS=1. The
+`--ledger-db` scan writes nothing, opens the database read-only, and exits 1 if
+any block names a process the rule does not allow.
 """
 
 from __future__ import annotations
 
+import argparse
 import gzip
 import hashlib
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -55,6 +65,79 @@ def git(*args: str) -> str:
 
 def payload(tag: str, size: int = 120_000) -> bytes:
     return hashlib.shake_256(tag.encode()).digest(size)
+
+
+def unsupported_pid(event_data: dict) -> str | None:
+    """Why this ledger event names a process the evidence does not support.
+
+    None when it is fine. The rule is the pipeline's own: an event may name a
+    process only when attribution was CERTAIN. A `process_id` of None is not an
+    offence - "no process was identified" is the honest answer and has to stay
+    expressible, or the pressure to invent one comes straight back. A number
+    with anything short of CERTAIN beside it, or with nothing beside it, is.
+
+    `attribution_candidates` is not read: it lists every PID whose audited
+    write fell in the window, which is the evidence, not a claim that any one
+    of them did it. That is where a PROBABLE answer's PIDs go on this branch.
+    """
+    if "process_id" not in event_data:
+        return None
+    pid = event_data.get("process_id")
+    if pid is None:
+        return None
+    confidence = event_data.get("attribution_confidence")
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return f"process_id {pid!r} is not a positive integer"
+    if confidence != "certain":
+        return (f"process_id {pid} is named with attribution_confidence "
+                f"{confidence!r}; only 'certain' supports naming one")
+    return None
+
+
+def scan_writes(writes: list[dict]) -> dict:
+    """`unsupported_pid` over ledger writes shaped `{event_type, event_data}`."""
+    offences = []
+    named = 0
+    for write in writes:
+        data = write.get("event_data") or {}
+        if data.get("process_id") is not None:
+            named += 1
+        why = unsupported_pid(data)
+        if why is None:
+            continue
+        offences.append({
+            "block_id": write.get("block_id"),
+            "event_type": write.get("event_type"),
+            "file_path": data.get("file_path"),
+            "process_id": data.get("process_id"),
+            "attribution_confidence": data.get("attribution_confidence"),
+            "why": why,
+        })
+    return {
+        "events_examined": len(writes),
+        "events_naming_a_process": named,
+        "unsupported": len(offences),
+        "detail": offences,
+    }
+
+
+def scan_ledger_db(path: str) -> dict:
+    """The same rule over every block of a real ledger, opened read-only."""
+    uri = Path(path).resolve().as_uri() + "?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    try:
+        rows = conn.execute("SELECT id, event_type, event_data FROM blocks ORDER BY id").fetchall()
+    finally:
+        conn.close()
+    writes = []
+    for block_id, event_type, raw in rows:
+        try:
+            data = json.loads(raw)
+        except (TypeError, ValueError):
+            data = {}
+        writes.append({"block_id": block_id, "event_type": event_type,
+                       "event_data": data if isinstance(data, dict) else {}})
+    return scan_writes(writes)
 
 
 class LedgerStub:
@@ -163,6 +246,16 @@ class LedgerStub:
             ),
         }
 
+    def unsupported_pids(self) -> dict:
+        """Every ledger write naming a process the evidence does not support.
+
+        A *value* assertion. `record_completeness` above asks whether a field
+        is present, and a block carrying an invented PID satisfies that
+        perfectly - which is how an invented process_id sat in the chain while
+        the row meant to police it stayed green (docs/CORRECTIONS.md).
+        """
+        return scan_writes(self.ledger_writes)
+
     def block_types(self) -> dict:
         counts: dict[str, int] = {}
         for write in self.ledger_writes:
@@ -230,7 +323,29 @@ def drive(workdir: Path, monkeypatched_stub: LedgerStub, population: str) -> dic
     }
 
 
+def scan_db_main(path: str) -> int:
+    """`--ledger-db`: the C-16 rule over a real run's chain. Writes nothing."""
+    result = scan_ledger_db(path)
+    print(f"process attribution integrity - {path}")
+    print(f"  {result['events_examined']} blocks examined, {result['events_naming_a_process']} name a "
+          f"process, {result['unsupported']} unsupported")
+    by_kind: dict[str, int] = {}
+    for entry in result["detail"]:
+        why = entry["why"].split(";")[0].replace(f"process_id {entry['process_id']!r}", "process_id N")
+        key = f"{entry['event_type']}: {why}"
+        by_kind[key] = by_kind.get(key, 0) + 1
+    for key, count in sorted(by_kind.items(), key=lambda kv: -kv[1]):
+        print(f"    {count:5d}  {key}")
+    return 1 if result["unsupported"] else 0
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--ledger-db", help="scan this ledger SQLite file instead (read-only, writes nothing)")
+    args = parser.parse_args()
+    if args.ledger_db:
+        return scan_db_main(args.ledger_db)
+
     import app as monitor_app
     import pipeline as monitor_pipeline
     import suppression as suppression_module
@@ -258,6 +373,7 @@ def main() -> int:
                     "adjudications_reaching_ledger": len(stub.decisions_chained()),
                     "ledger_block_types": stub.block_types(),
                     "record_completeness": stub.record_completeness(),
+                    "unsupported_pids": stub.unsupported_pids(),
                 }
     finally:
         monitor_pipeline._post = original_post
@@ -276,6 +392,12 @@ def main() -> int:
         for name in LedgerStub.REQUIRED_RECORD_FIELDS
     }
 
+    pid_scans = [f["unsupported_pids"] for f in findings.values()]
+    pids_examined = sum(s["events_examined"] for s in pid_scans)
+    pids_named = sum(s["events_naming_a_process"] for s in pid_scans)
+    pids_unsupported = sum(s["unsupported"] for s in pid_scans)
+    pid_detail = [entry for s in pid_scans for entry in s["detail"]]
+
     report = {
         "schema": "urds.ledger_coverage/1",
         "generated_at": utc_now(),
@@ -287,6 +409,30 @@ def main() -> int:
         "meets_target": total_reaching == total_adjudicated and total_adjudicated > 0,
         "adjudications_made": total_adjudicated,
         "adjudications_reaching_ledger": total_reaching,
+        "process_attribution_integrity": {
+            "rule": "A ledger event may name a process only when attribution "
+                    "resolved to CERTAIN. process_id None is the honest value "
+                    "for an unattributed write and is not counted against "
+                    "this; a PID asserted without CERTAIN evidence behind it "
+                    "is. attribution_candidates, the PIDs whose audited writes "
+                    "fell in the window, are evidence and are not read.",
+            "why_this_row_exists": "The completeness row below counts whether "
+                                   "a field is present. It cannot tell an "
+                                   "attributed PID from an invented one, and "
+                                   "for a period it did not: see "
+                                   "docs/CORRECTIONS.md.",
+            "what_this_figure_means": "No attribution source runs here, so every "
+                                      "answer is UNKNOWN and no event names a "
+                                      "process: the zero is vacuously met and "
+                                      "measures restraint, not correct "
+                                      "attribution. The live chain is checked "
+                                      "with --ledger-db on a real run's ledger.",
+            "events_examined": pids_examined,
+            "events_naming_a_process": pids_named,
+            "unsupported": pids_unsupported,
+            "detail": pid_detail,
+            "meets_target": pids_unsupported == 0,
+        },
         "record_completeness": {
             "required_fields": sorted(LedgerStub.REQUIRED_RECORD_FIELDS),
             "source": "NOVELTY_PROOF_PLAN.md §9 row 10; regression TC-23",
@@ -341,6 +487,13 @@ def main() -> int:
     )
     for name, count in sorted(field_totals.items()):
         print(f"    {name:<18} {count}/{chained_blocks}")
+
+    print()
+    print("process attribution integrity - does the chain name a process it cannot support?")
+    print(f"  {pids_examined} ledger events examined, {pids_named} name a process, "
+          f"{pids_unsupported} unsupported")
+    for entry in pid_detail:
+        print(f"    {entry['event_type']}: {entry['why']}")
 
     if os.getenv("URDS_WRITE_REPORTS", "").lower() not in {"1", "true", "yes"}:
         print("\nURDS_WRITE_REPORTS is not set: report not written")
