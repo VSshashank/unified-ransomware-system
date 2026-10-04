@@ -257,6 +257,17 @@ because what was found was not good enough. So the chain carries
 `attribution_source` alongside it, on the `file_event` block and again on
 `response_action`.
 
+And a block names a process only when attribution resolved to `certain`
+(claim C-16, `FIXES.md` defect 14, `docs/CORRECTIONS.md`):
+- A PROBABLE answer's PIDs go in `attribution_candidates`: every PID whose
+  audited write fell in the window, which is the evidence. They do not go in
+  `process_id`, which means "this process did it".
+- A trigger with nobody attributed records `None`, not `0`.
+- A terminate block says what authorised the kill.
+- `python scripts/ledger_coverage.py --ledger-db <ledger.db>` checks a run's
+  chain against that rule. The 2026-10-04 elevated run, before the change, had
+  649 unsupported blocks out of 703 that named a process.
+
 ---
 
 ## 5. The kill guard, widened
