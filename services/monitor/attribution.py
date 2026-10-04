@@ -195,6 +195,13 @@ HORIZON_MS = float(os.getenv("ATTRIBUTION_HORIZON_MS", "1500"))
 #: then, and does not need to.)
 CLOCK_TOLERANCE_MS = float(os.getenv("ATTRIBUTION_CLOCK_TOLERANCE_MS", "50"))
 
+#: One tick of the clock `observed_at` is read on - 15.625 ms on the test host.
+#: A write that happened before watchdog reported the change can carry a
+#: TimeCreated up to one tick after `observed_at`, because the observation was
+#: read on the coarser clock. Used only to choose which of several candidates a
+#: PROBABLE answer names (`_lookup_anchored`), never to decide confidence.
+OBSERVATION_TICK_S = time.get_clock_info("time").resolution
+
 #: Poll interval of the legacy (unanchored) grace loop. The loop now also wakes
 #: on every recorded write, so this is only a backstop.
 POLL_MS = float(os.getenv("ATTRIBUTION_POLL_MS", "10"))
@@ -733,17 +740,34 @@ class WriteLog:
         if len(distinct) > 1:
             # Final, not pending: records still in flight can add writers to
             # this list and can never take one away.
+            #
+            # Which one to name. A PROBABLE answer is never acted on, but its
+            # PID is what the event and the ledger say probably did it. It used
+            # to be the most recent writer, and the elevated re-check on the VM
+            # (2026-10-04) showed why that is wrong: a restore that opened the
+            # file 27 ms *after* the Monitor observed the encryption - inside
+            # the tolerance after the read, so rightly a candidate - was named
+            # as the probable encryptor. A write that preceded the observation
+            # produced bytes the detector judged; one after it may not have. So
+            # the most recent writer before the observation (one tick of slack,
+            # OBSERVATION_TICK_S) is named, and the most recent overall only if
+            # there is none. Candidates and confidence are unchanged.
+            preceding = [w for w in matches if w.written_at <= observed_at + OBSERVATION_TICK_S]
+            named = max(preceding or matches, key=lambda w: w.written_at)
             return Attribution(
-                pid=newest.pid,
-                image=newest.image,
+                pid=named.pid,
+                image=named.image,
                 confidence=PROBABLE,
                 reason=(
                     f"{len(distinct)} processes wrote this path within {competition:.0f}ms "
                     f"before the event ({', '.join(str(p) for p in distinct)}); "
-                    f"reporting the most recent"
+                    + ("reporting the most recent before the event" if preceding else "reporting the most recent")
                 ),
                 candidates=tuple(distinct),
-                **evidence,
+                source=source,
+                written_at=named.written_at,
+                delivered_at=named.delivered_at,
+                settle_at=settle_at,
             )
 
         if not kernel_grade:
