@@ -2,7 +2,7 @@
 
 Eight defects found by the Windows 11 VM integration test of commit `7dcee2a`,
 fixed on `fix/windows-integration-defects`, one commit per defect, and two more
-found re-testing this branch on the same VM (9 and 10). Each entry says what
+found re-testing this branch on the same VM (9 to 11). Each entry says what
 changed, where, what tests it, and what can only be confirmed on the Windows
 test VM. Measured figures in the README and `reports/` are unchanged;
 claims they no longer describe are marked **re-verification pending**.
@@ -19,6 +19,7 @@ claims they no longer describe are marked **re-verification pending**.
 | 8 | Attribution wording before start; training rewrote a tracked report | `8cef7bf` |
 | 9 | The Monitor's reads stopped other processes renaming or deleting a file | `805084f` |
 | 10 | Training mode timed its window and dwell on a slewed wall clock | `db8f38a` (test waits `529d872`) |
+| 11 | A probable answer named a writer that came after the event | `ec21a43` |
 
 ## The safety invariant
 
@@ -434,6 +435,39 @@ test stay on the wall clock.
   about 210 runs of its scenario on 2026-10-04, with the whole file finishing
   in 2.7 s: too fast for the 5 s wait to have run out in real time.
 
+## 11. A probable answer named a writer that came after the event
+
+Found by the elevated re-check on the VM, 2026-10-04 (run `20261004_115048`).
+
+**Measured:** the check encrypted `report_2.txt`, then asked the Response
+service to restore it as soon as the detection appeared. The restore opened the
+file for writing at 06:21:01.712. That was 27 ms after the Monitor observed the
+encryption (01.685), and inside the 50 ms clock tolerance after the read, so it
+was rightly counted as a possible competitor. The answer was `probable`, with
+four candidates (2504, 9508, 4604, 6388), and nothing was killed. But a
+multi-writer answer reported "the most recent" writer. So the event and the
+ledger named PID 6388, the Response service, as the probable encryptor. The
+encryptor (4604), whose write preceded the observation, appeared only in the
+candidate list.
+
+**What changed:** the multi-writer branch of `_lookup_anchored`
+(`services/monitor/attribution.py`) now names the most recent writer whose write
+preceded the observation. Only if no candidate preceded it does it name the most
+recent overall.
+- The comparison allows one tick of slack: `OBSERVATION_TICK_S`, which is
+  `time.get_clock_info("time").resolution`, 15.625 ms on the test host. A
+  precise `TimeCreated` can sit up to one tick after the coarser `observed_at`.
+- The answer's evidence (`written_at`, `delivered_at`) is the named writer's
+  record.
+- Candidates, confidence and `kill_authorised` are unchanged. A `probable`
+  answer is never acted on, so no response changes; only the PID on the record
+  does.
+
+**Tests:** `services/monitor/tests/test_probable_reports_preceding_writer.py`
+(4), including the VM run's three writes. On the old code it names 6388.
+
+**Verified live:** the next elevated run named no wrong PID (0 of 79).
+
 ## Suites
 
 Baseline at `7dcee2a` and after this branch, same venv (Python 3.12.10,
@@ -443,7 +477,7 @@ Windows 11, 4 vCPU), `URDS_WRITE_REPORTS` unset:
 |---|---|---|---|
 | gateway | 86 passed | 86 passed | — |
 | ledger | 67 passed | 99 passed | +32 (defect 4) |
-| monitor | 410 passed | 509 passed | +50 (1), +10 (2), +17 (3), +10 (4), +3 (8), +6 (9), +3 (10) |
+| monitor | 410 passed | 513 passed | +50 (1), +10 (2), +17 (3), +10 (4), +3 (8), +6 (9), +3 (10), +4 (11) |
 | ml-engine | 45 passed, 3 skipped | 50 passed, 3 skipped | +5 (8) |
 | response | 112 passed, 2 skipped | 121 passed, 2 skipped | +6 (4), +3 (6) |
 | claim matrix (`--tests`) | 0 failed | 0 failed | — |
@@ -481,8 +515,8 @@ commit on the same host at the same time, not against yesterday's numbers.
 ## Re-test on the Windows VM, 2026-10-04
 
 Same VM (Windows 11 build 26200, VirtualBox, 4 vCPU, 6 GB), quiet: no other
-test runs in parallel. The shell was not elevated, so the elevated half is a
-script for the operator (below).
+test runs in parallel. The agent's shell was not elevated, so the operator ran
+the elevated half (below).
 
 ### Suites, first pass
 
@@ -491,7 +525,7 @@ pass; no re-run was needed: gateway 86, ledger 99, monitor 500, ml-engine 50
 (3 skipped), response 121 (2 skipped), claim matrix 0 failed, Pester 26.
 
 Repeat runs in a fresh venv then found defect 10 and the one `test_tc01`
-failure described there. The suites table above is the state after 9 and 10.
+failure described there. The suites table above is the state after 9 to 11.
 
 ### Caveat: load flakiness
 
@@ -536,24 +570,66 @@ All six services run natively from the fresh venv, with a fresh ledger and
 | ledger | every suspicious event has a block; chain verifies |
 | gateway | 401 unauthenticated; 403 admin token without the bootstrap secret; routes and `/analyze` with it |
 
-### Pending: the elevated half
+### The elevated half
 
-Defects 1, 2, 5 and 6, the safety invariant and the "0 events name the wrong
-PID" row need an elevated shell. They change audit settings, which the operator
-does, not the agent. One script runs them all and records everything under
-`C:\URDS-recheck\run_<time>\`:
+The operator ran one script from an Administrator PowerShell:
+`recheck_elevated.ps1`, with the live checks in `e2e_check.py`. Audit
+settings were changed by the operator, not by the agent.
 
-1. Record the Security log size, the File System subcategory, the SACLs and the
-   shadow copies.
-2. Defect 5: setup on two test folders, `-Verify`, then revert the second
-   folder alone and check the first is untouched.
-3. Start the stack elevated.
-4. Defect 6: `--status-only`; the shadow copies must not change.
-5. Live checks: defects 1 to 4, 8, the invariant, the wrong-PID count.
-6. Stop the stack, `-Revert`, and compare the machine with step 1.
+**Machine state, defect 5's own check:**
+- The Security log is 1 GiB and the File System subcategory is `Success`.
+  URDSAgent's installer left both that way.
+- Setup recorded both, left both unchanged, and added an audit rule to
+  `C:\URDS-recheck\watch` and `watch2`.
+- Reverting `watch2` alone left `watch` and the machine-wide settings alone.
+- The final `-Revert` removed only the rules setup had added.
+- Before and after compared equal on every recorded item: log size,
+  subcategory, rules on both folders, the state file, and shadow copies (none).
 
-On this VM the log is already 1 GiB and the subcategory was left on by
-URDSAgent's installer. So the only change it makes is an audit SACL on
-`C:\URDS-recheck\watch` and `watch2`, which `-Revert` removes. That is defect
-5's re-check exactly: the log and the subcategory must be the same afterwards.
-**Result: pending.**
+Final run, `20261004_120149`, at `ec21a43`: **42 passed, 0 failed.**
+
+| Re-check | Result |
+|---|---|
+| 5: 1 GiB log, setup, `-Verify`, second root, `-Revert` | log 1 GiB before and after; subcategory `Success` before and after; no rule left on either folder; reverting the second root left the first untouched |
+| 6: `--status-only`, elevated | shadow copies 0 -> 0; "not attempted: --status-only creates nothing" |
+| audit probe | a write under the watch path reached the Monitor as a 4663 (`writes_recorded` 0 -> 5) |
+| 1: single write by a fresh process | 5 of 5 `certain`, correct PID, writer terminated |
+| 2: write then rename by one process | 5 of 5: the rename event `certain`, correct PID, writer terminated |
+| invariant: a benign writer, then an encryptor 0.5 s later | 3 of 3 never `certain`, nobody killed; the encryptor named |
+| invariant: a second writer after the first one's detection | 2 of 2: the second writer never `certain`, never killed |
+| all: every correlated event | 0 of 79 events name the wrong PID |
+| 3, 4, 8, ledger, gateway, dashboard | pass, as unelevated |
+
+**Response time, defect 1:** 9 of 10 terminate requests went out 1.0-1.4 s
+after detection, inside the 2 s budget. The tenth, the first single write,
+went out after 5.2 s, and did so in two runs. It was detected while the
+pipeline was still working through the 40 detections of the preceding 20-write
+burst: one worker does ML, ledger and response for each in turn, about 200 ms
+apiece, 06:21:03.1 to 11.1 in the earlier run. Its question opens only once its
+own non-destructive response has gone out. The base commit sent kills through
+the same serial queue. **Finding, not changed:** a second process that starts
+during a burst waits behind the backlog. Whether escalation should bypass the
+queue is a design decision for the maintainer.
+
+**What the first two elevated runs got wrong,** which was the check, not the
+product:
+- The first run's `e2e_check.py` deleted and recreated the audited watch folder
+  before testing. The new folder inherited no audit rule, so Windows wrote no
+  4663 for any test write and everything was `unknown`.
+- A separate diagnostic (`diag_4663_timing.py`) measured 12 writes across four
+  patterns. A 4663's `TimeCreated` is the handle's open, 1-2 ms before the
+  write, and it reaches the Monitor 0.6-0.8 s later. That is what defect 1's
+  matching assumes.
+- The check now empties the folder instead and probes the audit first.
+- The second run's two-writer check had the second writer write *after* the
+  first writer's detection. That does not breach the invariant; it now has its
+  own case.
+
+**Minor findings, not changed:**
+- Two `file_baseline` blocks record `file_size: 0` while their `file_hash` is
+  the full 16,368-byte file's. The size is read just before the writer's bytes
+  land and the hash just after. Recovery verifies the hash, which is right; the
+  size field is stale.
+- The Monitor subscribes to the Security channel twice per start (`build_source`
+  starts the source, then `Attributor.start` starts it again). The second
+  handle replaces the first. This is harmless and pre-existing.
