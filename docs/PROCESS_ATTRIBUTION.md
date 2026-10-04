@@ -47,12 +47,17 @@ implemented here and should not be.
 | | Source | Sees in-place encryption? | Install | Latency |
 |---|---|---|---|---|
 | 1 | ETW `Microsoft-Windows-Kernel-File` | yes — every write | admin + an ETW consumer | sub-ms |
-| **2** | **Security channel, Event ID 4663** | **yes** | **admin only, no install** | **tens of ms** |
+| **2** | **Security channel, Event ID 4663** | **yes** | **admin only, no install** | **116–1,228 ms** after the write, median 888 ms (VM, 2026-10-04) |
 | 3 | Sysmon Event 11 / 23 | **no** — create and delete only | Sysmon service | ms |
 
-**Route 2 is implemented.** `pywin32` was already available, tens of
-milliseconds is nothing against a 2-second budget, and it needs no third-party
-software on the host. Route 1 is higher fidelity and is the natural upgrade —
+**Route 2 is implemented.** The latency in the table is measured, and it is not
+the "tens of ms" this table first said: the Windows test VM's full test of
+2026-10-04 matched 4663 records a median 888 ms after the write (116–1,228 ms),
+and an earlier 35-write measurement gave 390–1,032 ms
+(`reports/VM_TEST_REPORT_2026-10-04.md`, F2; `FIXES.md` defect 1). That is
+why nothing is `certain` until a 1.5 s delivery horizon has closed (§4).
+`pywin32` was already available, and it needs no third-party software on the
+host. Route 1 is higher fidelity and is the natural upgrade —
 `AttributionSource` exists so that it is a one-class change rather than a
 pipeline change. Route 3 cannot see an in-place write at all, so it could only
 ever corroborate.
