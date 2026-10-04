@@ -34,7 +34,7 @@ claims they no longer describe are marked **re-verification pending**.
 ## The safety invariant
 
 A kill is requested only when `Attribution.kill_authorised` is true
-(`services/monitor/attribution.py:291`): confidence `certain`, from a
+(`Attribution.kill_authorised` in `services/monitor/attribution.py`): confidence `certain`, from a
 kernel-grade source, with a PID, and **not pending**. Defect 1 added the last
 condition and a PID identity check at escalation, so improving how often
 correlation succeeds cannot make it succeed wrongly. Each case the brief names
@@ -59,10 +59,10 @@ unanchored lookup they exercise is kept byte for byte (`WriteLog._lookup_legacy`
 
 - **Park and re-ask** (`agent/`'s pending questions): the first answer drives
   the non-destructive response; the question stays open and is re-asked as
-  records arrive. `PendingAttribution`, `attribution.py:1467`.
+  records arrive. `PendingAttribution` in `attribution.py`.
 - **The 3000 ms window**, as the *competition* window: how far back another
   writer makes the answer ambiguous. It only ever lowers confidence. The
-  match window stays 750 ms (`attribution.py:150-196`).
+  match window stays 750 ms (the tunables at the top of `attribution.py`).
 - **A 16384-entry write log** (was 4096) with an eviction watermark: an
   eviction inside the competition window blocks `certain`.
 - **Deletions carry no PID** instead of the Monitor's own (`app.py`, deleted branch).
@@ -80,9 +80,9 @@ that did took the *previous* write's record.
 
 **What changed** (`services/monitor/attribution.py`):
 - Records are stamped with the event's own `System/TimeCreated/@SystemTime`
-  (`parse_system_time`, `:838`; UTC only). Records without one are dropped and
-  counted (`SecurityLogSource.accept`, `:1044`). The lookup is anchored to the
-  file event's observation time on the same clock (`_lookup_anchored`, `:635`):
+  (`parse_system_time`; UTC only). Records without one are dropped and
+  counted (`SecurityLogSource.accept`). The lookup is anchored to the
+  file event's observation time on the same clock (`WriteLog._lookup_anchored`):
   it matches writes in `[observed_at − 750 ms, read_at + 50 ms]`, and any other
   writer in `[observed_at − 3000 ms, read_at + 50 ms]` competes.
 - The **delivery horizon**: nothing is `certain` until 1500 ms (+50 ms
@@ -93,10 +93,10 @@ that did took the *previous* write's record.
 - A **two-step response**: the first answer (almost always pending) triggers
   isolate at once; `PendingAttribution` keeps the question open; at the horizon,
   exactly one kernel-grade writer whose PID is still the same process (psutil
-  image and start time, `probe_process` `:1080`, `verify` `:1345`) escalates to
+  image and start time, `probe_process`, `Attributor.verify`) escalates to
   `certain`. That calls `/response/terminate` on the **same incident** and
   writes a **new** `attribution_escalation` ledger block joined by `incident_id`
-  (`pipeline.escalate`, `services/monitor/pipeline.py:257`). Every other outcome
+  (`pipeline.escalate` in `services/monitor/pipeline.py`). Every other outcome
   (no record, ambiguous, exited, reused, unverifiable) is written too, with no
   kill.
 - Configurable, with defaults justified in the module docstring:
@@ -107,7 +107,7 @@ that did took the *previous* write's record.
   HTTP client, only when the first question closed. That put the client build
   on the kill's critical path; traced at 187 ms, and an untraced run missed 2 s
   at +2134 ms. It now starts with the watch (`_ensure_worker`/`_ensure_escalator`,
-  `app.py:940-983`). Three traced runs afterwards: kill at +1585, +1597 and
+  `app.py`). Three traced runs afterwards: kill at +1585, +1597 and
   +1700 ms, each within 0.3 ms of the question closing.
 
 **Tests:** `services/monitor/tests/test_attribution_delivery_lag.py` (50):
@@ -133,10 +133,10 @@ PID, terminate within 2 s of detection. The 1500 ms horizon rests on the VM's
 **Measured:** rewrite then rename to `*.locked`: 20/20 detected, 0/20 correlated.
 
 **What changed:** `MonitorHandler.on_moved` passes both names
-(`app.py:1004`). The event keeps the new name as `file_path` and adds
+(`app.py`). The event keeps the new name as `file_path` and adds
 `renamed_from`, on `/monitor/events`, the `file_event` block and the
 `attribution_escalation` block. The first look and the open question ask about
-both names (`_correlate`, `app.py:735`, `also=`), so a writer of *either* name
+both names (`_correlate`, `also=`), so a writer of *either* name
 competes. Writes by two processes, or a rename over a file another process just
 wrote, are not `certain`.
 
@@ -166,15 +166,15 @@ reported 766 ms against a 250 ms grace.
   lane runs the job inline and counts it (`ran_inline`) instead of dropping a
   detection, and only correlation moves. Classification stays on the observer
   thread, so `/monitor/events` keeps watchdog's order.
-- `handle_event(…, lanes=)` (`app.py:416`); `MonitorHandler` passes the running
+- `handle_event(…, lanes=)` (`app.py`); `MonitorHandler` passes the running
   lanes, and a direct call still correlates before returning. The grace
   deadline is *observation + grace*, so time spent queued is not paid twice.
 - New event fields: `observed_at`, `queue_wait_ms`, `response_dispatched_at`
-  (set when the pipeline asks for a response, `pipeline.py:417`) and
-  `attribution_wait_overrun_ms` (`attribution.py:288`). `detection_latency_ms`
+  (set when the pipeline asks for a response, `pipeline.run`) and
+  `attribution_wait_overrun_ms` (`Attribution.wait_overrun_ms`). `detection_latency_ms`
   is unchanged; its docstring says it excludes every queue and the attribution
-  wait. `/monitor/status` reports the lanes under `correlation` (`app.py:1160`).
-- **The 766 ms overrun** (`dispatch.py:44`): explained as far as the evidence
+  wait. `/monitor/status` reports the lanes under `correlation` (`monitor_status`).
+- **The 766 ms overrun** (`dispatch.py`, "THE 766 ms OVERRUN"): explained as far as the evidence
   goes, not proven. It is 49 ticks of `GetTickCount64`, i.e. about 516 ms in
   which the observer thread was not scheduled. That overlaps the inferred 4663
   flush for ~40 decoy writes and the first post-reboot pipeline run. The fix
@@ -204,15 +204,15 @@ recurrence, which will now show in `attribution_wait_overrun_ms`.
 returned `partial`, "No prior hash for this path in the ledger".
 
 **What changed:**
-- At the source: `normalise_path` (`app.py:241`) is `os.path.normpath` of the
-  absolute path, applied to the watch path in `start_monitoring` (`:1035`) and
-  to every path and `renamed_from` in `handle_event` (`:455`).
+- At the source: `normalise_path` (`app.py`) is `os.path.normpath` of the
+  absolute path, applied to the watch path in `start_monitoring` and
+  to every path and `renamed_from` in `handle_event`.
   - **Case policy on Windows:** case is kept as given and never folded when
     stored. The path is evidence, and a directory can be case-sensitive
     (`fsutil setCaseSensitiveInfo`).
   - Comparison is case-insensitive, and happens in the reader.
 - In the ledger: `services/ledger/path_keys.py` and `HashChainLedger.get_blocks`
-  (`hash_chain.py:160`). Lookups compare a key derived from each row's stored
+  (`hash_chain.py`). Lookups compare a key derived from each row's stored
   `file_path`:
   - Windows-shaped paths (a drive letter or UNC prefix, decided by the path's
     shape because the ledger runs on Linux) by `ntpath.normpath` + `lower()`,
@@ -263,28 +263,28 @@ subcategory another component had enabled.
 - **Recorded first.** Before changing anything, setup reads and records the log
   size, the File System subcategory's Success/Failure and the path's existing
   audit rights, in `%ProgramData%\URDS\attribution_audit_state.json`
-  (`-StatePath`; `Invoke-Setup`, `:449`).
+  (`-StatePath`; `Invoke-Setup`).
   - If any of these, or an existing state file, cannot be read, it changes
     nothing.
   - A later setup, for another path or a re-run, keeps the first machine record.
 - **Only raised.** The log size is only ever raised.
 - **Only the missing rights.** The SACL gets only the rights not already
   audited, with Everyone matched by SID rather than by its localised name.
-- **`-Revert` restores the record** (`Invoke-Revert`, `:583`):
-  - It removes only the rights setup added (`Remove-WriteAudit`, `:332`).
+- **`-Revert` restores the record** (`Invoke-Revert`):
+  - It removes only the rights setup added (`Remove-WriteAudit`).
   - It turns Success off only if setup turned it on, and never touches Failure.
   - It restores the log only to the recorded size, and only if the log is still
     at the size setup set.
   - Both machine-wide settings are restored only when the last recorded path is
     reverted.
   - With no state file, it changes nothing and prints the manual steps.
-- **`-Verify`** prints the recorded prior state (`Invoke-Verify`, `:395`). The
+- **`-Verify`** prints the recorded prior state (`Invoke-Verify`). The
   `[  ok  ]`/`[ FAIL ]` marks are kept.
 - **Ported:** failures are counted and give a non-zero exit, and the probe
-  polls to 4 s (`Invoke-AuditProbe`, `:247`).
+  polls to 4 s (`Invoke-AuditProbe`).
 - **Test seams:** every machine access goes through a wrapper, native commands
   through `Invoke-Native`, and the main body is skipped when the script is
-  dot-sourced (`:680`).
+  dot-sourced.
 
 **Tests:** `scripts/tests/setup_attribution_audit.Tests.ps1`, **Pester 3.4**
 (inbox on Windows 10/11): 26 passing on the development host.
@@ -310,7 +310,7 @@ audit setting as before. Also: a second watch path, and `-Verify` after setup.
 **What changed:** `status_only()` skips `create_snapshot` when
 `platform_status()["elevated"]` is true and records
 `{"attempted": false, "reason": "not attempted: --status-only creates nothing"}`
-(`scripts/verify_vss.py:81-99`). Unelevated, the attempt and its refusal record
+(`scripts/verify_vss.py`). Unelevated, the attempt and its refusal record
 are unchanged. `reports/vss_status.json` was recorded unelevated and is
 untouched.
 
@@ -346,13 +346,13 @@ conflict; the dashboard is healthy.
 
 - **Wording.** `/monitor/attribution` before `POST /monitor/start` now says
   "not started yet: correlation starts with monitoring (POST /monitor/start)"
-  (`attribution.NOT_STARTED`, `attribution.py:954`). A source that failed to
+  (`attribution.NOT_STARTED`). A source that failed to
   start still reports its own reason.
   - Test: `services/monitor/tests/test_attribution_status_wording.py` (3).
 - **Training output.** `src/train_behavioral_model.py` always writes `models/`,
   which the ML container mounts and reads first. It writes the tracked
   `reports/behavioral_model_metrics.json` only under `URDS_WRITE_REPORTS=1`
-  (`write_metrics`, `:406`).
+  (`write_metrics`).
   - Why not only `models/`: TC-21 and the engine's fallback read the committed
     `reports/` copy, and `models/` is gitignored, so the tracked evidence must
     stay refreshable, deliberately.
