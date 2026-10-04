@@ -22,6 +22,7 @@ claims they no longer describe are marked **re-verification pending**.
 | 11 | A probable answer named a writer that came after the event | `ec21a43` |
 | 12 | "Unreadable" was reported for a file being written, with nothing locked | `d6313f1` |
 | 13 | The dashboard never rendered, and while open it saturated the gateway | `820d7a4` |
+| 14 | Fabricated evidence (X1): a self-spawned TC-07 victim, skips that exited 0, invented PIDs in the chain | `9e3ecb6`, `fa8ec86`, manifest `6aa0fe9` |
 
 ## The safety invariant
 
@@ -608,6 +609,136 @@ That is 9 of 9 checks passed. The gateway logged 1,275 requests and no error.
   and numbers. Streamlit converts the column to text and the table shows. The
   base dashboard logs the same once it can reach those tables (base on fixed,
   above). It is log noise.
+
+## 14. Fabricated evidence was still on this branch (X1)
+
+Found reading the code for the 2026-10-04 fix-and-verify brief; the VM test
+did not list it. All of it was fixed on `fix/evidence-integrity` in `58ce021`,
+which this branch never received. Ported by hand, because the two branches
+respond differently: there an agent acts on a `certain` answer at once; here
+only the second answer, one horizon later, can be `certain`.
+`docs/CORRECTIONS.md` is the full account.
+
+**What was wrong:**
+- `scripts/attack_chain_demo.py` (TC-07) started
+  `python -c "import time; time.sleep(60)"`, asked the Response service to
+  terminate it, and recorded `tc07_process_terminated` and a kill time. That
+  process never wrote a file and was never detected or attributed.
+- Its exit code was `0 if not failures`, and skips are `None`, so a run that
+  skipped a check exited 0. `scripts/si_demo.py` did the same with a skipped
+  TC-05 (`tc05 is not False`).
+- `si_demo.py` wrote `"process_id": 6666` into a `file_encrypted` ledger event,
+  and `services/response/recovery/tests/test_integration.py` wrote 6666 and
+  4321 in tests under the directory C-14 cites.
+
+**Measured, porting C-16.** `58ce021` also adds a value scan: a ledger event
+may name a process only when attribution resolved to `certain`. Run over the
+2026-10-04 elevated run's ledger (`elev_20261004_183527`, 1,556 blocks), with
+the new `ledger_coverage.py --ledger-db`:
+
+| Blocks | Held |
+|---|---|
+| 703 | name a process |
+| 649 | unsupported: 299 Response `trigger` blocks with `process_id: 0`; 260 `attribution_escalation` blocks and 18 + 18 `file_event`/`trigger` blocks naming a PROBABLE PID; 54 Response `terminate` blocks with nothing saying what authorised the kill |
+| 54 | supported (`certain` escalations) |
+
+So the rule was false for this branch's live chain, not only for the suspend
+blocks the brief anticipated. **Decision:** the rule was not loosened; the
+chain was changed to fit it.
+
+**What changed:**
+- **Demo, part 1 (`9e3ecb6`):**
+  - The suspicious writes in `attack_chain_demo.py` come from separate writer
+    processes (`Writer`), so attribution has a process to name that the demo
+    can check. A Monitor with a live audit source also no longer names the
+    demo itself as the attacker; step 8's probe was the other write the demo
+    made itself.
+  - TC-07 (`judge_tc07`) is judged after the file's attribution questions
+    close:
+    - pass only if the system's own `certain` answer named the writer and its
+      escalation terminated it;
+    - fail if a `certain` answer names another process, or the termination
+      was refused;
+    - skip, with the reason printed, on anything short of `certain`.
+  - The demo terminates nothing, and the writer exits on its own after 10 s.
+    `wait_for` and TC-09's lag are timed on monotonic clocks now; TC-09 is
+    timed from the writer's own report of its write.
+  - Both demos exit 0 only when every check ran and passed (`exit_code`).
+  - `process_id: None` with `attribution_confidence: unknown` in `si_demo.py`
+    and both recovery tests. The tamper checks' forged rows name no process.
+    The synthetic shadow-copy GUID in `test_vss_manager.py` is re-lettered, so
+    `git grep -n 6666 -- scripts services` finds nothing.
+  - `reports/attack_chain_evidence.txt` and `attack_chain_results.json` carry
+    a withdrawal notice. `docs/PHASE1-4_COMPLIANCE_AUDIT.md`,
+    `docs/PHASE4_VERIFICATION_REPORT.md` and `docs/test_cases.md` mark the
+    figures they cite from them **re-verification pending**;
+    `docs/DEMONSTRATION_SCRIPT.md`, `docs/FLOW.md` and `README-SI.md` describe
+    the corrected demos. `reports/si_demo_evidence.txt` does not contain the
+    PID and is kept.
+- **Chain, part 2 (`fa8ec86`):**
+  - `pipeline.chained_pid`: the `file_event` and `attribution_escalation`
+    blocks carry `process_id` only for a `certain` answer. A PROBABLE answer's
+    PIDs go in `attribution_candidates`, which lists every PID whose audited
+    write fell in the window. That is evidence, and the rule does not read it.
+  - Response `trigger` blocks name a PID only as the target of a requested
+    kill. Otherwise they record `None`, never `0`, plus the caller's
+    candidates.
+  - `request_termination` sends the confidence and source that authorised the
+    kill, and the `terminate` blocks record them. The gateway does not forward
+    them, so a kill requested through it is recorded without attribution, and
+    the scan reports that block. Nothing is invented for it.
+  - Kept as it was: the PROBABLE PID still reaches the Response service with
+    an isolate-and-log trigger (`test_tc26_attribution.py::test_tc26_d`,
+    unchanged), and `/monitor/events` still names the PID a PROBABLE answer
+    picks (defect 11).
+  - `scripts/ledger_coverage.py` gains `unsupported_pid`, the report section
+    `process_attribution_integrity`, and `--ledger-db`, which is read-only,
+    writes nothing, and exits 1 on any unsupported block.
+  - `scripts/claim_matrix.py` gains claim **C-16**: `unsupported` 0,
+    `meets_target` true, `events_examined` 48. It also accepts a list of
+    checks per claim, and a boolean figure now matches only a boolean: a count
+    of 0 used to satisfy a quoted `False`. `docs/CLAIM_MATRIX.md` carries the
+    row.
+  - `reports/ledger_coverage.json` and `reports/claim_matrix.json` were
+    regenerated: 16 claims, 0 failed. The artefact manifest was regenerated
+    in its own commit (`6aa0fe9`): `ledger_coverage.json` was the only
+    drifting artefact.
+
+**Tests, each run against `786dd42` in `C:\URDS-base`:**
+- `services/monitor/tests/test_demo_integrity.py` (18): the 6666 grep gate, no
+  int-literal PID in either demo, the attack demo containing no
+  `/response/terminate` and no `.kill()`/`.terminate()` call, five TC-07
+  judgements, and the exit codes of both demos. **14 fail on base.** The 4
+  that pass are the cases base already handled: all-pass exits 0, a failure
+  exits 1, and the attack demo has no int literal.
+- `services/monitor/tests/test_ledger_pid_integrity.py` (18): the sibling's
+  rule cases; a scan of a real SQLite ledger that leaves it byte-identical;
+  the committed report; and an end-to-end run through `handle_event` with a
+  lagging kernel-grade source, covering one sole writer (killed) and one
+  shared file (PROBABLE). **All 18 fail on base.** With the fixed scan copied
+  into the base tree, the end-to-end test still fails on base's own chain,
+  with 1 unsupported escalation block.
+- `services/response/tests/test_chain_pid_fields.py` (6). **5 fail on base**;
+  "a kill names its target" passes on both.
+- Proofs: `C:\URDS-recheck\v2\base_proofs\x1*.txt`.
+
+**Interaction with defect 17 (suspension).** C-16's rule held a PID only when
+`certain`, and a suspension names a PID while the answer is still pending.
+Recorded in entry 17: suspend and resume blocks may carry a PID together with
+the gate that allowed it, and the scan checks that relationship. The rule is
+not loosened in general.
+
+**Check on Windows:**
+- `attack_chain_demo.py`, elevated with the audit SACL: TC-07 passes with the
+  writer's own PID. Unelevated, TC-07 skips and the run exits 1.
+- `ledger_coverage.py --ledger-db` on the new elevated run's ledger reports
+  0 unsupported.
+
+**Not changed:**
+- The gateway's request models still carry no attribution fields.
+- The PIDs in the gateway and Response tests' API request bodies, and in the
+  ledger's storage tests, are inputs to the code under test, not records of
+  what a process did.
 
 ## Suites
 
