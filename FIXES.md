@@ -26,6 +26,7 @@ claims they no longer describe are marked **re-verification pending**.
 | 15 | The two demos wrote `reports/` without `URDS_WRITE_REPORTS` (F7) | `50ef61b` |
 | 16 | A kill waited for the pipeline backlog: the question opened after ML, ledger and response (F2a) | `84fcf15` |
 | 17 | The audit setup's probe reported a working folder as broken (F4) | `0ced2cc` |
+| 18 | A stale `file_size` beside the full file's hash (F5) | `72ae953` |
 
 ## The safety invariant
 
@@ -514,10 +515,10 @@ scored.
 The grow-between-the-looks case fails on the old code; the truncate and
 real-lock cases pass on both. `test_api.py` passed 15 of 15 afterwards.
 
-**Not changed:** a file that grows between the size and the sample still
-records a stale `file_size` beside the content it scored. The two baselines
+**Not changed here:** a file that grew between the size and the sample still
+recorded a stale `file_size` beside the content it scored. The two baselines
 under "Minor findings" are that case. Recovery verifies the hash, which covers
-the full content.
+the full content. **Fixed since, in defect 18 (F5).**
 
 ## 13. The dashboard never rendered, and while open it saturated the gateway
 
@@ -939,6 +940,67 @@ re-check before it.
 - Ten setups in a row on ten new folders, each followed by `-Verify`: count
   false failures, where setup fails and `-Verify` passes.
 - The Security log size and the subcategory are unchanged before and after.
+
+## 18. A stale `file_size` beside the full file's hash (F5)
+
+Left open by defect 12 ("Not changed"), and seen again by the full VM test of
+2026-10-04 (F5 in `reports/VM_TEST_REPORT_2026-10-04.md`).
+
+**Measured:**
+- In the re-check, 2 `file_baseline` blocks recorded `file_size: 0` beside the
+  hash of the whole 16,368-byte file.
+- A Monitor trace showed suspicious events with `size=0` and entropy 5.86.
+
+**Cause:** defect 12 takes the size first, so that a file that grows between
+the looks is read as what it now holds. The sample and the full-file hash come
+after that and see the grown file. So the size recorded was a number from
+before the content recorded beside it, and described neither.
+
+**What changed** (`services/monitor/detection.py`, `app.py`, `pipeline.py`):
+- `detection.hash_file` returns the hash and the number of bytes it was taken
+  over. `sha256_file` is unchanged for its callers.
+- `handle_event` records `file_size` as the hashed length, and a new field,
+  `size_changed_during_read`, when that differs from the size first read.
+  With no hash (an unreadable file), it records the size after the read
+  (`_size_after_read`). The ML features for a detection take the same size.
+- `extract_features` (`/features`) reads only a sample. It records the size
+  after the read and `size_changed_during_read`.
+  `docs/openapi/gateway.yaml` documents both fields. The ML engine already
+  reports an unscored key as ignored.
+- The `file_baseline` block carries `size_changed_during_read` beside
+  `file_size`.
+- Places checked that write a size next to content-derived fields:
+  - `_size_then_magic`, for the verdict only;
+  - `extract_features`;
+  - `handle_event`'s event and its ML features;
+  - `pipeline.log_baseline`.
+
+  The `file_event` block records no size.
+
+**Tests:** `services/monitor/tests/test_recorded_size_matches_content.py` (5),
+staging the race with the hooks `test_unreadable_is_a_lock_not_a_race.py`
+uses. The cases:
+- a file written inside the Monitor's first look;
+- a file appended between the sample and the hash;
+- `/features`;
+- the `file_baseline` block through the real pipeline;
+- an unchanged file.
+
+**4 fail on `786dd42`.** The baseline case records 0 beside the hash of
+16,380 bytes, the VM's symptom; the unchanged-file guard passes on both.
+Proof: `C:\URDS-recheck\v2\base_proofs\f5_recorded_size_base.txt`.
+
+**Not changed:**
+- The verdict still uses the size from the first look. Changing what is
+  classified is out of scope, and detection must stay 130/130.
+- A baseline taken while the file was still being written is the hash of
+  what was there at the end of the read. It now says so
+  (`size_changed_during_read: true`), and recovery's verification against it
+  is unchanged.
+
+**Check on Windows:** in the new run's ledger, no `file_baseline` or event
+records a `file_size` that differs from the length of the content its
+`file_hash` covers.
 
 ## Suites
 
