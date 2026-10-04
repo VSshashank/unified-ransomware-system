@@ -113,6 +113,43 @@ def test_one_refresh_makes_the_six_gateway_calls_it_did_before(gateway):
     assert sorted(gateway) == sorted(["/health", "/monitor/status", "/monitor/events", "/model/metrics", "/ledger/entries", "/predict"])
 
 
+def test_no_table_needs_streamlits_arrow_fallback(gateway, monkeypatch):
+    """The Field / Value tables hold text, not a mix pyarrow cannot store.
+
+    With a path, an entropy, a PID and a boolean in one Value column, every
+    refresh made Streamlit catch an ArrowTypeError, log it, and convert the
+    column itself (reports/VM_TEST_REPORT_2026-10-04.md, "After the test").
+    `fix_arrow_incompatible_column_types` runs only after that failure, so
+    counting its calls counts the failures. The event carries an
+    adjudication, so all three Field / Value tables are drawn.
+    """
+    import streamlit.dataframe_util as dataframe_util
+
+    fallbacks = []
+    real = dataframe_util.fix_arrow_incompatible_column_types
+
+    def counting(df, *args, **kwargs):
+        fallbacks.append(list(df.columns))
+        return real(df, *args, **kwargs)
+
+    monkeypatch.setattr(dataframe_util, "fix_arrow_incompatible_column_types", counting)
+    adjudicated = dict(EVENT, admissibility={
+        "rule": "path", "value": r"C:\watch\*", "signal": "static_entropy", "forgery_cost": "low",
+        "avoidance_cost": "negligible", "outcome": "attenuated", "reason": "test", "admitted": False,
+    })
+    monkeypatch.setitem(GATEWAY, "/monitor/events", {"events": [adjudicated]})
+
+    app = run_dashboard()
+
+    assert fallbacks == [], f"tables pyarrow could not store: {fallbacks}"
+    field_tables = [frame.value for frame in app.dataframe if list(frame.value.columns) == ["Field", "Value"]]
+    assert len(field_tables) == 3
+    for table in field_tables:
+        assert all(isinstance(value, str) for value in table["Value"])
+    event_table = dict(zip(field_tables[0]["Field"], field_tables[0]["Value"]))
+    assert event_table["Entropy"] == "7.99" and event_table["Process ID"] == "4512"
+
+
 def test_an_unreachable_gateway_says_so_and_draws_nothing_else(monkeypatch):
     def refuse(url, **_):
         raise requests.ConnectionError("connection refused")

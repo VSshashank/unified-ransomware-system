@@ -58,6 +58,18 @@ def pct(value: float | int | None) -> str:
     return f"{float(value) * 100:.0f}%"
 
 
+def field_table(rows: list[tuple[str, object]]) -> pd.DataFrame:
+    """A two-column Field / Value table, with every value as text.
+
+    The values are of mixed types: a path, an entropy, a PID, a boolean. pyarrow
+    cannot hold those in one column, so every refresh Streamlit caught an
+    ArrowTypeError for each such table, logged it, and converted the column
+    itself (reports/VM_TEST_REPORT_2026-10-04.md, "After the test"). Missing
+    values read "N/A", as elsewhere on this page.
+    """
+    return pd.DataFrame([{"Field": field, "Value": "N/A" if value is None else str(value)} for field, value in rows])
+
+
 def short_hash(value: str | None) -> str:
     if not value:
         return "N/A"
@@ -370,14 +382,14 @@ def live_view() -> None:
     with summary_left:
         st.subheader("Current Event Under Review")
         if latest_event:
-            event_summary = pd.DataFrame(
+            event_summary = field_table(
                 [
-                    {"Field": "File path", "Value": latest_event.get("file_path")},
-                    {"Field": "Event type", "Value": latest_event.get("event_type")},
-                    {"Field": "Entropy", "Value": latest_event.get("entropy")},
-                    {"Field": "Process ID", "Value": latest_event.get("process_id")},
-                    {"Field": "User", "Value": latest_event.get("user")},
-                    {"Field": "Timestamp", "Value": latest_event.get("timestamp")},
+                    ("File path", latest_event.get("file_path")),
+                    ("Event type", latest_event.get("event_type")),
+                    ("Entropy", latest_event.get("entropy")),
+                    ("Process ID", latest_event.get("process_id")),
+                    ("User", latest_event.get("user")),
+                    ("Timestamp", latest_event.get("timestamp")),
                 ]
             )
             st.dataframe(event_summary, use_container_width=True, hide_index=True)
@@ -395,15 +407,15 @@ def live_view() -> None:
                 )
             if isinstance(adjudication, dict):
                 st.dataframe(
-                    pd.DataFrame(
+                    field_table(
                         [
-                            {"Field": "Rule", "Value": adjudication.get("rule")},
-                            {"Field": "Matched value", "Value": adjudication.get("value")},
-                            {"Field": "Signal it would cancel", "Value": adjudication.get("signal")},
-                            {"Field": "Cost to forge the rule", "Value": adjudication.get("forgery_cost")},
-                            {"Field": "Cost to avoid the signal", "Value": adjudication.get("avoidance_cost")},
-                            {"Field": "Outcome", "Value": adjudication.get("outcome")},
-                            {"Field": "Why", "Value": adjudication.get("reason")},
+                            ("Rule", adjudication.get("rule")),
+                            ("Matched value", adjudication.get("value")),
+                            ("Signal it would cancel", adjudication.get("signal")),
+                            ("Cost to forge the rule", adjudication.get("forgery_cost")),
+                            ("Cost to avoid the signal", adjudication.get("avoidance_cost")),
+                            ("Outcome", adjudication.get("outcome")),
+                            ("Why", adjudication.get("reason")),
                         ]
                     ),
                     use_container_width=True,
@@ -465,13 +477,13 @@ def live_view() -> None:
     with ledger_col:
         st.subheader("Ledger Evidence")
         if latest_block:
-            ledger_summary = pd.DataFrame(
+            ledger_summary = field_table(
                 [
-                    {"Field": "Latest block", "Value": latest_block.get("block_id")},
-                    {"Field": "Current hash", "Value": short_hash(latest_block.get("current_hash"))},
-                    {"Field": "Previous hash", "Value": short_hash(latest_block.get("previous_hash"))},
-                    {"Field": "Tamper proof", "Value": latest_block.get("tamper_proof")},
-                    {"Field": "Timestamp", "Value": latest_block.get("timestamp")},
+                    ("Latest block", latest_block.get("block_id")),
+                    ("Current hash", short_hash(latest_block.get("current_hash"))),
+                    ("Previous hash", short_hash(latest_block.get("previous_hash"))),
+                    ("Tamper proof", latest_block.get("tamper_proof")),
+                    ("Timestamp", latest_block.get("timestamp")),
                 ]
             )
             st.dataframe(ledger_summary, use_container_width=True, hide_index=True)
