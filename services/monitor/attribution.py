@@ -233,6 +233,11 @@ ACCESS_APPEND_DATA = 0x4
 WRITE_MASK = ACCESS_WRITE_DATA | ACCESS_APPEND_DATA
 
 
+def _on_windows() -> bool:
+    """Whether the Security channel can exist here. A seam for the tests."""
+    return os.name == "nt"
+
+
 def _normalise(path: str) -> str:
     """One spelling per file, so a lookup and a record agree.
 
@@ -1019,7 +1024,15 @@ class SecurityLogSource(AttributionSource):
         self._evtlog = None
 
     def start(self) -> bool:
-        if os.name != "nt":
+        """Subscribe, once. A subscription already held is closed first.
+
+        The Monitor used to subscribe twice per start: `build_source` started
+        the source to see whether it could, then `Attributor.start` started it
+        again, and the second handle replaced the first without closing it
+        (seen on the VM, 2026-10-04). Both delivered every 4663 into the same
+        log until the first was collected.
+        """
+        if not _on_windows():
             self.error = f"Security-channel attribution is Windows-only; this host is {os.name!r}"
             self.available = False
             return False
@@ -1031,6 +1044,7 @@ class SecurityLogSource(AttributionSource):
             self.available = False
             return False
 
+        self._close()
         self._evtlog = win32evtlog
         try:
             self._handle = win32evtlog.EvtSubscribe(
@@ -1080,8 +1094,17 @@ class SecurityLogSource(AttributionSource):
             return
         self.log.record(parsed["path"], parsed["pid"], parsed["image"], written_at=parsed["time_created"])
 
+    def _close(self) -> None:
+        handle, self._handle = self._handle, None
+        if handle is None:
+            return
+        try:
+            handle.Close()
+        except Exception:  # a handle that will not close is still dropped
+            logger.debug("attribution: closing the subscription failed", exc_info=True)
+
     def stop(self) -> None:
-        self._handle = None
+        self._close()
         self.available = False
 
 
@@ -1210,8 +1233,16 @@ class Attributor:
     # -- lifecycle -------------------------------------------------------
 
     def start(self, source: AttributionSource | None = None) -> bool:
+        """Use `source`, starting it only if it is not already running.
+
+        `build_source` hands over a source it has already started - that is
+        how it learns whether the host can subscribe - and starting it again
+        here was the Monitor's second Security-channel subscription.
+        """
         if source is not None:
             self.source = source
+        if self.source.available:
+            return True
         return self.source.start()
 
     def stop(self) -> None:
@@ -1721,7 +1752,7 @@ def build_source(log: WriteLog) -> AttributionSource:
         return NullSource(log, "attribution disabled by ATTRIBUTION_SOURCE")
 
     if mode in {"auto", "security", "4663"}:
-        if os.name == "nt":
+        if _on_windows():
             candidate = SecurityLogSource(log)
             if candidate.start():
                 return candidate
