@@ -25,6 +25,7 @@ claims they no longer describe are marked **re-verification pending**.
 | 14 | Fabricated evidence (X1): a self-spawned TC-07 victim, skips that exited 0, invented PIDs in the chain | `9e3ecb6`, `fa8ec86`, manifest `6aa0fe9` |
 | 15 | The two demos wrote `reports/` without `URDS_WRITE_REPORTS` (F7) | `50ef61b` |
 | 16 | A kill waited for the pipeline backlog: the question opened after ML, ledger and response (F2a) | `84fcf15` |
+| 17 | The audit setup's probe reported a working folder as broken (F4) | `0ced2cc` |
 
 ## The safety invariant
 
@@ -724,11 +725,12 @@ chain was changed to fit it.
   "a kill names its target" passes on both.
 - Proofs: `C:\URDS-recheck\v2\base_proofs\x1*.txt`.
 
-**Interaction with defect 17 (suspension).** C-16's rule held a PID only when
-`certain`, and a suspension names a PID while the answer is still pending.
-Recorded in entry 17: suspend and resume blocks may carry a PID together with
-the gate that allowed it, and the scan checks that relationship. The rule is
-not loosened in general.
+**Interaction with F2b (suspension).** C-16's rule names a PID only when
+`certain`, and a suspension would name one while the answer is still pending.
+The brief's resolution is that suspend and resume blocks may carry a PID
+together with the gate that allowed it, and the scan checks that relationship.
+F2b was not implemented in this session (see "F2b: blocked" below), so no such
+block exists, and the rule stands as ported, with no exception.
 
 **Check on Windows:**
 - `attack_chain_demo.py`, elevated with the audit SACL: TC-07 passes with the
@@ -845,10 +847,98 @@ behind a burst it waited for the whole queue.
 **Check on Windows:** `e2e_check.py` D1 after the D3 burst. The first write's
 kill should come about 1.6 s after its write, not 6.9 s.
 
-**Not changed, and the subject of defect 17:** the kill still cannot come
-before the horizon closes, about 1.55 s after the read. That is correct (see
-the safety invariant) and too late for a fast encryptor. Defect 17 suspends
-the writer before then.
+**Not changed:** the kill still cannot come before the horizon closes, about
+1.55 s after the read. That is correct (see the safety invariant) and too late
+for a fast encryptor. F2b, suspending the writer before then, is blocked (see
+"F2b: blocked" below).
+
+## F2b: blocked
+
+F2b in the 2026-10-04 fix-and-verify brief asked for suspend-first response:
+suspend a sole writer on a gate weaker than the kill gate, kill it at the
+horizon if it is still the only writer, and resume it otherwise, with every
+suspension a lease the Response service holds and expires. **It was not
+implemented in this session.** While the design was being written, the
+assistant's response was stopped by its own safety system, and that work was
+not resumed. Nothing was added for it: no suspend or resume endpoint, no gate,
+no lease, no ledger block type.
+
+What follows from that:
+- F2c (files encrypted before suspension, time from a 4663's delivery to the
+  suspend) could not be measured.
+- TC-01 for the fast families is unchanged by this session, except for what
+  F2a gives a fresh writer queued behind a burst.
+- The decision to implement it, here or elsewhere, is the maintainer's.
+
+## 17. The audit setup's probe reported a working folder as broken (F4)
+
+Found by the full VM test of 2026-10-04 (F4 in
+`reports/VM_TEST_REPORT_2026-10-04.md`).
+
+**Measured:** the first `setup_attribution_audit.ps1 -WatchPath ...\watchE`
+applied the audit rule correctly, then reported:
+- `[ FAIL ] End-to-end probe - no 4663 within 4s`
+- exit 1
+- "Attribution will not work on this path"
+
+Minutes later, `-Verify` passed on the same folder, and attribution there was
+`certain` for every writer. That was 1 setup in 4 that day, and 0 in 6 in the
+re-check before it.
+
+**Cause, from the code** (the test called it likely, not proven;
+`Invoke-AuditProbe`):
+- The 4 s budget was timed with `Get-Date`, the wall clock, which VirtualBox
+  slews on that VM (0.8x–1.44x of real time).
+- Each 250 ms poll asked for every 4663 of the last 15 s with
+  `-FilterHashtable StartTime`, over a 1 GiB Security log of 216,645 records,
+  and then formatted every record's `Message` in PowerShell to look for the
+  probe's name.
+- One probe file, one chance.
+
+**What changed** (`scripts/setup_attribution_audit.ps1`):
+- The budget is a `[Diagnostics.Stopwatch]` (`Invoke-ProbeAttempt`).
+- Before the probe file is written, the newest record's `EventRecordID` is
+  noted (`Get-SecurityLogWatermark`). Each poll asks only for
+  `*[System[(EventID=4663) and (EventRecordID > N)]]`, and matches the probe's
+  unique name in the record's XML, which needs no message formatting
+  (`Find-ProbeRecord`).
+- A miss is retried once with a new probe file. `$ProbeBudgetSeconds` (4),
+  `$ProbePollMilliseconds` (250) and `$ProbeAttempts` (2) are at the top of the
+  script.
+- When neither probe file gets a record, the File System subcategory and the
+  SACL are read again:
+  - If both are set, the run says auditing is configured but this run could
+    not confirm a record, and how to check.
+  - "Attribution will not work on this path" is said only when one of them
+    disagrees.
+  - The exit code is 1 either way, because nothing was confirmed end to end.
+- `docs/PROCESS_ATTRIBUTION.md` §3 says so.
+
+**Tests:** `scripts/tests/setup_attribution_audit.Tests.ps1`, Pester 3.4
+(`Should Be`), 30 passed (+4).
+- In a `Describe` of their own, two tests run the real `Invoke-AuditProbe`
+  against a fake event log, with its probe file in `TestDrive`:
+  - **A wall clock that jumps an hour on every read:** the probe still looks
+    three times, finds its record, asks only for records after the watermark
+    (`EventRecordID > 100`), and removes its file.
+  - **A record that arrives only for the second probe file:** found, on
+    attempt 2.
+- In the main `Describe`, with the probe mocked:
+  - **A configured run whose probe saw nothing:** exit 1, "no 4663 yet",
+    "both read as set", and no "Attribution will not work".
+  - **A true failure** (enabling Success does not stick): "does not read as
+    set" and "Attribution will not work on this path".
+- **All 4 fail against `786dd42`'s script:**
+  - the jumping clock ends its loop before the first look;
+  - with no retry, the retry case runs base's full 3.98 s and finds nothing;
+  - the two message cases lack the new wording.
+
+  Proof: `C:\URDS-recheck\v2\base_proofs\f4_pester_base.txt`.
+
+**Check on Windows:**
+- Ten setups in a row on ten new folders, each followed by `-Verify`: count
+  false failures, where setup fails and `-Verify` passes.
+- The Security log size and the subcategory are unchanged before and after.
 
 ## Suites
 
