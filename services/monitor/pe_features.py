@@ -24,13 +24,18 @@ inside pefile, is caught, and yields `is_pe: 0` rather than propagating.
 """
 
 import math
-import os
 from collections import Counter
 
 try:
     import pefile
 except ImportError:  # pragma: no cover - exercised only where pefile is absent
     pefile = None
+
+# Every read goes through the Monitor's own reader, which on Windows opens with
+# FILE_SHARE_DELETE (defect 9, FIXES.md). `pefile.PE(path)` opened and mapped
+# the file with the builtin `open`, so while it parsed, nobody could rename or
+# delete that file; the bytes are now read here and parsed from memory.
+from detection import open_for_read
 
 
 # Imports that matter for ransomware specifically. Grouped rather than listed
@@ -72,10 +77,19 @@ def _shannon(data: bytes) -> float:
     return round(-sum((c / total) * math.log2(c / total) for c in counts.values()), 4)
 
 
+def _read_all(path: str) -> bytes | None:
+    """The whole file through the share-delete reader, or None."""
+    try:
+        with open_for_read(path) as handle:
+            return handle.read()
+    except (OSError, ValueError):
+        return None
+
+
 def is_pe(path: str) -> bool:
     """Cheap MZ/PE check that does not parse the whole file."""
     try:
-        with open(path, "rb") as handle:
+        with open_for_read(path) as handle:
             if handle.read(2) != b"MZ":
                 return False
             handle.seek(0x3C)
@@ -102,13 +116,16 @@ def extract_pe_features(path: str) -> dict:
     if pefile is None or not is_pe(path):
         return empty_pe_features()
 
+    data = _read_all(path)
+    if data is None:
+        return empty_pe_features()
     try:
-        pe = pefile.PE(path, fast_load=False)
+        pe = pefile.PE(data=data, fast_load=False)
     except Exception:  # noqa: BLE001 - a hostile PE must not take the Monitor down
         return empty_pe_features()
 
     try:
-        return _collect(pe, path)
+        return _collect(pe, len(data))
     except Exception:  # noqa: BLE001
         return empty_pe_features()
     finally:
@@ -118,7 +135,7 @@ def extract_pe_features(path: str) -> dict:
             pass
 
 
-def _collect(pe, path: str) -> dict:
+def _collect(pe, file_size: int) -> dict:
     optional = pe.OPTIONAL_HEADER
     file_header = pe.FILE_HEADER
 
@@ -172,11 +189,7 @@ def _collect(pe, path: str) -> dict:
                     resource_count += 1
                     resource_bytes += getattr(leaf.data.struct, "Size", 0)
 
-    try:
-        file_size = os.path.getsize(path)
-    except OSError:
-        file_size = 0
-
+    # The length of the bytes parsed, not a second look at the file (F5).
     directories = {d.name: d for d in optional.DATA_DIRECTORY} if hasattr(optional, "DATA_DIRECTORY") else {}
 
     def has_directory(name: str) -> int:
@@ -276,8 +289,15 @@ def suspicious_api_names(path: str, limit: int = 12) -> list[str]:
 
     interesting = CRYPTO_APIS | FILE_APIS | PROCESS_APIS | SHADOW_COPY_APIS
     found: list[str] = []
+    data = _read_all(path)
+    if data is None:
+        return found
     try:
-        pe = pefile.PE(path, fast_load=True)
+        pe = pefile.PE(data=data, fast_load=True)
+    except Exception:  # noqa: BLE001
+        return found
+    # Closed on every path: the early return at `limit` used to skip close().
+    try:
         pe.parse_data_directories(
             directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_IMPORT"]]
         )
@@ -290,9 +310,13 @@ def suspicious_api_names(path: str, limit: int = 12) -> list[str]:
                     found.append(name)
                     if len(found) >= limit:
                         return found
-        pe.close()
     except Exception:  # noqa: BLE001
         return found
+    finally:
+        try:
+            pe.close()
+        except Exception:  # noqa: BLE001
+            pass
     return found
 
 
