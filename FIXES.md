@@ -28,6 +28,7 @@ claims they no longer describe are marked **re-verification pending**.
 | 17 | The audit setup's probe reported a working folder as broken (F4) | `0ced2cc` |
 | 18 | A stale `file_size` beside the full file's hash (F5) | `72ae953` |
 | 19 | The dashboard's Field / Value tables raised `ArrowTypeError` every refresh | `69e2c9e` |
+| 20 | Two Security-channel subscriptions per Monitor start | `bb59077` |
 
 ## The safety invariant
 
@@ -1032,6 +1033,42 @@ rest of the page does. It is a module-level helper, beside the ones
 
 **Check on Windows:** with the dashboard open for the live run, its log shows
 no "Serialization of dataframe to Arrow table was unsuccessful".
+
+## 20. Two Security-channel subscriptions per Monitor start
+
+Seen in the 2026-10-04 re-check ("Minor findings, not changed", below) and
+carried over by the full VM test.
+
+**Cause:**
+- `/monitor/start` runs `attributor.start(build_source(attributor.log))`.
+- `build_source` starts a `SecurityLogSource` to find out whether the host can
+  subscribe, then returns it started.
+- `Attributor.start` started it again. The second `EvtSubscribe` handle
+  replaced the first without closing it.
+- `SecurityLogSource.stop()` dropped its handle without closing it.
+
+No other caller starts a source.
+
+**What changed** (`services/monitor/attribution.py`):
+- `Attributor.start` starts a source only if it is not already running.
+- `SecurityLogSource.start` closes any subscription it holds before making
+  a new one, so each start leaves exactly one subscription.
+- `stop()` closes its handle (`_close`).
+- `_on_windows()` is the platform check, a seam so the test runs on Linux CI.
+
+**Tests:** `services/monitor/tests/test_one_subscription_per_start.py` (3),
+with pywin32 replaced by a fake that counts subscriptions and closes:
+- through the real `/monitor/start`: one subscription, and none open after
+  stop;
+- a re-start of a subscribed source closes the first handle;
+- `stop()` closes its handle.
+
+**All 3 fail on `786dd42`**: "2 subscriptions for one start", and handles left
+open. Proof: `C:\URDS-recheck\v2\base_proofs\s2_subscription_base.txt`.
+
+**Check on Windows:** only a count of subscriptions can confirm this, and none
+is exposed. The elevated run checks that attribution still works after a
+start, a stop and a start.
 
 ## Suites
 
