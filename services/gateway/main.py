@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -21,7 +22,15 @@ from auth import (
 from models import AnalyzeRequest, TokenRequest, TokenResponse
 from rate_limit import enforce_rate_limit
 from routers import ledger, ml, monitor, response
-from routers.proxy import LEDGER_URL, ML_URL, MONITOR_URL, SERVICE_URLS, call_downstream
+from routers.proxy import (
+    LEDGER_URL,
+    ML_URL,
+    MONITOR_URL,
+    SERVICE_URLS,
+    call_downstream,
+    close_downstream_client,
+    open_downstream_client,
+)
 
 
 logger = logging.getLogger("urds.gateway")
@@ -31,7 +40,11 @@ logger = logging.getLogger("urds.gateway")
 async def lifespan(_: FastAPI):
     # Refuses to boot on a committed secret outside development, warns inside it.
     verify_jwt_secret_configuration()
-    yield
+    open_downstream_client()
+    try:
+        yield
+    finally:
+        await close_downstream_client()
 
 
 app = FastAPI(title="URDS API Gateway", version="1.0.0", lifespan=lifespan)
@@ -144,18 +157,28 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
+async def service_health(base_url: str) -> tuple[dict, bool]:
+    """One service's /health, and whether it counts against the aggregate."""
+    try:
+        downstream = await call_downstream("GET", base_url, "/health")
+    except HTTPException as exc:
+        return {"status": "unhealthy", "details": exc.detail}, True
+    if downstream.status_code >= 400:
+        return {"status": "unhealthy", "http_status": downstream.status_code}, True
+    return downstream.json(), False
+
+
 @app.get("/health")
 async def health() -> JSONResponse:
+    # The four services are asked at once. Asked in turn, /health took the sum
+    # of their answers, and a dead service's connect timeout was added to the
+    # time every live one took (defect 13).
+    reports = await asyncio.gather(*(service_health(base_url) for base_url in SERVICE_URLS.values()))
     services = {"gateway": {"status": "healthy"}}
     degraded = False
-    for name, base_url in SERVICE_URLS.items():
-        try:
-            downstream = await call_downstream("GET", base_url, "/health")
-            services[name] = downstream.json() if downstream.status_code < 400 else {"status": "unhealthy", "http_status": downstream.status_code}
-            degraded = degraded or downstream.status_code >= 400
-        except HTTPException as exc:
-            services[name] = {"status": "unhealthy", "details": exc.detail}
-            degraded = True
+    for name, (report, unhealthy) in zip(SERVICE_URLS, reports):
+        services[name] = report
+        degraded = degraded or unhealthy
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE if degraded else status.HTTP_200_OK
     return JSONResponse(status_code=status_code, content={"status": "degraded" if degraded else "healthy", "services": services})
 

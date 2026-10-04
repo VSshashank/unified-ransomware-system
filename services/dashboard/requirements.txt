@@ -8,7 +8,6 @@
 # bounds hold for every pin in this repository (numpy 2.5.1 <3, pandas 2.2.3
 # <3, watchdog 6.0.0 <7, requests 2.32.3 <3) and for python:3.11 (>=3.10).
 streamlit==1.51.0
-streamlit-autorefresh==1.0.1
 plotly==5.24.1
 requests==2.32.3
 python-jose[cryptography]==3.3.0
