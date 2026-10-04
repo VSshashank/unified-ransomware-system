@@ -166,15 +166,73 @@ RANSOM_EXTENSIONS = frozenset(
 )
 
 
+# The Monitor's own reads must not lock anybody else out of the file. Python's
+# `open` asks Windows for FILE_SHARE_READ | FILE_SHARE_WRITE and not
+# FILE_SHARE_DELETE, so while a just-written file was open here to be sampled
+# and hashed, no other process could rename or delete it. Measured on the
+# Windows test VM, 2026-10-04: write-then-rename by one process - the defect 2
+# re-check, and every atomic save (Office's temp-then-rename, editors,
+# installers) - failed 6 of 6 times with PermissionError [WinError 32] while the
+# Monitor watched, and succeeded 6 of 6 times with the watch stopped. A detector
+# that breaks the saves it is meant to be protecting is not one anybody keeps
+# installed. So on Windows the file is opened with all three share modes; a
+# rename or delete that lands mid-read leaves the read going on against the same
+# file (tests/test_read_shares_delete.py).
+if os.name == "nt":
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _CreateFileW = _kernel32.CreateFileW
+    _CreateFileW.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+        wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+    ]
+    _CreateFileW.restype = wintypes.HANDLE
+    _GENERIC_READ = 0x80000000
+    _FILE_SHARE_ALL = 0x1 | 0x2 | 0x4  # READ | WRITE | DELETE
+    _OPEN_EXISTING = 3
+    _FILE_ATTRIBUTE_NORMAL = 0x80
+    _INVALID_HANDLE_VALUE = wintypes.HANDLE(-1).value
+
+    def _open_shared(file_path: str, mode: str = "rb"):
+        if mode != "rb":
+            raise ValueError(f"the Monitor only reads, in binary: mode {mode!r}")
+        handle = _CreateFileW(
+            file_path, _GENERIC_READ, _FILE_SHARE_ALL, None, _OPEN_EXISTING, _FILE_ATTRIBUTE_NORMAL, None
+        )
+        if handle == _INVALID_HANDLE_VALUE:
+            # WinError picks the subclass from the Windows code, the same way
+            # `open` does: 32/33/5 -> PermissionError (so a sharing violation is
+            # still retried below, and a directory - access denied without
+            # FILE_FLAG_BACKUP_SEMANTICS - is still refused), 2/3 ->
+            # FileNotFoundError.
+            raise ctypes.WinError(ctypes.get_last_error(), f"cannot open {file_path!r}")
+        try:
+            fd = msvcrt.open_osfhandle(handle, os.O_RDONLY | os.O_BINARY)
+        except OSError:
+            _kernel32.CloseHandle(wintypes.HANDLE(handle))
+            raise
+        return os.fdopen(fd, "rb")
+
+    # Every read in this module is `open(path, "rb")` in open_for_read. Binding
+    # the shared variant to that name keeps the call - and the seam the lock
+    # tests patch, `detection.open` - exactly where it was. POSIX has no share
+    # modes (an open file can always be renamed or unlinked), so there the name
+    # stays the builtin.
+    open = _open_shared  # noqa: A001
+
+
 def open_for_read(file_path: str, retry: bool = True):
     """Open a file, retrying briefly while another process holds a lock on it.
 
     Only PermissionError is retried: a file that does not exist will not start
     existing, but a locked one almost always frees within milliseconds.
 
-    Python's `open` goes through the CRT on Windows, which sets errno but not
-    winerror, so a sharing violation and a directory are both PermissionError
-    with errno 13 and cannot be told apart from the exception. A directory will
+    A sharing violation and a directory both arrive as PermissionError - from
+    `open`'s errno 13 on POSIX, and from access-denied on Windows, where
+    `_open_shared` opens without FILE_FLAG_BACKUP_SEMANTICS. A directory will
     never become readable, so it is excluded explicitly rather than waiting out
     the full budget for it.
 
