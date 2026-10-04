@@ -100,9 +100,16 @@ It enables the File System audit subcategory for Success, applies a
 `WriteData, AppendData` SACL **scoped to the watched directory** (a machine-wide
 rule floods the Security log), raises the Security log size if it is smaller
 than asked for — it never lowers it — and then **writes a probe file and
-confirms a 4663 actually came back** within 4 s — so a green run means the
-pipeline works, not that two commands returned zero. Any failed check makes it
-exit non-zero.
+confirms a 4663 actually came back** — so a green run means the pipeline works,
+not that two commands returned zero. Any failed check makes it exit non-zero.
+- The probe waits up to 4 s, timed on a `Stopwatch`, not on the adjustable
+  wall clock.
+- It reads only the records written after the probe (`EventRecordID > N`).
+- It tries a second probe file before it gives up.
+- If neither probe file gets a record, the script checks both settings again.
+  If they still read as set, it says auditing is configured but this run
+  could not confirm a record. It says attribution will not work only when a
+  setting disagrees (`FIXES.md` defect 17).
 
 Before it changes anything it records what it found — the log size, the File
 System subcategory's settings, and which audit rights the path already had — in

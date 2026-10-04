@@ -350,6 +350,37 @@ Describe 'setup_attribution_audit.ps1' {
         }
     }
 
+    Context 'what a failed probe means (F4)' {
+        # F4 of the 2026-10-04 VM test: one setup in four said "no 4663 within
+        # 4s ... Attribution will not work" for a folder where it worked. The
+        # probe is mocked here; the real one is tested in the next Describe.
+        It 'a configured path whose probe saw no record is not reported as one attribution cannot work on' {
+            Mock Write-Host { [void]$fake.Lines.Add([string]$Object) }
+            $fake.ProbeFails = $true
+
+            Invoke-TestSetup | Should Be 1   # nothing was confirmed end to end
+
+            $text = $fake.Lines -join "`n"
+            $text | Should Match '\[ FAIL \] End-to-end probe  -  no 4663 yet'
+            $text | Should Match 'both read as set'
+            $text | Should Match 'Auditing is configured, but this run could not confirm'
+            $text | Should Not Match 'Attribution will not work'
+        }
+
+        It 'a true failure still says attribution will not work, and why' {
+            Mock Write-Host { [void]$fake.Lines.Add([string]$Object) }
+            # Enabling Success "succeeds" and does not stick: auditing stays off.
+            Mock Set-FileSystemAuditSuccess { $fake.Calls += "audit-success:$Enabled"; $true }
+            $fake.ProbeFails = $true
+
+            Invoke-TestSetup | Should Be 1
+
+            $text = $fake.Lines -join "`n"
+            $text | Should Match 'does not read as set'
+            $text | Should Match 'Attribution will not work on this path'
+        }
+    }
+
     Context 'the pieces' {
         It 'reads auditpol''s English settings and refuses anything else' {
             (ConvertFrom-InclusionSetting 'Success and Failure').Success | Should Be $true
@@ -369,6 +400,84 @@ Describe 'setup_attribution_audit.ps1' {
             Get-AuditedWriteRights -Acl $acl | Should Be 0
 
             Get-AuditedWriteRights -Acl (New-TestAcl -EveryoneMasks $WriteData) | Should Be $WriteData
+        }
+    }
+}
+
+Describe 'setup_attribution_audit.ps1 - the end-to-end probe (F4)' {
+    # The real Invoke-AuditProbe: it writes its probe file in TestDrive, and
+    # only the event log is fake, answered from $fake. On the 2026-10-04 VM a
+    # correctly configured folder failed the probe once in four setups: its
+    # 4 s budget ran on the slewed wall clock, and every poll re-read the last
+    # 15 s of a 1 GiB log.
+    $fake = @{}
+    Mock Invoke-Native { throw "a real native command was reached: $Command $($Arguments -join ' ')" }
+    Mock Get-Acl { throw 'a real ACL was read' }
+    Mock Set-Acl { throw 'a real ACL was written' }
+    BeforeEach { $fake.Clear() }
+        function New-FakeAuditRecord([string]$Name, [long]$Id) {
+            $object = Join-Path $TestDrive $Name
+            $xml = "<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'><System><EventID>4663</EventID>" +
+                   "<EventRecordID>$Id</EventRecordID></System><EventData><Data Name='ObjectName'>$object</Data>" +
+                   "<Data Name='ProcessId'>0x1a2b</Data></EventData></Event>"
+            $record = [pscustomobject]@{ RecordId = $Id; Message = "Object Name: $object`r`nProcess ID: 0x1a2b"; Xml = $xml }
+            $record | Add-Member -MemberType ScriptMethod -Name ToXml -Value { $this.Xml }
+            return $record
+        }
+        function Get-ProbeFileName {
+            Get-ChildItem -LiteralPath $TestDrive -Force -Filter '.urds_attribution_probe_*' | Select-Object -First 1 -ExpandProperty Name
+        }
+
+    Context 'a jumping wall clock' {
+        It 'keeps looking for its full budget when the wall clock jumps mid-probe' {
+            $fake.Polls = 0
+            $fake.Queries = New-Object System.Collections.ArrayList
+            Mock Start-Sleep { }
+            # Every read of the wall clock is an hour later than the last: a
+            # budget timed with Get-Date ends before the first look.
+            Mock Get-Date { $fake.Jumps = 1 + [int]$fake.Jumps; [DateTime]::Now.AddHours($fake.Jumps) }
+            Mock Get-WinEvent {
+                if ($FilterXPath -or $FilterHashtable) {
+                    [void]$fake.Queries.Add("$FilterXPath")
+                    $fake.Polls = 1 + [int]$fake.Polls
+                    if ($fake.Polls -lt 3) { return }
+                    return (New-FakeAuditRecord -Name (Get-ProbeFileName) -Id 101)
+                }
+                return [pscustomobject]@{ RecordId = 100 }   # the watermark: the newest record before the probe
+            }
+
+            $hit = Invoke-AuditProbe -WatchPath $TestDrive
+
+            $hit | Should Match 'Process ID: 0x1a2b'
+            $fake.Polls | Should Be 3
+            # Each poll asked only for records newer than the probe.
+            ($fake.Queries | Select-Object -First 1) | Should Match 'EventRecordID > 100'
+            Get-ProbeFileName | Should BeNullOrEmpty   # the probe file is removed
+        }
+
+    }
+
+    Context 'a record that comes only for the retry' {
+        It 'tries a second probe file when the first one''s record never comes' {
+            $ProbeBudgetSeconds = 0.3
+            $fake.Names = New-Object System.Collections.ArrayList
+            Mock Start-Sleep { [System.Threading.Thread]::Sleep(20) }
+            Mock Get-WinEvent {
+                if ($FilterXPath -or $FilterHashtable) {
+                    $name = Get-ProbeFileName
+                    if ($fake.Names -notcontains $name) { [void]$fake.Names.Add($name) }
+                    # Records arrive only for the second probe file.
+                    if ($fake.Names.Count -lt 2) { return }
+                    return (New-FakeAuditRecord -Name $name -Id 200)
+                }
+                return [pscustomobject]@{ RecordId = 150 }
+            }
+
+            $hit = Invoke-AuditProbe -WatchPath $TestDrive
+
+            $hit | Should Match 'Process ID: 0x1a2b'
+            $hit | Should Match 'attempt 2'
+            $fake.Names.Count | Should Be 2
         }
     }
 }

@@ -107,6 +107,14 @@ $AuditPropagation = [System.Security.AccessControl.PropagationFlags]'None'
 
 $StateSchema = 1
 
+# The end-to-end probe (Invoke-AuditProbe): how long one probe file waits for
+# its 4663, on a Stopwatch; how often it looks; and how many probe files are
+# tried before the probe counts as failed. 4 s is about four times the
+# channel's measured delivery ceiling.
+$ProbeBudgetSeconds = 4
+$ProbePollMilliseconds = 250
+$ProbeAttempts = 2
+
 # Every failed check is counted here, and a run that had any exits non-zero.
 # Ported from fix/evidence-integrity: this used to print `[ FAIL ]` and exit 0,
 # so an installer branching on $LASTEXITCODE would report success on a machine
@@ -234,6 +242,47 @@ function Get-LatestAuditRecord {
     return Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 4663 } -MaxEvents 1 -ErrorAction SilentlyContinue
 }
 
+function Get-SecurityLogWatermark {
+    # The newest record's EventRecordID, of any event: a probe's own 4663 has to
+    # come after it, so each poll reads only what is newer (Find-ProbeRecord).
+    # 0 for an empty or unreadable log, which makes the first poll read it all.
+    $newest = Get-WinEvent -LogName Security -MaxEvents 1 -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($newest) { return [long]$newest.RecordId }
+    return [long]0
+}
+
+function Find-ProbeRecord {
+    # The 4663 for this probe file, among the records newer than $After.
+    #
+    # The probe used to ask for every 4663 of the last 15 s with
+    # -FilterHashtable StartTime, then format each one's Message to look for
+    # the name. On the test VM's 1 GiB Security log (216,645 records) each poll
+    # cost more than its 250 ms interval. EventRecordID > N reads only what
+    # arrived since the probe was written, and the name is matched in the
+    # event's XML, which needs no message formatting.
+    param([long]$After, [string]$Name)
+    $xpath = "*[System[(EventID=4663) and (EventRecordID > $After)]]"
+    foreach ($record in @(Get-WinEvent -LogName Security -FilterXPath $xpath -ErrorAction SilentlyContinue)) {
+        if (-not $record) { continue }
+        $xml = $record.ToXml()
+        if ($xml -and $xml.IndexOf($Name, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $record }
+    }
+    return $null
+}
+
+function Get-ProbeProcessLine {
+    # The record's writing process, as the probe's success line shows it.
+    param($Record)
+    try {
+        $doc = [xml]$Record.ToXml()
+        $writer = $doc.Event.EventData.Data | Where-Object { $_.Name -eq 'ProcessId' } | Select-Object -First 1
+        if ($writer -and $writer.'#text') { return "Process ID: $($writer.'#text')" }
+    } catch {
+        # The XML did not parse; say only what is known.
+    }
+    return 'a 4663 for the probe'
+}
+
 function Get-WatchPathSecurity {
     param([string]$Path)
     return Get-Acl -LiteralPath $Path -Audit
@@ -244,39 +293,56 @@ function Set-WatchPathSecurity {
     Set-Acl -LiteralPath $Path -AclObject $Acl
 }
 
+function Invoke-ProbeAttempt {
+    # One probe file under the watch path, polled for its 4663 for
+    # $ProbeBudgetSeconds on a Stopwatch. Returns the record, or $null.
+    param([string]$WatchPath)
+    $after = Get-SecurityLogWatermark
+    $name = '.urds_attribution_probe_{0}.tmp' -f ([guid]::NewGuid().ToString('N').Substring(0, 8))
+    $probe = Join-Path $WatchPath $name
+    [System.IO.File]::WriteAllBytes($probe, [byte[]](1..64))
+    $hit = $null
+    $clock = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        do {
+            Start-Sleep -Milliseconds $ProbePollMilliseconds
+            $hit = Find-ProbeRecord -After $after -Name $name
+        } while (-not $hit -and $clock.Elapsed.TotalSeconds -lt $ProbeBudgetSeconds)
+    } finally {
+        Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
+    }
+    return $hit
+}
+
 function Invoke-AuditProbe {
     # A real write under the watch path, and a real 4663 for it, so a green run
     # means the pipeline works rather than that three commands returned zero.
     # Returns the record's Process ID line, or $null when none arrived.
     #
-    # Polled to four seconds, not slept for 800 ms. Ported from
-    # fix/evidence-integrity, whose measurement found this channel's delivery
-    # bounded at about 1010 ms and independent of write rate - a flush timer -
-    # and the Windows integration VM measured 390-1032 ms over 35 writes. A
-    # single look at 800 ms sat below that ceiling and would report a correctly
-    # configured machine as broken whenever the probe landed on the wrong side
-    # of a flush. Matched on the probe's unique name, not its full path, so the
-    # case the kernel reports the directory in does not matter.
+    # Polled, not slept for 800 ms: fix/evidence-integrity found this channel's
+    # delivery bounded at about 1010 ms by a flush timer, and the Windows
+    # integration VM measured 116-1,232 ms. Matched on the probe's unique name,
+    # not its full path, so the case the kernel reports the directory in does
+    # not matter.
+    #
+    # F4 of the 2026-10-04 VM test: one setup in four reported "no 4663 within
+    # 4s" for a folder where -Verify passed minutes later and attribution was
+    # certain for every writer. The budget was timed with Get-Date, the wall
+    # clock, which VirtualBox slews on that VM (0.8x-1.44x of real time), and
+    # every poll re-read the last 15 s of a 1 GiB log and formatted each
+    # record's message. So the budget is a Stopwatch, a poll reads only the
+    # records newer than the probe (Find-ProbeRecord), and a miss is tried once
+    # more with a new probe file before it counts.
     param([string]$WatchPath)
-    $name = '.urds_attribution_probe_{0}.tmp' -f ([guid]::NewGuid().ToString('N').Substring(0, 8))
-    $probe = Join-Path $WatchPath $name
-    [System.IO.File]::WriteAllBytes($probe, [byte[]](1..64))
-    $hit = $null
-    try {
-        $deadline = (Get-Date).AddSeconds(4)
-        while (-not $hit -and (Get-Date) -lt $deadline) {
-            Start-Sleep -Milliseconds 250
-            $hit = Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 4663; StartTime = (Get-Date).AddSeconds(-15) } -ErrorAction SilentlyContinue |
-                Where-Object { $_.Message -and $_.Message.IndexOf($name, [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
-                Select-Object -First 1
+    for ($attempt = 1; $attempt -le $ProbeAttempts; $attempt++) {
+        $hit = Invoke-ProbeAttempt -WatchPath $WatchPath
+        if ($hit) {
+            $line = Get-ProbeProcessLine -Record $hit
+            if ($attempt -gt 1) { return "$line, on attempt $attempt" }
+            return $line
         }
-    } finally {
-        Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
     }
-    if (-not $hit) { return $null }
-    $line = $hit.Message -split "`n" | Where-Object { $_ -match 'Process ID:' } | Select-Object -First 1
-    if ($line) { return $line.Trim() }
-    return 'a 4663 for the probe'
+    return $null
 }
 
 # ------------------------------------------------------------- the audit rules
@@ -558,13 +624,35 @@ function Invoke-Setup {
 
     # 6. prove it produces a record
     $hit = Invoke-AuditProbe -WatchPath $WatchPath
+    $configuredButUnconfirmed = $false
     if ($hit) {
         Write-Result 'End-to-end probe' $true "a write under the watch path produced a 4663 ($hit)"
     } else {
-        Write-Result 'End-to-end probe' $false 'the probe write produced no 4663 within 4s - check the Security log is not full, and that the File System subcategory is enabled'
+        # No record for either probe file. Whether that means auditing is off
+        # is a separate question, asked of the two settings again: a correct
+        # configuration whose records are merely late must not be reported as
+        # one that cannot work (F4).
+        $policyNow = Get-AuditPolicyState
+        $aclNow = $null
+        try { $aclNow = Get-WatchPathSecurity -Path $WatchPath } catch { $aclNow = $null }
+        $configured = [bool]($policyNow -and $policyNow.Success -and $aclNow -and (Test-WriteAuditEffective -Acl $aclNow))
+        $tried = "{0} probe file(s), {1} s each on a Stopwatch" -f $ProbeAttempts, $ProbeBudgetSeconds
+        if ($configured) {
+            $configuredButUnconfirmed = ($script:Failures -eq 0)
+            Write-Result 'End-to-end probe' $false "no 4663 yet for $tried; the File System subcategory and the SACL both read as set, so auditing is on and the records are late or not being written - check again with -Verify in a minute"
+        } else {
+            Write-Result 'End-to-end probe' $false "no 4663 for $tried, and the File System subcategory or the SACL does not read as set - check the Security log is not full, and that the File System subcategory is enabled"
+        }
     }
 
     Write-Host ''
+    if ($configuredButUnconfirmed) {
+        Write-Host 'Auditing is configured, but this run could not confirm a 4663 for its probe.' -ForegroundColor Yellow
+        Write-Host 'That is not the same as attribution failing: run -Verify, then write a file under the path and check' -ForegroundColor Yellow
+        Write-Host 'GET /monitor/attribution. The exit code is non-zero because nothing was confirmed end to end.' -ForegroundColor Yellow
+        Write-Host "What was changed is recorded in $StatePath, so -Revert still restores it." -ForegroundColor Yellow
+        return 1
+    }
     if ($script:Failures -gt 0) {
         Write-Host "$($script:Failures) check(s) failed. Attribution will not work on this path: without a kernel-grade" -ForegroundColor Red
         Write-Host 'source no answer reaches CERTAIN, and responses will isolate rather than terminate.' -ForegroundColor Red
