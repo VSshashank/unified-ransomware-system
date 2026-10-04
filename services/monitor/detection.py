@@ -508,16 +508,30 @@ def identify_container(magic: bytes) -> str | None:
     return None
 
 
-def sha256_file(file_path: str, retry: bool = True) -> str | None:
-    """SHA-256 of a file. This is the `file_hash` the ledger event carries."""
+def hash_file(file_path: str, retry: bool = True) -> tuple[str | None, int | None]:
+    """SHA-256 of a file, and how many bytes it was taken over.
+
+    The count is the size of the content the hash describes. A size read with
+    `os.path.getsize` before or after is a different look at a file that may be
+    being written, and the Windows VM recorded `file_size: 0` beside a full
+    file's hash that way (F5, FIXES.md defect 18). (None, None) when the file
+    could not be read.
+    """
     digest = hashlib.sha256()
+    total = 0
     try:
         with open_for_read(file_path, retry=retry) as handle:
             for chunk in iter(lambda: handle.read(HASH_CHUNK_BYTES), b""):
                 digest.update(chunk)
+                total += len(chunk)
     except (OSError, ValueError):
-        return None
-    return digest.hexdigest()
+        return None, None
+    return digest.hexdigest(), total
+
+
+def sha256_file(file_path: str, retry: bool = True) -> str | None:
+    """SHA-256 of a file. This is the `file_hash` the ledger event carries."""
+    return hash_file(file_path, retry=retry)[0]
 
 
 def has_ransom_extension(file_path: str) -> bool:

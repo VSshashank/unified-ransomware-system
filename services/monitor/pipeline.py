@@ -132,7 +132,12 @@ def log_baseline(client: httpx.Client, event: dict) -> dict | None:
         {
             "file_path": event.get("file_path"),
             "file_hash": event.get("file_hash"),
+            # The length of the bytes `file_hash` was taken over (F5): two
+            # blocks on the VM recorded 0 beside a full 16,368-byte file's hash.
             "file_size": event.get("file_size"),
+            # True when the file changed size while it was being read: the
+            # hash is of what was there at the end of the read.
+            "size_changed_during_read": event.get("size_changed_during_read"),
             "entropy": event.get("entropy"),
             "verdict": event.get("verdict"),
             "event_type": event.get("event_type"),

@@ -616,6 +616,16 @@ components:
         file_size:
           type: integer
           example: 1048576
+          description: >-
+            The size of the content the other fields were measured on: the
+            hashed length where a hash is taken, otherwise the size after the
+            sample was read.
+        size_changed_during_read:
+          type: boolean
+          description: >-
+            True when the file changed size while the Monitor was reading it,
+            so file_size is from the end of the read. Returned by /features;
+            not scored by the model.
         magic_bytes:
           type: string
           example: 4D5A

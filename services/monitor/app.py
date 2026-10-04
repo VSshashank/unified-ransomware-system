@@ -60,7 +60,7 @@ from detection import (
     measure,
     read_magic,
     sample_file,
-    sha256_file,
+    hash_file,
 )
 from pe_features import suspicious_api_names
 from pe_features import extract_pe_features as _extract_pe_features
@@ -386,6 +386,24 @@ def _size_then_magic(path: str) -> tuple[int | None, bytes]:
     return size, magic
 
 
+def _size_after_read(path: str, size_before: int) -> tuple[int, bool]:
+    """The size once the content has been read, and whether it moved.
+
+    F5 of the 2026-10-04 VM test (FIXES.md defect 18): a file that grew
+    between the size and the read was recorded with the size from before -
+    events with `size=0` and entropy 5.86, `file_baseline` blocks with
+    `file_size: 0` beside the full file's hash. A number taken before the
+    bytes it is recorded beside describes neither. Where a hash is taken the
+    size is the length of the bytes hashed (`detection.hash_file`); where only
+    a sample is read, it is the size after the read, and the change is said.
+    """
+    try:
+        after = os.path.getsize(path)
+    except OSError:
+        return size_before, False
+    return after, after != size_before
+
+
 def extract_features(path: str) -> dict:
     """Feature vector for one file. Every value is measured, none are invented."""
     size, magic = _size_then_magic(path)
@@ -415,9 +433,13 @@ def extract_features(path: str) -> dict:
         inner_content=inner,
         container_status=validation_state,
     )
+    # Only a sample was read here, so there is no hashed length to use: the
+    # size after the read, and whether it moved (_size_after_read, F5).
+    recorded_size, size_changed = _size_after_read(path, size)
     return {
         "shannon_entropy": entropy,
-        "file_size": size,
+        "file_size": recorded_size,
+        "size_changed_during_read": size_changed,
         "magic_bytes": magic[:4].hex().upper() if magic else "UNKNOWN",
         "container_format": verdict["container_format"],
         # Tri-state, and it is reported as one. True the structure holds, false
@@ -584,7 +606,14 @@ def handle_event(
     )
     # Hashing a file we could not read only pays the retry cost again to reach
     # the same None, and it is on the sub-100ms detection path.
-    file_hash = sha256_file(path) if readable else None
+    file_hash, hashed_bytes = hash_file(path) if readable else (None, None)
+    # The size recorded is the size of the content recorded beside it: the
+    # hashed length where there is a hash, else the size after the read, and
+    # either way whether it moved since the first look (F5, _size_after_read).
+    if hashed_bytes is not None:
+        recorded_size, size_changed = hashed_bytes, hashed_bytes != size
+    else:
+        recorded_size, size_changed = _size_after_read(path, size)
     # The last byte the verdict rests on has now been read. A write that landed
     # between the notification and this read produced some of what was judged,
     # so attribution's window runs up to here, not only up to `observed_at`.
@@ -635,7 +664,9 @@ def handle_event(
         # already records the verdict's value, so taking the raw one here made
         # /monitor/events and the ledger disagree about the same event.
         "entropy": verdict["entropy"],
-        "file_size": size,
+        # The size of the content the hash below describes (F5).
+        "file_size": recorded_size,
+        "size_changed_during_read": size_changed,
         "magic_bytes": magic[:4].hex().upper() if magic else "UNKNOWN",
         "file_hash": file_hash,
         # The verdict's own answer is preserved in `verdict`/`reason` even when a
@@ -705,7 +736,7 @@ def handle_event(
     if event["suspicious"]:
         features = {
             "shannon_entropy": entropy,
-            "file_size": size,
+            "file_size": recorded_size,
             "magic_bytes": event["magic_bytes"],
             "modification_rate": round(min(1.0, entropy / 8.0), 2),
             "container_format": verdict["container_format"],
