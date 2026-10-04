@@ -248,6 +248,22 @@ reasoning, and why each default is what it is, is in the module docstring of
 `services/monitor/attribution.py`. An unavailable source still returns
 immediately and never opens a question.
 
+**The question opens at detection, not after the pipeline** (`FIXES.md` defect
+16). It used to be registered by the one pipeline worker, after ML, the ledger
+and the first response had run for that event. The horizon already ran from the
+read, but a question that did not exist yet could not close. Behind a 20-write
+burst, the first write by a fresh process was killed 6.92 s after its write on
+the VM (F2 in `reports/VM_TEST_REPORT_2026-10-04.md`).
+
+Now the correlation lane does it:
+- It names the incident (`inc_<event>`).
+- It queues the detection.
+- It opens the question.
+
+When the question closes, the kill goes out at once. Only the
+`attribution_escalation` block waits, if it has to, behind the incident's own
+`response_action` block.
+
 ### What reaches the ledger
 
 `process_id` alone is not auditable. A PID with no confidence beside it cannot

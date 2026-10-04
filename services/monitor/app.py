@@ -155,10 +155,13 @@ _work: queue.Queue = queue.Queue()
 _worker: threading.Thread | None = None
 
 # Attribution questions left open by a first answer that came back too early to
-# be final (attribution.py, "THE RACE"). An anchor is remembered here when the
-# event is classified and handed to `PendingAttribution` once the pipeline has
-# responded and the incident has an ID - the escalation block has to join to
-# something. Bounded like every other per-event structure in this service.
+# be final (attribution.py, "THE RACE"), by event ID: the question, and whether
+# the incident's own blocks - the pipeline's file_event and response_action -
+# are in the chain yet. The question is opened when the event is detected
+# (`_correlate`), not after the pipeline: F2 in the 2026-10-04 VM report
+# measured a first write's kill 6.92 s after it, because its question waited
+# behind a 20-write burst in `_work`. Bounded like every other per-event
+# structure in this service.
 MAX_ANCHORS = int(os.getenv("ATTRIBUTION_MAX_ANCHORS", "4096"))
 _ANCHORS: "OrderedDict[str, dict]" = OrderedDict()
 _ANCHORS_LOCK = threading.Lock()
@@ -811,10 +814,17 @@ def _correlate(
     with _LOCK:
         event.update(first.as_event_fields())
         event["queue_wait_ms"] = round(queue_wait_ms, 3)
-    if PIPELINE_ENABLED and attributor.should_park(first):
-        _remember_anchor(event["event_id"], path, observed_at, read_at, read_mono, first, also)
+        if PIPELINE_ENABLED:
+            # Named now, so that a kill which comes before the pipeline has
+            # reached this event still carries the incident it belongs to.
+            event["incident_id"] = incident_id_for(event["event_id"])
     if PIPELINE_ENABLED:
+        # The detection is queued before the question is opened, so the
+        # escalation's ledger block - which goes through the same queue when
+        # the question closes first - lands after this incident's own blocks.
         _work.put(("detection", event, features, verdict))
+        if attributor.should_park(first):
+            _open_question(event, path, observed_at, read_at, read_mono, first, also)
 
 
 def _record(event: dict) -> bool:
@@ -844,6 +854,8 @@ def _drain() -> None:
                     _run_baseline(client, *payload)
                 elif kind == "governance":
                     _run_governance(client, *payload)
+                elif kind == "escalation":
+                    _run_escalation_record(client, *payload)
                 else:
                     _run_detection(client, *payload)
             except Exception:  # a bad event must not kill the worker
@@ -855,65 +867,84 @@ def _drain() -> None:
 
 
 def _run_detection(client: httpx.Client, event: dict, features: dict, verdict: dict) -> None:
-    outcome = pipeline.run(event, features, verdict, client=client)
-    with _LOCK:
-        event["pipeline"] = {"stages": outcome["stages"]}
-        if outcome["ledger_block"]:
-            event["block_id"] = outcome["ledger_block"].get("block_id")
-        if outcome["prediction"]:
-            event["prediction"] = outcome["prediction"].get("prediction")
-            event["threat_level"] = outcome["prediction"].get("threat_level")
-        if outcome.get("incident_id"):
-            event["incident_id"] = outcome["incident_id"]
-        if outcome.get("response_dispatched_at"):
-            event["response_dispatched_at"] = outcome["response_dispatched_at"]
-    # Opened only now, after the non-destructive response has gone out and the
-    # incident has an ID: the escalation is a second action on the same
-    # incident, and its ledger block must come after the first one's.
-    _open_question(event, outcome.get("incident_id"))
+    try:
+        outcome = pipeline.run(event, features, verdict, client=client)
+        with _LOCK:
+            event["pipeline"] = {"stages": outcome["stages"]}
+            if outcome["ledger_block"]:
+                event["block_id"] = outcome["ledger_block"].get("block_id")
+            if outcome["prediction"]:
+                event["prediction"] = outcome["prediction"].get("prediction")
+                event["threat_level"] = outcome["prediction"].get("threat_level")
+            if outcome.get("incident_id"):
+                event["incident_id"] = outcome["incident_id"]
+            if outcome.get("response_dispatched_at"):
+                event["response_dispatched_at"] = outcome["response_dispatched_at"]
+    finally:
+        # The incident's own blocks are in the chain, or as far in as they are
+        # going to get: an escalation closing from now on writes its block at
+        # once rather than queueing it behind this one (`_escalate_loop`).
+        _mark_in_chain(event.get("event_id"))
 
 
 # ------------------------------------------------------- open attribution questions
 
 
-def _remember_anchor(
-    event_id: str, path: str, observed_at: float, read_at: float, read_mono: float, first, also=()
+def incident_id_for(event_id: str) -> str:
+    """The incident a suspicious event opens, named at detection."""
+    return "inc_" + event_id.removeprefix("evt_")
+
+
+def _open_question(
+    event: dict, path: str, observed_at: float, read_at: float, read_mono: float, first, also=()
 ) -> None:
+    """Open the attribution question at detection, keyed by the incident.
+
+    It used to be opened by the pipeline worker after ML, ledger and response
+    had run for this event. The horizon clock already started at the read
+    (`horizon_from=read_mono`), but a question that was not yet registered
+    could not close, so behind a burst its kill waited for the whole backlog:
+    6.92 s after the write on the VM (F2), 5.2 s twice before that.
+    """
+    question = attributor.question(
+        key=event["incident_id"],
+        path=path,
+        observed_at=observed_at,
+        read_at=read_at,
+        first=first,
+        also=also,
+        context=event,
+        horizon_from=read_mono,
+    )
     with _ANCHORS_LOCK:
-        _ANCHORS[event_id] = {
-            "path": path,
-            "also": tuple(also),
-            "observed_at": observed_at,
-            "read_at": read_at,
-            "read_mono": read_mono,
-            "first": first,
-        }
+        _ANCHORS[event["event_id"]] = {"question": question, "in_chain": False}
         while len(_ANCHORS) > MAX_ANCHORS:
             _ANCHORS.popitem(last=False)
-
-
-def _take_anchor(event_id: str | None) -> dict | None:
-    if not event_id:
-        return None
-    with _ANCHORS_LOCK:
-        return _ANCHORS.pop(event_id, None)
-
-
-def _open_question(event: dict, incident_id: str | None) -> None:
-    anchor = _take_anchor(event.get("event_id"))
-    if anchor is None or not incident_id:
-        return
-    question = attributor.question(
-        key=incident_id,
-        path=anchor["path"],
-        observed_at=anchor["observed_at"],
-        read_at=anchor["read_at"],
-        first=anchor["first"],
-        also=anchor["also"],
-        context=event,
-        horizon_from=anchor["read_mono"],
-    )
     _ensure_pending().add(question)
+
+
+def _mark_in_chain(event_id: str | None) -> None:
+    with _ANCHORS_LOCK:
+        anchor = _ANCHORS.get(event_id) if event_id else None
+        if anchor is not None:
+            anchor["in_chain"] = True
+
+
+def _incident_in_chain(event: dict) -> bool:
+    """Have this incident's own blocks been written (or never will be)?
+
+    True for an event with no open question on record - a question evicted
+    past MAX_ANCHORS, or one closed by a caller that never registered it -
+    whose escalation block is then written at once, as before.
+    """
+    with _ANCHORS_LOCK:
+        anchor = _ANCHORS.get(event.get("event_id")) if event.get("event_id") else None
+        return anchor is None or anchor["in_chain"]
+
+
+def _forget_question(event: dict) -> None:
+    with _ANCHORS_LOCK:
+        _ANCHORS.pop(event.get("event_id"), None)
 
 
 def _ensure_pending() -> attribution.PendingAttribution:
@@ -935,6 +966,15 @@ def _on_question_closed(question: attribution.Question, answer: attribution.Attr
 
 
 def _escalate_loop() -> None:
+    """Take each closed question's action now; write its block in order.
+
+    The kill a CERTAIN answer authorises goes out the moment the question
+    closes. Its `attribution_escalation` block has to follow the incident's
+    first `response_action` block, which the pipeline worker writes; if that
+    has not happened yet - a burst has `_work` running behind - the block is
+    queued on `_work` behind it (it is FIFO, and the incident's detection was
+    queued before its question opened), and only the block waits.
+    """
     client = httpx.Client(timeout=pipeline.DOWNSTREAM_TIMEOUT)
     try:
         while True:
@@ -944,26 +984,50 @@ def _escalate_loop() -> None:
             question, answer, outcome = item
             event = question.context if isinstance(question.context, dict) else {}
             try:
-                closed = pipeline.escalate(client, event, question, answer, outcome)
-                with _LOCK:
-                    # The event now carries the closing answer, and says what
-                    # the first one was: `/monitor/events` should show where the
-                    # incident ended up, not where it started.
-                    event.update(answer.as_event_fields())
-                    event["attribution_escalation"] = {
-                        "outcome": outcome,
-                        "result": closed["result"],
-                        "initial_attribution_confidence": question.first.confidence,
-                        "initial_attribution_reason": question.first.reason,
-                        "block_id": (closed["block"] or {}).get("block_id"),
-                        "response_dispatched_at": closed["record"]["response_dispatched_at"],
-                    }
+                if _incident_in_chain(event):
+                    closed = pipeline.escalate(client, event, question, answer, outcome)
+                    _show_closed(event, question, answer, outcome, closed["record"], closed["block"])
+                    _forget_question(event)
+                else:
+                    action = pipeline.escalation_action(client, question, answer)
+                    _show_closed(event, question, answer, outcome,
+                                 {"result": pipeline.escalation_result(answer, action),
+                                  "response_dispatched_at": action["response_dispatched_at"]}, None)
+                    _work.put(("escalation", event, question, answer, outcome, action))
             except Exception:  # a bad escalation must not kill the worker
                 logger.exception("escalation failed for %s", event.get("file_path"))
             finally:
                 _escalations.task_done()
     finally:
         client.close()
+
+
+def _show_closed(event: dict, question, answer, outcome: str, record: dict, block: dict | None) -> None:
+    """The event now carries the closing answer, and says what the first was.
+
+    `/monitor/events` should show where the incident ended up, not where it
+    started - as soon as the action is taken, with the block ID filled in when
+    the block is written.
+    """
+    with _LOCK:
+        event.update(answer.as_event_fields())
+        event["attribution_escalation"] = {
+            "outcome": outcome,
+            "result": record["result"],
+            "initial_attribution_confidence": question.first.confidence,
+            "initial_attribution_reason": question.first.reason,
+            "block_id": (block or {}).get("block_id"),
+            "response_dispatched_at": record["response_dispatched_at"],
+        }
+
+
+def _run_escalation_record(client: httpx.Client, event: dict, question, answer, outcome: str, action: dict) -> None:
+    """On the pipeline worker, after the incident's own blocks: the block."""
+    try:
+        closed = pipeline.record_escalation(client, event, question, answer, outcome, action)
+        _show_closed(event, question, answer, outcome, closed["record"], closed["block"])
+    finally:
+        _forget_question(event)
 
 
 def _ensure_escalator() -> None:

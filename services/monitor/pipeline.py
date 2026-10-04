@@ -297,21 +297,52 @@ def escalate(
     nobody asked. It is a *new* block, joined to the incident by `incident_id`;
     the `file_event` and `response_action` blocks written when the first answer
     came back are never touched, because they are inside the hash chain.
+
+    The two halves, `escalation_action` and `record_escalation`, are also
+    called apart: the Monitor takes the action the moment a question closes,
+    and writes the block only once the incident's own blocks are in the chain
+    (app._escalate_loop).
     """
+    action = escalation_action(client, question, answer)
+    return record_escalation(client, event, question, answer, outcome, action)
+
+
+def escalation_action(
+    client: httpx.Client,
+    question: "attribution.Question",
+    answer: "attribution.Attribution",
+) -> dict:
+    """The action a closed question authorises, taken now: a kill, or nothing."""
     termination = None
     dispatched_at = None
     if answer.kill_authorised:
         dispatched_at = utc_now()
         termination = request_termination(client, question.key, answer)
+    return {"termination": termination, "response_dispatched_at": dispatched_at}
 
+
+def escalation_result(answer: "attribution.Attribution", action: dict) -> str:
     if not answer.kill_authorised:
-        result = "not_escalated"
-    elif termination is None:
+        return "not_escalated"
+    if action.get("termination") is None:
         # 409 from the guard, or unreachable. The Response service's own block
         # carries the refusal reason when it was reachable.
-        result = "termination_refused_or_unreachable"
-    else:
-        result = "terminated"
+        return "termination_refused_or_unreachable"
+    return "terminated"
+
+
+def record_escalation(
+    client: httpx.Client,
+    event: dict,
+    question: "attribution.Question",
+    answer: "attribution.Attribution",
+    outcome: str,
+    action: dict,
+) -> dict:
+    """The `attribution_escalation` block for a question whose action was taken."""
+    termination = action.get("termination")
+    dispatched_at = action.get("response_dispatched_at")
+    result = escalation_result(answer, action)
 
     record = {
         "incident_id": question.key,
@@ -380,6 +411,11 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
         # file_hash is the field SI's recovery integrity check depends on.
         event_data = {
             "file_path": event.get("file_path"),
+            # Joins this block to the incident's response and escalation blocks.
+            # The incident ID is now given at detection, so it no longer embeds
+            # this block's ID; it is carried here instead.
+            "event_id": event.get("event_id"),
+            "incident_id": event.get("incident_id"),
             # The old name when this event is a rename, so a rewrite-then-rename
             # can be followed from the chain alone: the write happened under
             # `renamed_from`, the ciphertext sits at `file_path`.
@@ -440,7 +476,12 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
             result["stages"].append("ledger_logged")
 
         if threat_level in ACTIONABLE_THREAT_LEVELS:
-            incident_id = f"inc_{(block or {}).get('block_id', 'na')}_{event.get('event_id', 'na')}"
+            # The Monitor names the incident when it detects it (app._correlate),
+            # so a kill that comes before this point can carry it. A caller that
+            # did not gets the old name, built from the file_event block.
+            incident_id = event.get("incident_id") or (
+                f"inc_{(block or {}).get('block_id', 'na')}_{event.get('event_id', 'na')}"
+            )
             result["incident_id"] = incident_id
             # When the response was *asked for* - the end of everything the
             # Monitor controls. With `observed_at` on the event, the gap between
