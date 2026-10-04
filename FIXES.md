@@ -2,7 +2,7 @@
 
 Eight defects found by the Windows 11 VM integration test of commit `7dcee2a`,
 fixed on `fix/windows-integration-defects`, one commit per defect, and two more
-found re-testing this branch on the same VM (9 to 11). Each entry says what
+found re-testing this branch on the same VM (9 to 12). Each entry says what
 changed, where, what tests it, and what can only be confirmed on the Windows
 test VM. Measured figures in the README and `reports/` are unchanged;
 claims they no longer describe are marked **re-verification pending**.
@@ -20,6 +20,7 @@ claims they no longer describe are marked **re-verification pending**.
 | 9 | The Monitor's reads stopped other processes renaming or deleting a file | `805084f` |
 | 10 | Training mode timed its window and dwell on a slewed wall clock | `db8f38a` (test waits `529d872`) |
 | 11 | A probable answer named a writer that came after the event | `ec21a43` |
+| 12 | "Unreadable" was reported for a file being written, with nothing locked | `d6313f1` |
 
 ## The safety invariant
 
@@ -434,6 +435,10 @@ test stay on the wall clock.
 - `test_tc01_file_creation_on_the_watched_path_is_detected` failed once in
   about 210 runs of its scenario on 2026-10-04, with the whole file finishing
   in 2.7 s: too fast for the 5 s wait to have run out in real time.
+  **Correction:** that failure was not the clock. The final full pass caught
+  the same fast failure with a traceback, and it is defect 12. The clock change
+  still stands on its own: a wait budget has to be measured on an interval
+  clock.
 
 ## 11. A probable answer named a writer that came after the event
 
@@ -468,6 +473,47 @@ recent overall.
 
 **Verified live:** the next elevated run named no wrong PID (0 of 79).
 
+## 12. "Unreadable" was reported for a file being written, with nothing locked
+
+Found in the final full pass, 2026-10-04.
+
+**Measured:** `test_tc01_file_creation_on_the_watched_path_is_detected` failed.
+The event that saw the whole 32,768-byte file carried entropy `None`, which is
+the verdict "unreadable". Nothing was locked.
+- `handle_event` (and `extract_features`) read the leading bytes, then the
+  size. Watchdog's `created` fired, and the leading bytes were read from the
+  still-empty file. Then the write landed, and the size came back full.
+- `looks_unreadable(b"", 32768)` then read that as "bytes exist and we got
+  none".
+- The same race the other way round is why the diagnostic logged `created`
+  events with `file_size: 0` and entropy 7.99.
+
+It is also the one fast `test_tc01` failure seen earlier that day, at
+`102c147`. Entry 10 had called that one consistent with the slewed clock; this
+is the actual mechanism.
+
+This is not a harmless label. An unreadable reading is never suspicious and
+nothing re-reads it, so if no later notification arrives, the content is never
+scored.
+
+**What changed:** `_size_then_magic` (`services/monitor/app.py`), used by
+`handle_event` and `extract_features`:
+- The size is taken first, so a file that grows between the looks is read as
+  what it now holds.
+- An empty read of a file that had bytes is checked against the size again
+  before it counts as a lock. A file truncated in between (an overwrite's first
+  step) is empty, not locked.
+- A real lock still reads as unreadable.
+
+**Tests:** `services/monitor/tests/test_unreadable_is_a_lock_not_a_race.py` (3).
+The grow-between-the-looks case fails on the old code; the truncate and
+real-lock cases pass on both. `test_api.py` passed 15 of 15 afterwards.
+
+**Not changed:** a file that grows between the size and the sample still
+records a stale `file_size` beside the content it scored. The two baselines
+under "Minor findings" are that case. Recovery verifies the hash, which covers
+the full content.
+
 ## Suites
 
 Baseline at `7dcee2a` and after this branch, same venv (Python 3.12.10,
@@ -477,7 +523,7 @@ Windows 11, 4 vCPU), `URDS_WRITE_REPORTS` unset:
 |---|---|---|---|
 | gateway | 86 passed | 86 passed | — |
 | ledger | 67 passed | 99 passed | +32 (defect 4) |
-| monitor | 410 passed | 513 passed | +50 (1), +10 (2), +17 (3), +10 (4), +3 (8), +6 (9), +3 (10), +4 (11) |
+| monitor | 410 passed | 516 passed | +50 (1), +10 (2), +17 (3), +10 (4), +3 (8), +6 (9), +3 (10), +4 (11), +3 (12) |
 | ml-engine | 45 passed, 3 skipped | 50 passed, 3 skipped | +5 (8) |
 | response | 112 passed, 2 skipped | 121 passed, 2 skipped | +6 (4), +3 (6) |
 | claim matrix (`--tests`) | 0 failed | 0 failed | — |
@@ -525,7 +571,8 @@ pass; no re-run was needed: gateway 86, ledger 99, monitor 500, ml-engine 50
 (3 skipped), response 121 (2 skipped), claim matrix 0 failed, Pester 26.
 
 Repeat runs in a fresh venv then found defect 10 and the one `test_tc01`
-failure described there. The suites table above is the state after 9 to 11.
+failure described there; that failure is defect 12. The suites table above is
+the state after 9 to 12.
 
 ### Caveat: load flakiness
 
@@ -537,8 +584,10 @@ failure described there. The suites table above is the state after 9 to 11.
 - Across those 120 runs and 60 more of the test alone, no event was ever lost,
   and none would have failed the 5 s wait. The earlier failure needed more than
   5 s; the host then had other suites running in parallel.
-- The other contributor is the slewed wall clock (defect 10): the waits were
-  timed on it.
+- Two other causes, found later the same day:
+  - The waits were timed on the slewed wall clock (defect 10).
+  - A write landing between two looks at the file produced a false
+    "unreadable" (defect 12). That was the fast `test_tc01` failure.
 - **Finding, not changed:** with the test process at above-normal priority under
   the same load, arrival fell to median 0.63 s, max 0.99 s, and the 1 s
   `handle_event` stalls disappeared. An encryptor saturates the CPU too, so the
@@ -586,7 +635,10 @@ settings were changed by the operator, not by the agent.
 - Before and after compared equal on every recorded item: log size,
   subcategory, rules on both folders, the state file, and shadow copies (none).
 
-Final run, `20261004_120149`, at `ec21a43`: **42 passed, 0 failed.**
+Final run, `20261004_120149`, at `ec21a43`: **42 passed, 0 failed.** Defect 12
+(`d6313f1`) came after it, so it is covered by the suites and the unelevated
+live check at `d6313f1` (25 passed, 0 failed, 4 needing the audit source
+skipped), not by an elevated run.
 
 | Re-check | Result |
 |---|---|
