@@ -29,6 +29,7 @@ claims they no longer describe are marked **re-verification pending**.
 | 18 | A stale `file_size` beside the full file's hash (F5) | `72ae953` |
 | 19 | The dashboard's Field / Value tables raised `ArrowTypeError` every refresh | `69e2c9e` |
 | 20 | Two Security-channel subscriptions per Monitor start | `bb59077` |
+| 21 | The PE parser opened files without `FILE_SHARE_DELETE` | `c96a94f` |
 
 ## The safety invariant
 
@@ -386,6 +387,7 @@ opens through `CreateFileW` with all three share modes and wraps the handle with
   the builtin; it has no share modes.
 - Residual: `pefile.PE(path)` in `pe_features.py` still opens with the builtin.
   It runs only for on-demand `/features` analysis, not on file events.
+  **Fixed since, in defect 21.**
 
 **Tests:** `services/monitor/tests/test_read_shares_delete.py` (6). Rename and
 delete while open fail on the old code; write-while-open, missing file,
@@ -1069,6 +1071,37 @@ open. Proof: `C:\URDS-recheck\v2\base_proofs\s2_subscription_base.txt`.
 **Check on Windows:** only a count of subscriptions can confirm this, and none
 is exposed. The elevated run checks that attribution still works after a
 start, a stop and a start.
+
+## 21. The PE parser opened files without `FILE_SHARE_DELETE`
+
+Defect 9's residual, carried over by the full VM test of 2026-10-04.
+
+**What was wrong:** `pe_features.py` checked for a PE with the builtin `open`,
+and parsed with `pefile.PE(path)`, which opens the file and memory-maps it.
+While `/features` analysed a PE, nobody could delete that file: measured here
+as `PermissionError(13, 'The process cannot access the file because it is
+being used by another process')`. `suspicious_api_names` also closed its `PE`
+only on the path that did not return early at its limit.
+
+**What changed** (`services/monitor/pe_features.py`):
+- `is_pe` reads through `detection.open_for_read`, the defect 9 reader with
+  all three share modes on Windows.
+- `extract_pe_features` and `suspicious_api_names` read the bytes the same way
+  (`_read_all`) and parse with `pefile.PE(data=...)`.
+- `pe_file_size` is the length of the bytes parsed, not a second look at the
+  file (as in defect 18).
+- `suspicious_api_names` closes its `PE` on every path.
+
+**Tests:** `services/monitor/tests/test_pe_read_shares_delete.py` (2, Windows
+only).
+- It copies the interpreter into `tmp_path`.
+- It subclasses `pefile.PE` so that the copied file is deleted once the
+  parser has it. A subclass, because pefile reads its own class attributes
+  through the module's `PE` name.
+- It asserts that the delete succeeded and the parse went on.
+- **Both fail on `786dd42`** with that `PermissionError`. Proof:
+  `C:\URDS-recheck\v2\base_proofs\s3_pefile_share_delete_base.txt`.
+- `test_pe_features.py` (13) passes unchanged.
 
 ## Suites
 
