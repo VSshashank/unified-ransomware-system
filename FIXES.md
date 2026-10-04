@@ -24,6 +24,7 @@ claims they no longer describe are marked **re-verification pending**.
 | 13 | The dashboard never rendered, and while open it saturated the gateway | `820d7a4` |
 | 14 | Fabricated evidence (X1): a self-spawned TC-07 victim, skips that exited 0, invented PIDs in the chain | `9e3ecb6`, `fa8ec86`, manifest `6aa0fe9` |
 | 15 | The two demos wrote `reports/` without `URDS_WRITE_REPORTS` (F7) | `50ef61b` |
+| 16 | A kill waited for the pipeline backlog: the question opened after ML, ledger and response (F2a) | `84fcf15` |
 
 ## The safety invariant
 
@@ -776,6 +777,78 @@ Proof: `C:\URDS-recheck\v2\base_proofs\f7_reports_gate_base.txt`.
 **Check on Windows:** run both demos against the live stack with the variable
 unset: `git status` stays clean. Then run once with it set: the transcripts
 show only real PIDs. That run also regenerates the evidence X1 withdrew.
+
+## 16. A kill waited for the pipeline backlog (F2a)
+
+Found by the full VM test of 2026-10-04 (F2 in
+`reports/VM_TEST_REPORT_2026-10-04.md`), and seen in the re-check before it.
+
+**Measured:** after a 20-write burst, the first write by a fresh process was
+killed 6.92 s after its write (terminate sent 6.55 s after detection). The
+re-check before it measured 5.2 s twice. The others in the same run were
+killed 1.86–2.07 s after their writes.
+
+**Cause:** not the delivery horizon, which runs from the read
+(`horizon_from=read_mono`). `_run_detection` opened the attribution question
+only after `pipeline.run` had done ML, the ledger and the first response for
+that event. `pipeline.run` runs on one worker draining `_work`, about 200 ms
+per detection on the VM. A question that is not registered cannot close, so
+behind a burst it waited for the whole queue.
+
+**What changed** (`services/monitor/app.py`, `pipeline.py`):
+- `_correlate`, on the correlation lane, now does three things at detection:
+  - it names the incident: `incident_id_for`, `inc_<event hex>`;
+  - it queues the detection on `_work`;
+  - then it opens the question, keyed by that incident (`_open_question`).
+
+  `pipeline.run` uses the event's incident ID when it has one. The
+  `file_event` block now records `event_id` and `incident_id`, since the
+  incident ID no longer contains the block ID.
+- When a question closes, `_escalate_loop` takes the action at once
+  (`pipeline.escalation_action`), so escalation never waits behind `_work`.
+- The ordering rule from `_run_detection`'s old comment is kept: the
+  escalation's ledger block comes after the incident's first
+  `response_action` block.
+  - If the incident's own blocks are not in the chain yet, the
+    `attribution_escalation` block is queued on `_work` behind them
+    (`pipeline.record_escalation`, `_run_escalation_record`).
+  - `_work` is FIFO, and the detection was queued before its question
+    opened, so only the block waits.
+  - `_ANCHORS` records, per open question, whether `_run_detection` has
+    finished. Past `ATTRIBUTION_MAX_ANCHORS` (4096) open questions, an
+    evicted one's block is written at once, as before.
+- `/monitor/events` shows the closing answer and its result as soon as the
+  action is taken. The block ID follows.
+- `pipeline.escalate` keeps its contract (action, then block); the
+  safety-invariant tests call it directly.
+- Not changed: `HORIZON_MS`, `COMPETITION_MS`, `WINDOW_MS`, the gate, and
+  every test in the safety-invariant table.
+
+**Tests:** `services/monitor/tests/test_escalation_bypasses_backlog.py` (1).
+- Setup:
+  - 20 suspicious writes by one process, then one write by a fresh process
+    whose 4663 arrives 1,000 ms late;
+  - the stubbed ML, ledger and Response calls each sleep, so one detection
+    takes about 0.3 s in the pipeline and the queue ahead of the fresh write
+    is about 5 s deep.
+- Its kill must be asked for within horizon + tolerance + 500 ms = 2.05 s,
+  timed from just before its read, so the bound is strict.
+- It must carry the incident ID the pipeline later uses.
+- The escalation block must follow the incident's `response_action` block,
+  which follows its `file_event` block.
+- **This commit: 1.565 s. On `786dd42`: 6.47 s, fail** (the VM's 6.92 s case).
+  Proof: `C:\URDS-recheck\v2\base_proofs\f2a_backlog_base.txt`.
+- Monitor suite: 560 passed.
+- `ledger_coverage.json` and `pipeline_governance.json`, regenerated against
+  this code, match their recorded stable digests.
+
+**Check on Windows:** `e2e_check.py` D1 after the D3 burst. The first write's
+kill should come about 1.6 s after its write, not 6.9 s.
+
+**Not changed, and the subject of defect 17:** the kill still cannot come
+before the horizon closes, about 1.55 s after the read. That is correct (see
+the safety invariant) and too late for a fast encryptor. Defect 17 suspends
+the writer before then.
 
 ## Suites
 
