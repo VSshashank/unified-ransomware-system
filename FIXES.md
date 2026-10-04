@@ -27,6 +27,7 @@ claims they no longer describe are marked **re-verification pending**.
 | 16 | A kill waited for the pipeline backlog: the question opened after ML, ledger and response (F2a) | `84fcf15` |
 | 17 | The audit setup's probe reported a working folder as broken (F4) | `0ced2cc` |
 | 18 | A stale `file_size` beside the full file's hash (F5) | `72ae953` |
+| 19 | The dashboard's Field / Value tables raised `ArrowTypeError` every refresh | `69e2c9e` |
 
 ## The safety invariant
 
@@ -1001,6 +1002,36 @@ Proof: `C:\URDS-recheck\v2\base_proofs\f5_recorded_size_base.txt`.
 **Check on Windows:** in the new run's ledger, no `file_baseline` or event
 records a `file_size` that differs from the length of the content its
 `file_hash` covers.
+
+## 19. The dashboard's Field / Value tables raised `ArrowTypeError` every refresh
+
+Found once the dashboard rendered, after defect 13 (`reports/VM_TEST_REPORT_2026-10-04.md`,
+"After the test"; defect 13, "Not changed").
+
+**Measured:** three two-column tables put values of mixed types in one `Value`
+column: the event under review, the adjudication, and the ledger evidence. The
+values were a path, an entropy, a PID, a boolean and a hash. pyarrow cannot
+store that mix. On every refresh Streamlit caught an `ArrowTypeError` (or
+`ArrowInvalid`), logged it, and converted the column to text itself. The
+tables showed; the log filled.
+
+**What changed:** `field_table()` in `services/dashboard/app.py` builds the
+three tables with every value as text, and `N/A` for a missing one, as the
+rest of the page does. It is a module-level helper, beside the ones
+`scripts/pipeline_governance.py` lifts.
+
+**Tests:** `services/dashboard/tests/test_render.py`, +1, 4 passed.
+- The new test counts calls to Streamlit's
+  `fix_arrow_incompatible_column_types`, which runs only after a failed Arrow
+  conversion.
+- It feeds an event with an adjudication, so all three tables are drawn.
+- It asserts the values are text and read as before (`7.99`, `4512`).
+- **Fails on `786dd42`**, with the same `ArrowTypeError` ("Expected bytes,
+  got a 'float' object") and `ArrowInvalid`. Proof:
+  `C:\URDS-recheck\v2\base_proofs\s1_dashboard_arrow_base.txt`.
+
+**Check on Windows:** with the dashboard open for the live run, its log shows
+no "Serialization of dataframe to Arrow table was unsuccessful".
 
 ## Suites
 
