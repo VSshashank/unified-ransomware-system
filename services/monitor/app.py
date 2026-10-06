@@ -1005,32 +1005,101 @@ def _escalate_loop() -> None:
     has not happened yet - a burst has `_work` running behind - the block is
     queued on `_work` behind it (it is FIFO, and the incident's detection was
     queued before its question opened), and only the block waits.
+
+    A process this thread has already had killed is not asked about again
+    (`pipeline.TERMINATIONS`, defect 22): behind one writer's burst its later
+    questions used to cost a refused round trip each, in front of the next
+    writer's kill.
+
+    Actions come before blocks: while another question is queued, its action
+    is taken before any owed block is written, so a kill never waits behind
+    another question's ledger write. A question with nothing queued behind it
+    and no blocks owed is closed by `pipeline.escalate`, action then block, as
+    before. Either way each block follows its own action and its incident's
+    own blocks, in queue order, and a question is `task_done` only once its
+    block is written or queued.
     """
+    pipeline.bind_escalation_thread(_probe_for_escalation)
     client = httpx.Client(timeout=pipeline.DOWNSTREAM_TIMEOUT)
+    owed: deque = deque()  # acted on; block not yet written
     try:
         while True:
-            item = _escalations.get()
+            if owed:
+                try:
+                    item = _escalations.get_nowait()
+                except queue.Empty:
+                    _escalation_record(client, *owed.popleft())
+                    _escalations.task_done()
+                    continue
+            else:
+                item = _escalations.get()
             if item is None:
-                return
-            question, answer, outcome = item
-            event = question.context if isinstance(question.context, dict) else {}
-            try:
-                if _incident_in_chain(event):
-                    closed = pipeline.escalate(client, event, question, answer, outcome)
-                    _show_closed(event, question, answer, outcome, closed["record"], closed["block"])
-                    _forget_question(event)
-                else:
-                    action = pipeline.escalation_action(client, question, answer)
-                    _show_closed(event, question, answer, outcome,
-                                 {"result": pipeline.escalation_result(answer, action),
-                                  "response_dispatched_at": action["response_dispatched_at"]}, None)
-                    _work.put(("escalation", event, question, answer, outcome, action))
-            except Exception:  # a bad escalation must not kill the worker
-                logger.exception("escalation failed for %s", event.get("file_path"))
-            finally:
+                while owed:
+                    _escalation_record(client, *owed.popleft())
+                    _escalations.task_done()
                 _escalations.task_done()
+                return
+            if not owed and _escalations.empty():
+                try:
+                    _escalate_one(client, item)
+                finally:
+                    _escalations.task_done()
+                continue
+            done = _escalation_act(client, item)
+            if done is None:
+                _escalations.task_done()
+            else:
+                owed.append(done)
     finally:
         client.close()
+
+
+def _escalate_one(client: httpx.Client, item: tuple) -> None:
+    """A question with nothing queued behind it: action, then block if it can go now."""
+    question, answer, outcome = item
+    event = question.context if isinstance(question.context, dict) else {}
+    try:
+        if _incident_in_chain(event):
+            closed = pipeline.escalate(client, event, question, answer, outcome)
+            _show_closed(event, question, answer, outcome, closed["record"], closed["block"])
+            _forget_question(event)
+        else:
+            done = _escalation_act(client, item)
+            if done is not None:
+                _work.put(("escalation", *done))
+    except Exception:  # a bad escalation must not kill the worker
+        logger.exception("escalation failed for %s", event.get("file_path"))
+
+
+def _escalation_act(client: httpx.Client, item: tuple):
+    """One closed question's action, taken now. None if it failed."""
+    question, answer, outcome = item
+    event = question.context if isinstance(question.context, dict) else {}
+    try:
+        action = pipeline.escalation_action(client, question, answer)
+        _show_closed(event, question, answer, outcome,
+                     {"result": pipeline.escalation_result(answer, action),
+                      "response_dispatched_at": action["response_dispatched_at"]}, None)
+        return event, question, answer, outcome, action
+    except Exception:  # a bad escalation must not kill the worker
+        logger.exception("escalation failed for %s", event.get("file_path"))
+        return None
+
+
+def _escalation_record(client: httpx.Client, event: dict, question, answer, outcome: str, action: dict) -> None:
+    """Its block: now if the incident's own blocks are in the chain, else behind them."""
+    try:
+        if _incident_in_chain(event):
+            _run_escalation_record(client, event, question, answer, outcome, action)
+        else:
+            _work.put(("escalation", event, question, answer, outcome, action))
+    except Exception:  # a bad block must not kill the worker
+        logger.exception("escalation block failed for %s", event.get("file_path"))
+
+
+def _probe_for_escalation(pid: int):
+    """The current attributor's probe, looked up per call (it can be replaced)."""
+    return attributor.probe(pid)
 
 
 def _show_closed(event: dict, question, answer, outcome: str, record: dict, block: dict | None) -> None:
