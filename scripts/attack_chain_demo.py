@@ -20,6 +20,7 @@ that writer. This script terminates nothing itself (docs/CORRECTIONS.md, 1).
 """
 
 import argparse
+import hashlib
 import io
 import json
 import math
@@ -41,17 +42,20 @@ EVIDENCE_PATH = REPO_ROOT / "reports" / "attack_chain_evidence.txt"
 transcript: list[str] = []
 results: dict[str, bool | None] = {}
 
-# The writer: random bytes into one file, report the write, then stay alive
-# for `hold` seconds the way an encryptor still working would, and exit on its
-# own. It is the process detection and attribution have to find; nothing here
-# kills it, and it never outlives `hold`.
+# The writer: random bytes into one file, report the write and its own PID, then
+# stay alive for `hold` seconds the way an encryptor still working would, and
+# exit on its own. It is the process detection and attribution have to find;
+# nothing here kills it, and it never outlives `hold`. It reports `os.getpid()`
+# because the PID `Popen` returns is not always the writer's: from a venv
+# `sys.executable` is a launcher that starts the base interpreter as a child
+# (R14(b), docs/fixes_drafts/defect-23.md).
 WRITER_SOURCE = (
     "import hashlib, os, sys, time\n"
     "path, size, hold = sys.argv[1], int(sys.argv[2]), float(sys.argv[3])\n"
     "payload = os.urandom(size)\n"
     "with open(path, 'wb') as handle:\n"
     "    handle.write(payload)\n"
-    "print('WROTE', hashlib.sha256(payload).hexdigest(), flush=True)\n"
+    "print('WROTE', hashlib.sha256(payload).hexdigest(), os.getpid(), flush=True)\n"
     "time.sleep(hold)\n"
 )
 
@@ -63,18 +67,29 @@ ATTACKER_HOLD_SECONDS = 10.0
 class Writer:
     """A writer process, and when it was seen to write and to exit."""
 
-    def __init__(self, path: Path, size: int, hold_seconds: float) -> None:
+    def __init__(
+        self, path: Path, size: int, hold_seconds: float, interpreter: list[str] | None = None
+    ) -> None:
+        # `interpreter` is the argv prefix that runs Python; `sys.executable`
+        # unless a test puts a launcher of its own in front.
         self.process = subprocess.Popen(
-            [sys.executable, "-c", WRITER_SOURCE, str(path), str(size), str(hold_seconds)],
+            [*(interpreter or [sys.executable]), "-c", WRITER_SOURCE,
+             str(path), str(size), str(hold_seconds)],
             stdout=subprocess.PIPE,
             text=True,
         )
         line = (self.process.stdout.readline() or "").split()
         # perf_counter, not time.time(): the test VM's wall clock is slewed.
         self.wrote_at = time.perf_counter()
-        if len(line) != 2 or line[0] != "WROTE":
-            raise RuntimeError(f"writer pid {self.process.pid} did not report its write: {line!r}")
+        if len(line) != 3 or line[0] != "WROTE" or not line[2].isdigit():
+            raise RuntimeError(
+                f"writer (launched as pid {self.process.pid}) did not report its write: {line!r}"
+            )
         self.sha256 = line[1]
+        # The writer's own PID, as it reports it. Not `self.process.pid`, which
+        # is the launcher's when `sys.executable` is one; `self.process` stays
+        # as the handle that watches for the writer's end.
+        self._reported_pid = int(line[2])
         self.exited_at: float | None = None
         self._watch = threading.Thread(target=self._wait, daemon=True)
         self._watch.start()
@@ -85,12 +100,41 @@ class Writer:
 
     @property
     def pid(self) -> int:
-        return self.process.pid
+        return self._reported_pid
 
     def finish(self, timeout: float) -> int | None:
         """Wait for the writer to end by itself. Never kills it."""
         self._watch.join(timeout=timeout)
         return self.process.poll()
+
+
+def _same_path(left: str, right: str) -> bool:
+    """Two spellings of one path, the way the Monitor compares them.
+
+    `normalise_path` is `normpath(abspath(...))`; Windows paths are then
+    compared without regard to case or separator (`services/ledger/path_keys.py`).
+    """
+    return os.path.normcase(os.path.normpath(os.path.abspath(left))) == os.path.normcase(
+        os.path.normpath(os.path.abspath(right))
+    )
+
+
+def is_this_runs_event(
+    event_path: object, event_hash: object, expected_path: str, expected_hash: str | None
+) -> bool:
+    """Is this Monitor event, or ledger block, about the file THIS run wrote?
+
+    The full normalised path has to match - not `endswith(name)`, because every
+    run writes the same file name and an earlier run's event in another folder
+    ended the same way. Where the event carries a payload hash and this run knows
+    its own, that has to match too, so an earlier run's event for the same path
+    is not judged as this run's. An event with no hash is judged on its path.
+    """
+    if not isinstance(event_path, str) or not _same_path(event_path, expected_path):
+        return False
+    if expected_hash and event_hash:
+        return event_hash == expected_hash
+    return True
 
 
 def judge_tc07(events: list[dict], writer_pid: int, writer_ended_early: bool) -> tuple[dict, list[str]]:
@@ -198,7 +242,12 @@ def main() -> int:
     )
     # Host path, and the path the same directory has inside the containers.
     parser.add_argument("--watch-host", default=str(REPO_ROOT / "watched_files"))
-    parser.add_argument("--watch-container", default="/watch")
+    parser.add_argument(
+        "--watch-container", default="/watch",
+        help="The path the Monitor is told to watch, and so reports in its events. "
+             "Events are matched on it (full path and hash), so for a native run "
+             "it is the same folder as --watch-host.",
+    )
     parser.add_argument(
         "--out",
         help="Write the transcript here (and <name>_results.json beside it) instead of reports/. "
@@ -207,6 +256,23 @@ def main() -> int:
     args = parser.parse_args()
 
     client = httpx.Client(timeout=15.0)
+
+    def monitor_path(file: Path) -> str:
+        """The path the Monitor reports for a file this script wrote: where it
+        was told to watch, plus the file's place under the watched folder."""
+        return os.path.join(args.watch_container, os.path.relpath(file, args.watch_host))
+
+    def newest_event(path: Path, expected_hash: str | None, **params):
+        """The newest Monitor event about THIS file - full path and hash, not name."""
+        events = client.get(
+            f"{args.gateway}/monitor/events", params={"limit": 50, **params}, headers=auth
+        ).json()["events"]
+        return next(
+            (e for e in events
+             if is_this_runs_event(e["file_path"], e.get("file_hash"), monitor_path(path), expected_hash)),
+            None,
+        )
+
     started_at = datetime.now(timezone.utc)
 
     say("=" * 74)
@@ -266,15 +332,10 @@ def main() -> int:
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("data.bin", os.urandom(300_000))
     control.write_bytes(buffer.getvalue())
+    control_hash = hashlib.sha256(control.read_bytes()).hexdigest()
     say(f"  wrote {control.name} ({control.stat().st_size} bytes, entropy {entropy_of(control.read_bytes()):.3f})")
 
-    control_event = wait_for(
-        lambda: next(
-            (e for e in client.get(f"{args.gateway}/monitor/events", params={"limit": 50}, headers=auth).json()["events"]
-             if e["file_path"].endswith(control.name)),
-            None,
-        )
-    )
+    control_event = wait_for(lambda: newest_event(control, control_hash))
     if control_event:
         say(f"  detected   : entropy={control_event['entropy']} verdict={control_event.get('verdict')}")
         say(f"  suspicious : {control_event.get('suspicious')}")
@@ -297,13 +358,7 @@ def main() -> int:
 
     # --- 4. detection --------------------------------------------------------
     rule("4. MONITOR DETECTION")
-    event = wait_for(
-        lambda: next(
-            (e for e in client.get(f"{args.gateway}/monitor/events", params={"limit": 50}, headers=auth).json()["events"]
-             if e["file_path"].endswith(victim.name)),
-            None,
-        )
-    )
+    event = wait_for(lambda: newest_event(victim, expected_hash))
     if not event:
         say("  FAIL: monitor never reported the file")
         results["tc01_detected"] = False
@@ -329,8 +384,10 @@ def main() -> int:
     rule("5. ML -> LEDGER -> RESPONSE")
     enriched = wait_for(
         lambda: next(
-            (e for e in client.get(f"{args.gateway}/monitor/events", params={"limit": 50}, headers=auth).json()["events"]
-             if e["file_path"].endswith(victim.name) and e.get("pipeline")),
+            (e for e in client.get(f"{args.gateway}/monitor/events", params={"limit": 50},
+                                   headers=auth).json()["events"]
+             if is_this_runs_event(e["file_path"], e.get("file_hash"), monitor_path(victim), expected_hash)
+             and e.get("pipeline")),
             None,
         ),
         timeout=25.0,
@@ -359,14 +416,13 @@ def main() -> int:
     ).json()
     # Prefer the file_event block: response_action blocks name the same file but
     # carry the action, not the detection.
-    matching = [
+    this_runs = [
         b for b in blocks.get("blocks", [])
-        if str(b.get("event_data", {}).get("file_path", "")).endswith(victim.name)
-        and b.get("event_type") == "file_event"
-    ] or [
-        b for b in blocks.get("blocks", [])
-        if str(b.get("event_data", {}).get("file_path", "")).endswith(victim.name)
+        if is_this_runs_event(b.get("event_data", {}).get("file_path"),
+                              b.get("event_data", {}).get("file_hash"),
+                              monitor_path(victim), expected_hash)
     ]
+    matching = [b for b in this_runs if b.get("event_type") == "file_event"] or this_runs
     if matching:
         block = matching[0]
         data = block["event_data"]
@@ -422,7 +478,7 @@ def main() -> int:
         events = [
             e for e in client.get(f"{args.gateway}/monitor/events", params={"limit": 200},
                                   headers=auth).json()["events"]
-            if e["file_path"].endswith(victim.name)
+            if is_this_runs_event(e["file_path"], e.get("file_hash"), monitor_path(victim), expected_hash)
         ]
         if events and not any(e.get("attribution_pending") for e in events):
             return events
@@ -454,11 +510,7 @@ def main() -> int:
     probe_writer = Writer(probe, 120_000, 0.0)
     probe_written = probe_writer.wrote_at
     seen = wait_for(
-        lambda: next(
-            (e for e in client.get(f"{args.gateway}/monitor/events", params={"limit": 50}, headers=auth).json()["events"]
-             if e["file_path"].endswith(probe.name)),
-            None,
-        ),
+        lambda: newest_event(probe, probe_writer.sha256),
         timeout=5.0,
         interval=0.05,
     )
