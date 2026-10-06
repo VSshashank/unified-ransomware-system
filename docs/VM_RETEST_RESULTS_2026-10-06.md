@@ -142,7 +142,8 @@ promises, so it is not made here.
 
 ## 9. After this run: what was changed in response, and what is proven
 
-Nothing below has been run on the VM. It is built, reviewed and unit-tested only.
+Written before the second VM run. What that run showed is in section 10, which corrects the
+paragraph on the fastest families below.
 
 - **Freeze-first, Monitor side (F2b), built** (defect 26): a new gate
   `suspend_authorised` (weaker than the kill gate only because a freeze can be undone),
@@ -177,3 +178,65 @@ Nothing below has been run on the VM. It is built, reviewed and unit-tested only
   100 ms target) on both, with an occasional slow outlier on each. With freeze-first off
   (`MONITOR_SUSPEND_FIRST=0`) the suite gave 754 passed, 68 skipped (tests that need it
   on) and the same single latency flake.
+
+## 10. Second VM run (evidence_20261006_225420) and the burst A/B (evidence_ab_20261006_233048)
+
+**Freeze-first works live.** All 13 simulator families were frozen and then killed at about
+1.6 s (first 2026-10-06 run: 4 of 13; 2026-10-05: 4 of 13). Files encrypted before the stop:
+poisoner 0; locker, notedrop, partial, silent, slowburn 1; grinder, staged 2; renamer 3 (it
+was 10 for nine of these). Not under 5: copycat 8, strider 8, spoofer 8, headerspoof 9. So the
+earlier prediction in section 9 (the 11 unkilled families had already exited, nothing to
+freeze) was wrong: they were still running when the first audit record of their burst
+arrived. How early the stop lands depends on when the first audit batch arrives, which is
+timing luck (records for a burst arrive 42 ms to 1.5 s late, median about 650 ms), so the 9-of-13
+figure is one run's draw, not a guarantee.
+Also live: R26 25/25; R20 5/5 cycles; R21; R13 and R27 clean; four demo runs 19/19; R28 S1
+(sole slow attacker frozen at 1.0 s, killed at 1.6 s, 6 files written instead of about 8); S3
+(Monitor stop mid-freeze: not frozen 0.06 s later); S4 (slow benign writer never frozen);
+three live resumes (a benign writer, then an encryptor 0.5 s later: frozen, resumed, nobody
+killed); 0 wrong PIDs; C-16 scan 281 blocks name a process, 0 unsupported.
+
+**R28 S2 was a wrong expectation, not a defect.** It expected a second writer that starts
+after the first writer's event to make the first one resumed. The competition window looks
+back from the event, so the first writer is still alone in it and is killed at the horizon;
+the second writer was frozen and killed only after the first one's writes had aged out of its
+own 3 s window (it was then the sole writer). The kill rule did what it is documented to do.
+The script's S2 checks were corrected.
+
+**Other failures in that run, with causes.**
+- Poisoner "not detected": it was killed before it encrypted any file, so the harness had
+  nothing encrypted to count. The harness now accepts a terminated process with flagged
+  writes and no encrypted file.
+- Spoofer `--restore` 1/10: the kill landed in the middle of the simulator writing its
+  manifest, leaving a 0-byte `.simulator_manifest.json`. The simulator writes it in place.
+  Not changed (simulator); an atomic write would remove it.
+- "One suspicious event not in the ledger" (387/388): present in the ledger saved afterwards
+  (388/388); the live check ran while the ledger was still catching up.
+- Ledger verify latency median 104 ms against 50 ms, defect 3 (+1.31 s against 1 s), and R22
+  below: all during stretches when the VM's disk was slow (see next).
+
+**R22 (burst of 20 writes, then a fresh writer) is disk-latency bound, and fails the same
+way with both of this round's changes off.** The VM's file-flush latency varied between
+3.4 and 23 ms per file within minutes (probes in `evidence_ab_...`). Five runs of the same
+scenario, four repetitions each, write to PID gone for the fresh writer:
+
+| configuration | burst time (s) | write to gone (s) | within 2.05 s |
+|---|---|---|---|
+| default (freeze-first on, 16 workers) | 0.14-0.32 | 1.96, 2.21, 2.33, 2.47 | 1 of 4 |
+| freeze-first off | 0.08-0.11 | 1.71-1.78 | 4 of 4 |
+| 1 worker | 0.25-0.27 | 2.24-2.43 | 0 of 4 |
+| both off (the code before this round) | 0.24-0.28 | not killed (unknown), 2.16, 2.20, 2.21 | 0 of 4 |
+| default again | 0.15-0.32 | 1.63, 2.20, 2.29, 2.53 | 1 of 4 |
+
+The freeze-first-off run happened to land in a fast stretch (burst 0.09 s), so it is not a
+clean comparison. What can be said: when the disk was slow, the configuration with both
+changes off failed as much as the others, including one fresh writer never attributed. The
+2026-10-06 first run passed 8 of 8 when the burst took 0.07 s. In slow stretches the
+Monitor's ledger writes (about 80 blocks for a 20-file burst, each flushed) fall 4 to 8 s
+behind; the kill itself is dispatched on time after the horizon, but the fresh writer's
+event is processed late, so the horizon starts late. A consequence also seen in every
+configuration: the Response service's `terminate` block can reach the ledger before the
+Monitor's `file_event` block for the same incident (the order check fails). The kill is
+prompt, the audit trail is late and out of order. Not fixed: it needs faster or batched
+ledger writes. The honest statement of R22 is: passes at about 4 ms per file flush, misses
+the 2.05 s target by 0.1-0.5 s at 10-16 ms.
