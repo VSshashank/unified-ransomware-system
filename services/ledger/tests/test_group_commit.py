@@ -201,3 +201,14 @@ def test_a_failure_inside_a_shared_batch_rolls_the_whole_batch_back(ledger, monk
     assert isinstance(results["good"], OSError), "it shared the failing commit, so it failed with it"
     assert ledger.count_blocks() == 2, "the failed batch left something in the chain"
     assert ledger.verify_chain()["valid"] is True
+
+
+def test_a_batch_size_of_one_is_the_old_behaviour_even_under_concurrency(ledger, monkeypatch):
+    """LEDGER_MAX_BATCH=1: the off switch the VM A/B uses."""
+    monkeypatch.setattr(hash_chain, "MAX_BATCH", 1)
+    slow_commits(ledger, monkeypatch)
+    seen = commits_of(ledger)
+    hammer(ledger, threads=6, each=5)
+    assert ledger.count_blocks() == 30
+    assert len(seen) == 30, "appends shared a commit although the batch size is one"
+    assert ledger.verify_chain()["valid"] is True

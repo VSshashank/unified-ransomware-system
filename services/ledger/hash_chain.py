@@ -10,6 +10,7 @@ There is no update or delete path here on purpose: the only write is an append.
 """
 
 import hashlib
+import os
 import sqlite3
 import threading
 import time
@@ -31,7 +32,9 @@ _BLOCK_COLUMNS = "id, timestamp, event_type, event_data, previous_hash, current_
 # The most appends one commit may carry. A bound, so that one caller is never
 # made to wait on an unbounded backlog; far above the handful of writers (the
 # Monitor's two threads, the Response service's workers) that can queue at once.
-MAX_BATCH = 64
+# LEDGER_MAX_BATCH=1 never shares a commit: each append is committed alone, as
+# it was before group commit.
+MAX_BATCH = max(1, int(os.getenv("LEDGER_MAX_BATCH", "64")))
 
 
 class _Append:
