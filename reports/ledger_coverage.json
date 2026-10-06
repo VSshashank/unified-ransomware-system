@@ -1,7 +1,7 @@
 {
   "schema": "urds.ledger_coverage/1",
-  "generated_at": "2026-10-06T04:12:22.689525Z",
-  "commit": "c64addd594402a89f71bb057db19b112a501c22c",
+  "generated_at": "2026-10-06T10:45:02.162882Z",
+  "commit": "d3acd81218e0f384b728c2af9b603433a8be1888",
   "branch": "fix/vm-2026-10-05-findings",
   "table_9_8_row": "Mitigation decisions reaching the ledger",
   "target": "100%",

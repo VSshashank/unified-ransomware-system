@@ -1,6 +1,6 @@
 {
   "schema": "urds.claim_matrix.v1",
-  "generated_at": "2026-10-06T04:13:05.271272+00:00",
+  "generated_at": "2026-10-06T10:45:50.112229+00:00",
   "claims": [
     {
       "id": "C-01",
@@ -56,7 +56,7 @@
       "test_run": {
         "services/monitor/tests/test_tc18_admission_matrix.py": {
           "returncode": 0,
-          "summary": "21 passed in 0.04s"
+          "summary": "21 passed in 0.11s"
         }
       }
     },
@@ -88,7 +88,7 @@
       "test_run": {
         "services/monitor/tests/test_tc14_unvalidated_closure.py": {
           "returncode": 0,
-          "summary": "24 passed in 0.44s"
+          "summary": "24 passed in 0.64s"
         }
       }
     },
@@ -121,7 +121,7 @@
       "test_run": {
         "services/monitor/tests/test_tc18_admission_matrix.py": {
           "returncode": 0,
-          "summary": "21 passed in 0.05s"
+          "summary": "21 passed in 0.08s"
         }
       }
     },
@@ -185,7 +185,7 @@
       "test_run": {
         "services/monitor/tests/test_tc14_unvalidated_closure.py": {
           "returncode": 0,
-          "summary": "24 passed in 0.41s"
+          "summary": "24 passed in 0.62s"
         }
       }
     },
@@ -219,7 +219,7 @@
       "test_run": {
         "services/monitor/tests/test_tc19_benign_bound.py": {
           "returncode": 0,
-          "summary": "18 passed in 0.37s"
+          "summary": "18 passed in 0.65s"
         }
       }
     },
@@ -252,11 +252,11 @@
       "test_run": {
         "services/monitor/tests/test_tc23_chained_record.py": {
           "returncode": 0,
-          "summary": "6 passed in 2.26s"
+          "summary": "6 passed in 3.31s"
         },
         "services/gateway/tests/test_tc25_full_traverse.py": {
           "returncode": 0,
-          "summary": "8 passed, 1 warning in 0.19s"
+          "summary": "8 passed, 1 warning in 0.20s"
         }
       }
     },
@@ -381,7 +381,7 @@
       "test_run": {
         "services/ledger/tests/test_tamper_sweep.py": {
           "returncode": 0,
-          "summary": "25 passed in 3.30s"
+          "summary": "25 passed in 2.99s"
         }
       }
     },
@@ -439,7 +439,7 @@
       "test_run": {
         "services/response/recovery/tests": {
           "returncode": 0,
-          "summary": "72 passed, 1 warning in 12.96s"
+          "summary": "72 passed, 1 warning in 12.49s"
         }
       }
     },
@@ -490,11 +490,11 @@
       "test_run": {
         "services/monitor/tests/test_ledger_pid_integrity.py": {
           "returncode": 0,
-          "summary": "18 passed in 3.04s"
+          "summary": "18 passed in 2.63s"
         },
         "services/response/tests/test_chain_pid_fields.py": {
           "returncode": 0,
-          "summary": "6 passed, 1 warning in 3.84s"
+          "summary": "6 passed, 1 warning in 3.40s"
         }
       }
     }

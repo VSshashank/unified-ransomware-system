@@ -1,7 +1,7 @@
 {
   "schema": "urds.artefact_manifest.v1",
-  "generated_at": "2026-10-06T04:13:17.339573+00:00",
-  "commit": "c64addd594402a89f71bb057db19b112a501c22c",
+  "generated_at": "2026-10-06T10:45:50.304904+00:00",
+  "commit": "d3acd81218e0f384b728c2af9b603433a8be1888",
   "branch": "fix/vm-2026-10-05-findings",
   "what_the_two_digests_mean": {
     "sha256": "over the committed bytes; detects an edited artefact",
@@ -120,7 +120,7 @@
       ],
       "present": true,
       "bytes": 7052,
-      "sha256": "59c5e9479aee977e004317e63e154764519405efc4514e501fb094cd59c78a46",
+      "sha256": "f6468532c2f41f67d4b64dc6fd579cda5af0cb4e0488756fc16d609f1d0b24d4",
       "stable_sha256": "a223fd231d2dce2d453aaf739f0caae7b278728b2944c1658f44ec979856e15c"
     },
     {
@@ -138,7 +138,7 @@
       ],
       "present": true,
       "bytes": 10380,
-      "sha256": "18d2507f6ef1fc8d98854635ba6341282b62be68fff6fcaa8ccaa7931b2f42f6",
+      "sha256": "9aa67c1dc41e8963abab6f76d99ba4e4fdfa3914b88994834baeddd2a83a8838",
       "stable_sha256": "6d2bf06d446539e401be309dc4d2d43ca1e395c6e325735cb12748d8fd603cd0"
     },
     {
@@ -255,13 +255,13 @@
     },
     {
       "path": "services/monitor/pipeline.py",
-      "sha256": "7d8a603790909ae07b8d1ca3a21fb4eb42f804c5342b03c156be46abe740533b",
-      "bytes": 35719
+      "sha256": "6c1f39b3959177d9da0b3827ef3fd69621d3eb750eb2a1314877d553bbb4da94",
+      "bytes": 45879
     },
     {
       "path": "services/monitor/app.py",
-      "sha256": "d6eb88ab3bddad2de2b980046d0a28f9c5fef2da7d3db47d80f1a2761280ba08",
-      "bytes": 74380
+      "sha256": "104fc9f69611977331fc658022a5d2c13b75db3aa785a719d0d5188f78c3b701",
+      "bytes": 79682
     },
     {
       "path": "services/ledger/hash_chain.py",
