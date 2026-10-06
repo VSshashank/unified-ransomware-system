@@ -178,6 +178,34 @@ _escalator: threading.Thread | None = None
 # start one.
 _ESCALATOR_LOCK = threading.Lock()
 
+# One incident per file, not per notification - F6, FIXES.md defect 25.
+# Windows reports one write as one to three notifications (`created`, then one
+# or two `modified`) a few milliseconds apart, and each suspicious one opened
+# its own incident: its own question, `file_event`, `response_action`,
+# escalation and terminate request. The 2026-10-05 elevated run's ledger held
+# 530 `file_event` blocks for 275 suspicious files. While an incident's
+# question is open, a further suspicious `modified` notification for the same
+# path that read the same bytes now joins it instead (`_join_open_incident`).
+# It is still recorded on /monitor/events, and its write is still waited for
+# over its own full delivery horizon: joining moves the question's window and
+# horizon to cover it, which can only add writers to the answer, never remove
+# one.
+#
+# The window is bounded from the incident's first read: in that run 239 of 243
+# follow-up `modified` notifications came within 100 ms of the one before
+# (median 11 ms), and the bound is also the most a join can delay a kill.
+COALESCE_MS = float(os.getenv("MONITOR_COALESCE_MS", "100"))
+# Open incidents by path (normcase'd, as attribution compares paths), and per
+# path the sequence number of the last notification that can mean "a new file
+# is here": created, deleted, or either end of a rename. A notification joins
+# only an incident opened since the last of those, so a new file is never
+# folded into an older incident. Both bounded like `_ANCHORS`.
+_OPEN_INCIDENTS: "OrderedDict[str, dict]" = OrderedDict()
+_INCIDENTS_BY_QUESTION: "OrderedDict[str, dict]" = OrderedDict()
+_FILE_EPOCHS: "OrderedDict[str, int]" = OrderedDict()
+_EPOCH_SEQ = 0
+_INCIDENTS_LOCK = threading.Lock()
+
 # Correlation - the first attribution look and the hand-off to `_work` - runs
 # on these, sharded by path, not on the watchdog observer thread. Started with
 # the watch and drained when it stops. See dispatch.py for what this cost when
@@ -518,6 +546,11 @@ def handle_event(
     if not matches_patterns(path, _file_patterns):
         return None
 
+    # Taken here, on the watchdog thread, so it follows notification order.
+    if event_type in ("created", "deleted", "renamed"):
+        _new_file_at(path, renamed_from)
+    epoch = _file_epoch(path)
+
     if event_type == "deleted":
         # Readings describe content that no longer exists. Keeping them would
         # also let a new file at the same path inherit a baseline it never had.
@@ -753,6 +786,7 @@ def handle_event(
             _correlate(
                 event, features, verdict, path, renamed_from,
                 observed_at, read_at, read_mono, started, queue_wait_ms,
+                epoch=epoch,
             )
 
     first_sighting = _record(event)
@@ -806,6 +840,7 @@ def _correlate(
     read_mono: float,
     started: float,
     queue_wait_ms: float,
+    epoch: int = 0,
 ) -> None:
     """The first attribution look for one suspicious event, then the hand-off.
 
@@ -829,7 +864,14 @@ def _correlate(
     record for it and `parse_4663` is right to drop one. Asking about both also
     counts a writer of *either* name as a competitor, so a file renamed over one
     somebody else had just written is not CERTAIN.
+
+    A further notification for a path whose incident's question is still open
+    joins that incident and stops here (`_join_open_incident`, F6): no second
+    question, no second set of blocks, no second response. `epoch` is the
+    path's new-file sequence number when the notification arrived.
     """
+    if _join_open_incident(event, path, renamed_from, epoch, observed_at, read_at, read_mono, queue_wait_ms):
+        return
     also = (renamed_from,) if renamed_from else ()
     first = attributor.resolve(
         path,
@@ -855,7 +897,7 @@ def _correlate(
         # the question closes first - lands after this incident's own blocks.
         _work.put(("detection", event, features, verdict))
         if attributor.should_park(first):
-            _open_question(event, path, observed_at, read_at, read_mono, first, also)
+            _open_question(event, path, observed_at, read_at, read_mono, first, also, epoch=epoch)
 
 
 def _record(event: dict) -> bool:
@@ -927,7 +969,8 @@ def incident_id_for(event_id: str) -> str:
 
 
 def _open_question(
-    event: dict, path: str, observed_at: float, read_at: float, read_mono: float, first, also=()
+    event: dict, path: str, observed_at: float, read_at: float, read_mono: float, first, also=(),
+    epoch: int = 0,
 ) -> None:
     """Open the attribution question at detection, keyed by the incident.
 
@@ -951,7 +994,160 @@ def _open_question(
         _ANCHORS[event["event_id"]] = {"question": question, "in_chain": False}
         while len(_ANCHORS) > MAX_ANCHORS:
             _ANCHORS.popitem(last=False)
+    # Registered before the question is added, so its close always finds it.
+    incident = {
+        "incident_id": event["incident_id"],
+        "question": question,
+        "event": event,
+        "epoch": epoch,
+        "read_mono": read_mono,
+        "joined": [],
+        "closed": False,
+    }
+    with _INCIDENTS_LOCK:
+        # By path, for joining: the newest incident on a path is the joinable one.
+        _OPEN_INCIDENTS[_path_key(path)] = incident
+        _OPEN_INCIDENTS.move_to_end(_path_key(path))
+        while len(_OPEN_INCIDENTS) > MAX_ANCHORS:
+            _OPEN_INCIDENTS.popitem(last=False)
+        # By question, for closing: an older incident on the same path still
+        # hands its closing answer to the notifications that joined it.
+        _INCIDENTS_BY_QUESTION[question.key] = incident
+        while len(_INCIDENTS_BY_QUESTION) > MAX_ANCHORS:
+            _INCIDENTS_BY_QUESTION.popitem(last=False)
     _ensure_pending().add(question)
+
+
+def _path_key(path: str) -> str:
+    """How two notifications are told to be about the same file: as attribution compares."""
+    return os.path.normcase(path)
+
+
+def _new_file_at(path: str, renamed_from: str | None = None) -> None:
+    """A notification that can mean a different file is now at `path` (created,
+    deleted, renamed): nothing seen after it joins an incident opened before it."""
+    global _EPOCH_SEQ
+    with _INCIDENTS_LOCK:
+        for name in (path, renamed_from):
+            if name:
+                _EPOCH_SEQ += 1
+                _FILE_EPOCHS[_path_key(name)] = _EPOCH_SEQ
+                _FILE_EPOCHS.move_to_end(_path_key(name))
+        while len(_FILE_EPOCHS) > 4 * MAX_ANCHORS:
+            _FILE_EPOCHS.popitem(last=False)
+
+
+def _file_epoch(path: str) -> int:
+    with _INCIDENTS_LOCK:
+        return _FILE_EPOCHS.get(_path_key(path), 0)
+
+
+def _join_open_incident(
+    event: dict,
+    path: str,
+    renamed_from: str | None,
+    epoch: int,
+    observed_at: float,
+    read_at: float,
+    read_mono: float,
+    queue_wait_ms: float,
+) -> bool:
+    """Fold one notification into the open incident for its file, if there is one.
+
+    Joins only when all of these hold, and otherwise the notification opens its
+    own incident exactly as before:
+
+      * it is a `modified` notification - a `created` or a rename is a new
+        file at that name, and is never folded;
+      * it read the same content the incident's first notification read (same
+        hash): it re-reports that write. Different bytes are a further write,
+        and get their own incident and their own `file_event` with their own
+        hash, as before;
+      * an incident for the same path has its question open (not closed), was
+        opened since the last created/deleted/renamed notification for the
+        path (`epoch`), and its first read was at most COALESCE_MS ago.
+
+    Joining moves the question's read time and horizon to this notification's.
+    The match window keeps its start, so the window now covers both reads, and
+    the question closes one full horizon after the *later* read - a record for
+    this notification's write, a second writer's included, arriving late but
+    inside its horizon is still counted. The competition window is the union of
+    both notifications' windows, so CERTAIN still means exactly one writer in
+    all of it, and every write the question covers has had at least a full
+    horizon to be reported (attribution, `_lookup_anchored`). The kill gate is
+    not touched: it is the same `kill_authorised` on the closing answer.
+
+    The horizon is moved before the read time. The pending sweep reads the read
+    time before the horizon (`Attributor.recheck`), so a sweep running
+    alongside sees either the old window or a longer horizon - never the wider
+    window with the old horizon. A question cannot close at its horizon while
+    it is joinable (COALESCE_MS is far shorter than the horizon); one closing
+    early as `ambiguous` in the same instant ends with no kill whatever this
+    notification adds.
+    """
+    if (
+        not PIPELINE_ENABLED
+        or renamed_from
+        or event.get("event_type") != "modified"
+        or not event.get("file_hash")
+    ):
+        return False
+    with _INCIDENTS_LOCK:
+        incident = _OPEN_INCIDENTS.get(_path_key(path))
+        if (
+            incident is None
+            or incident["closed"]
+            or incident["epoch"] != epoch
+            or incident["event"].get("file_hash") != event["file_hash"]
+            or (read_mono - incident["read_mono"]) * 1000.0 > COALESCE_MS
+        ):
+            return False
+        question = incident["question"]
+        if read_mono > question.horizon_from:
+            span = question.settle_mono - question.horizon_from
+            question.horizon_from = read_mono
+            question.read_at = max(question.read_at, observed_at, read_at)
+            question.settle_at = question.read_at + span
+            question.settle_mono = read_mono + span
+        incident["joined"].append(event)
+        opener = incident["event"]
+        incident_id = incident["incident_id"]
+        joined_ids = [joined["event_id"] for joined in incident["joined"]]
+    with _LOCK:
+        opener["coalesced_event_ids"] = joined_ids
+        event.update({
+            key: opener.get(key)
+            for key in ("process_id", "process_image", "attribution_confidence",
+                        "attribution_candidates", "attribution_source", "attribution_pending")
+        })
+        event["attribution_reason"] = (
+            f"joined incident {incident_id}, whose attribution question was open for this file "
+            f"(opened by {opener['event_id']}); answered there"
+        )
+        event["incident_id"] = incident_id
+        event["coalesced_into"] = incident_id
+        event["queue_wait_ms"] = round(queue_wait_ms, 3)
+    return True
+
+
+def _close_incident(question, answer) -> None:
+    """The question closed: nothing joins its incident any more, and every
+    notification that joined it reports the closing answer."""
+    with _INCIDENTS_LOCK:
+        incident = _INCIDENTS_BY_QUESTION.get(question.key)
+        if incident is None or incident["question"] is not question:
+            return
+        del _INCIDENTS_BY_QUESTION[question.key]
+        incident["closed"] = True
+        key = _path_key(question.path)
+        if _OPEN_INCIDENTS.get(key) is incident:
+            del _OPEN_INCIDENTS[key]
+        joined = list(incident["joined"])
+    if joined:
+        fields = answer.as_event_fields()
+        with _LOCK:
+            for event in joined:
+                event.update(fields)
 
 
 def _mark_in_chain(event_id: str | None) -> None:
@@ -984,10 +1180,18 @@ def _ensure_pending() -> attribution.PendingAttribution:
         if _pending is None or _pending.attributor is not attributor:
             if _pending is not None:
                 _pending.stop(timeout=1.0)
-            _pending = attribution.PendingAttribution(attributor, _on_question_closed)
+            _pending = attribution.PendingAttribution(attributor, _question_closed)
         if not _pending.running:
             _pending.start()
         return _pending
+
+
+def _question_closed(question: attribution.Question, answer: attribution.Attribution, outcome: str) -> None:
+    """The pending thread's close callback: end the incident's joining, then escalate."""
+    try:
+        _close_incident(question, answer)
+    finally:
+        _on_question_closed(question, answer, outcome)
 
 
 def _on_question_closed(question: attribution.Question, answer: attribution.Attribution, outcome: str) -> None:
