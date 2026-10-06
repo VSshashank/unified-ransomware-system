@@ -1332,6 +1332,87 @@ Suites, same venv:
     remains: closing it means re-applying `verify`'s start-time rule at
     dispatch, which is a gate change for the lead to decide.
 
+### Review follow-ups
+
+**What was wrong** (two independent reviews of the merged branch):
+- `escalation_action` probed the PID just before the request
+  (`_writer_started_at`) and could see that its current owner started after
+  the write: the writer had exited and the number was reused. It used that
+  only to decide what to remember, and sent `/response/terminate` anyway. The
+  Response service kills by PID alone, so the new, innocent owner was killed.
+  This is the narrower window the last bullet above left to the lead.
+- The same wrong kill when the kill memory had forgotten an earlier kill (count
+  or age bound) and the PID was then reused.
+- `terminated_earlier` decided "the write came before our kill" on the wall
+  clock alone (`dispatched_epoch = time.time()`). A wall clock stepped forward
+  as a kill went out made the Monitor record, for a later process on the same
+  PID that wrote and exited by itself, that this Monitor had killed it.
+
+**What changed** (`services/monitor/pipeline.py`):
+- On the escalation thread, if the pre-dispatch probe shows the PID's owner
+  provably started after the write (`_started_after_write`: `verify`'s rule,
+  created later than the write plus `CLOCK_TOLERANCE_MS`), no request is sent.
+  The escalation closes with the new result **`pid_reused_before_kill`**; its
+  block has `termination: null`, `response_dispatched_at: null` and
+  `pid_reused_before_kill: {written_at, process_started_at, process_image}`.
+  A failed probe, a PID already gone, or an unreadable start time is not
+  proof: the request goes out exactly as before. The eviction and age-out
+  paths fall through to the same probe, so they are covered by the same check.
+- `Termination` also records the request's time on the horizon clock
+  (`dispatched_mono`, `time.perf_counter`, the clock `Question.horizon_from`
+  is stamped with). `Termination.wrote` now also needs the question's read time
+  plus the tolerance to come before that, when the read time is known. Both
+  clocks must agree before a question is closed as `terminated_earlier`;
+  otherwise the request goes out, and a dead PID's refusal is what is recorded.
+  A `horizon_from` of 0.0 (the dataclass default, never set by the app) keeps
+  the wall-clock rule alone.
+- `escalation_result` and `record_escalation` know the new result. Nothing else
+  enumerates results (grep for `terminated_earlier` / the result strings: app,
+  dashboard and scripts pass `result` through or count it generically).
+
+**Tests:** `services/monitor/tests/test_pid_reuse_before_kill.py` (11; injected
+wall and horizon clocks, no sleeps, except one integration test that waits on
+events).
+- Fail on `1c2a791`:
+  - `test_a_pid_reused_before_its_first_kill_request_is_not_killed[same_image]`
+    and `[other_image]` (the reviewers' A2);
+  - `test_an_evicted_kill_and_then_a_reused_pid_does_not_kill_the_new_owner` (A4b);
+  - `test_an_aged_out_kill_and_then_a_reused_pid_does_not_kill_the_new_owner`;
+  - `test_terminated_earlier_is_not_claimed_after_a_wall_clock_step_at_dispatch` (A3);
+  - `test_a_pid_reused_while_its_question_waits_behind_a_slow_kill_is_not_killed`
+    (the reviewers' S6, through the real escalation thread).
+- Guards, pass on base by construction: `terminated_earlier` still holds when
+  both clocks agree; an unreadable start time, a failing probe, a PID already
+  gone, and an owner started inside the tolerance all still send the request.
+
+On-base output (new file against the unmodified `1c2a791` tree):
+```
+E   AssertionError: killed [ProcessFacts(pid=701, image='C:\\Temp\\encryptor.exe', created_at=1699999999.5)]: the PID's new owner, for the old owner's write
+E   AssertionError: killed [ProcessFacts(pid=701, image='C:\\Windows\\innocent_editor.exe', created_at=1699999999.5)]: the PID's new owner, for the old owner's write
+E   AssertionError: eviction let a stale answer kill the PID's new owner
+E   assert 2 == 1                                     (aged out)
+E   AssertionError: 'terminated_earlier': the ledger would say pid 702 (started W+1.0) died of the kill sent at W (stamped W+3600 by the stepped clock), though it exited by itself
+E   AssertionError: the PID's new owner was killed for the old owner's write
+6 failed, 5 passed in 1.56s
+```
+This commit: 11 passed, 3 runs out of 3 (with `test_escalation_behind_other_writers.py`:
+18 passed each run). Monitor suite 641 before, 652 after; response 178 (+2
+skipped), unchanged.
+
+**Check on Windows:**
+- The ledger of an R22 run should show no `pid_reused_before_kill` in normal
+  bursts; one appears only when a writer exits and its PID is reused before
+  its kill is dispatched.
+- R22's count of `terminated_earlier` may fall slightly: a question whose
+  bytes were read after the first kill is now asked for (and refused) rather
+  than skipped. The 8-of-8 ≤ 2.05 s bound should be unaffected.
+
+**Not changed:** the kill gate (`Attribution.kill_authorised`),
+`Attributor.verify`, the horizon, the tolerance, and every existing test.
+Off the escalation thread (`pipeline.escalate` called directly, as the
+safety-invariant tests do) there is no probe, and the request is sent as
+before. The image is not compared at dispatch; only the start-time rule is.
+
 ## 23. The demo recorded the wrong PID and matched the wrong events (R14(b))
 
 Seen in the 2026-10-05 VM run (`VM_TEST_REPORT_2026-10-05_dc089ff.md`, fault 1

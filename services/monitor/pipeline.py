@@ -306,7 +306,10 @@ def request_termination(
 # closed as `terminated_earlier` without a request, once the PID is shown to be
 # gone or to belong to a process that started after the write. Anything else -
 # a PID never killed, a reused PID's own write, a PID that cannot be probed -
-# asks the Response service exactly as before.
+# asks the Response service exactly as before, with one exception (defect 22
+# review follow-ups): a PID whose current owner provably started after the write
+# is never asked to be killed (`pid_reused_before_kill`), whether or not the
+# kill memory still remembers anything about it.
 
 #: How many confirmed kills the escalation thread remembers, and for how long.
 MAX_TERMINATIONS = int(os.getenv("MONITOR_MAX_TERMINATIONS", "1024"))
@@ -327,23 +330,40 @@ class Termination:
     #: (monotonic, for the age bound).
     dispatched_at: float
     remembered_mono: float
+    #: When the request went out on the horizon clock (`time.perf_counter`, the
+    #: clock `Question.horizon_from` is stamped with); None if not recorded.
+    dispatched_mono: float | None = None
 
-    def wrote(self, answer: "attribution.Attribution") -> bool:
+    def wrote(self, answer: "attribution.Attribution", read_mono: float | None = None) -> bool:
         """Was `answer`'s write made by this process, the one already killed?
 
         It started no later than the write, has the same image, and the write
         came before the kill was asked for. A process that held the PID before
         this one died before this one started, so it could not have been
         verified alive after the write; one that holds it after started after
-        the kill, so its writes come after the kill too. Both are compared on
-        the same clock, with the identity check's tolerance.
+        the kill, so its writes come after the kill too. The start time and the
+        write are compared on the system clock, with the identity check's
+        tolerance.
+
+        "Before the kill" is not taken from the system clock alone: it can be
+        stepped (VirtualBox time sync), and a step just as the kill went out
+        once made a later process that exited by itself look like this kill's.
+        When the question's read time is known on the horizon clock
+        (`read_mono`, `Question.horizon_from`), the bytes must also have been
+        read - and the write, which lands no later than the read plus the
+        tolerance, made - before the request went out on that monotonic clock.
+        Both clocks must agree; either one saying otherwise means "not shown".
         """
         if self.created_at is None or answer.written_at is None:
             return False
         if not attribution.same_image(self.image, answer.image):
             return False
         tolerance = attribution.CLOCK_TOLERANCE_MS / 1000.0
-        return self.created_at <= answer.written_at + tolerance < self.dispatched_at
+        if not self.created_at <= answer.written_at + tolerance < self.dispatched_at:
+            return False
+        if read_mono and self.dispatched_mono is not None:
+            return read_mono + tolerance < self.dispatched_mono
+        return True
 
     def as_record(self) -> dict:
         """What the escalation block says about the earlier kill."""
@@ -377,10 +397,16 @@ class TerminationRegistry:
             self._items.popitem(last=False)
 
     def remember(
-        self, pid: int, created_at: float | None, image: str | None, incident_id: str, dispatched_at: float
+        self,
+        pid: int,
+        created_at: float | None,
+        image: str | None,
+        incident_id: str,
+        dispatched_at: float,
+        dispatched_mono: float | None = None,
     ) -> Termination:
         now = self.clock()
-        entry = Termination(int(pid), created_at, image, incident_id, dispatched_at, now)
+        entry = Termination(int(pid), created_at, image, incident_id, dispatched_at, now, dispatched_mono)
         with self._lock:
             key = (entry.pid, created_at)
             self._items.pop(key, None)
@@ -444,17 +470,20 @@ def _probe(probe, pid: int) -> "attribution.ProcessFacts | None | bool":
         return False
 
 
-def _killed_earlier(answer: "attribution.Attribution", probe) -> Termination | None:
+def _killed_earlier(
+    answer: "attribution.Attribution", probe, read_mono: float | None = None
+) -> Termination | None:
     """The earlier kill that already covers this answer, if there is one.
 
-    Only when the answer's write was by the process already killed, and the
-    PID is now gone or held by a process that started after the write and so
-    cannot have made it. If the probe fails, or the killed process is somehow
-    still there, the request goes out as before.
+    Only when the answer's write was by the process already killed (on both
+    clocks when `read_mono` is known, `Termination.wrote`), and the PID is now
+    gone or held by a process that started after the write and so cannot have
+    made it. If the probe fails, or the killed process is somehow still there,
+    the request goes out as before.
     """
     tolerance = attribution.CLOCK_TOLERANCE_MS / 1000.0
     for entry in TERMINATIONS.entries(answer.pid):
-        if not entry.wrote(answer):
+        if not entry.wrote(answer, read_mono):
             continue
         now = _probe(probe, answer.pid)
         if now is None:
@@ -470,13 +499,23 @@ def _killed_earlier(answer: "attribution.Attribution", probe) -> Termination | N
     return None
 
 
-def _writer_started_at(answer: "attribution.Attribution", probe) -> float | None:
-    """The start time of the process about to be killed, if it can be the writer."""
-    facts = _probe(probe, answer.pid)
-    if not facts or facts.created_at is None:
-        return None
+def _started_after_write(facts, answer: "attribution.Attribution") -> bool:
+    """Does the PID's current owner provably post-date the write?
+
+    `Attributor.verify`'s start-time rule, unchanged: created later than the
+    write plus the clock tolerance, so it cannot have made it - the writer
+    exited and its PID was reused. Anything unreadable (probe failed, PID gone,
+    no start time, no write time) is not proof.
+    """
+    if not facts or facts.created_at is None or answer.written_at is None:
+        return False
     tolerance = attribution.CLOCK_TOLERANCE_MS / 1000.0
-    if answer.written_at is not None and facts.created_at > answer.written_at + tolerance:
+    return facts.created_at > answer.written_at + tolerance
+
+
+def _writer_started_at(answer: "attribution.Attribution", facts) -> float | None:
+    """The start time of the process about to be killed, if it can be the writer."""
+    if not facts or facts.created_at is None or _started_after_write(facts, answer):
         return None
     return facts.created_at
 
@@ -517,22 +556,43 @@ def escalation_action(
     On the escalation thread, a kill this Monitor has already made for the same
     process is not asked for again (`_killed_earlier`); the action then carries
     `terminated_earlier`, the earlier kill's incident and time.
+
+    Also on the escalation thread, the PID is probed just before the request.
+    If its current owner provably started after the write (`verify`'s
+    start-time rule, `_started_after_write`), the writer has exited and Windows
+    has reused the number - between the close and the dispatch, or after the
+    kill memory forgot an earlier kill. The Response service kills by PID
+    alone, so the request would kill that new, innocent owner: it is not sent,
+    and the action carries `pid_reused_before_kill`. A probe that fails, a PID
+    that is gone, or a start time that cannot be read is not proof, and the
+    request goes out exactly as before.
     """
     termination = None
     dispatched_at = None
     if answer.kill_authorised:
         probe = getattr(_ESCALATION_THREAD, "probe", None)
+        started_at = None
         if probe is not None:
-            earlier = _killed_earlier(answer, probe)
+            earlier = _killed_earlier(answer, probe, getattr(question, "horizon_from", None))
             if earlier is not None:
                 return {"termination": None, "response_dispatched_at": None,
                         "terminated_earlier": earlier.as_record()}
-            started_at = _writer_started_at(answer, probe)
+            facts = _probe(probe, answer.pid)
+            if _started_after_write(facts, answer):
+                return {"termination": None, "response_dispatched_at": None,
+                        "pid_reused_before_kill": {
+                            "written_at": attribution.iso_utc(answer.written_at),
+                            "process_started_at": attribution.iso_utc(facts.created_at),
+                            "process_image": facts.image,
+                        }}
+            started_at = _writer_started_at(answer, facts)
         dispatched_epoch = time.time()
+        dispatched_mono = time.perf_counter()
         dispatched_at = utc_now()
         termination = request_termination(client, question.key, answer)
         if probe is not None and termination is not None and termination.get("status") == "terminated":
-            TERMINATIONS.remember(answer.pid, started_at, answer.image, question.key, dispatched_epoch)
+            TERMINATIONS.remember(answer.pid, started_at, answer.image, question.key, dispatched_epoch,
+                                  dispatched_mono)
     return {"termination": termination, "response_dispatched_at": dispatched_at}
 
 
@@ -543,6 +603,11 @@ def escalation_result(answer: "attribution.Attribution", action: dict) -> str:
         # This process was already killed, at this Monitor's request, for an
         # earlier question; nothing was asked of the Response service again.
         return "terminated_earlier"
+    if action.get("pid_reused_before_kill"):
+        # The writer was gone and its PID already belonged to a process that
+        # started after the write; no kill was asked for, so nothing innocent
+        # was killed and the writer was not either.
+        return "pid_reused_before_kill"
     if action.get("termination") is None:
         # 409 from the guard, or unreachable. The Response service's own block
         # carries the refusal reason when it was reachable.
@@ -602,6 +667,10 @@ def record_escalation(
         # Which incident's kill this was: the join an auditor needs to find the
         # Response service's own `response_action` block for it.
         record["terminated_earlier"] = action["terminated_earlier"]
+    if action.get("pid_reused_before_kill"):
+        # Why the authorised kill was not sent: the write's time against the
+        # start time of the process that held the PID at dispatch.
+        record["pid_reused_before_kill"] = action["pid_reused_before_kill"]
     block = log_to_ledger(client, "attribution_escalation", record)
     return {"record": record, "block": block, "termination": termination, "result": result}
 
