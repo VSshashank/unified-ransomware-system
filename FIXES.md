@@ -1438,7 +1438,7 @@ before. The image is not compared at dispatch; only the start-time rule is.
     PID alone, which is stricter than PID plus start time. Lanes with work are
     taken in turn, so a fresh PID waits only for requests already in flight,
     not for a PID's later questions. Empty lanes are dropped.
-  - `KILL_WORKERS` threads (`MONITOR_KILL_WORKERS`, **default 1**) take the
+  - `KILL_WORKERS` threads (`MONITOR_KILL_WORKERS`, **default 16**; was 1, see the end of this entry) take the
     actions.
   - The ledger writer (`monitor-escalation`) builds the one shared HTTP client
     when the watch starts. It writes each block as its action finishes, or
@@ -1509,15 +1509,23 @@ flight.
 
 Suites: monitor 652 before, 660 after. Response 206 (+2 skipped), unchanged.
 
-**Not done: the pool is built but off by default.** With
-`MONITOR_KILL_WORKERS=16`,
+**Pool made the default (follow-up, owner-approved):** `MONITOR_KILL_WORKERS`
+now defaults to 16; 1 still selects the old one-at-a-time behaviour. This
+package had left it off because, with 16 workers,
 `test_pid_reuse_before_kill.py::test_a_pid_reused_while_its_question_waits_behind_a_slow_kill_is_not_killed`
-fails ("the PID's new owner was killed for the old owner's write"). That
-test's premise is that W's question waits behind SLOW's kill. With a pool, W's
-real kill goes out at once, before the test reuses the PID. Turning the pool on
-means rewriting that test, which this package may not do. That is for the lead
-to decide. At the default of 1, (a) is unchanged when several distinct live
-PIDs are due at once. (b), (c) and (d) are fixed at any worker count.
+failed ("the PID's new owner was killed for the old owner's write"): its
+premise is that W's question waits behind SLOW's kill, and with a pool W's real
+kill goes out at once, before the test reuses the PID. The owner approved
+changing that one test's serial-order assumption: it now occupies every kill
+worker with a slow kill (one per worker) before W's question, so W still waits
+and the assertions are unchanged. Safety of the pool: one question per PID is
+out at a time (`_KillLanes`, so a second question about a PID sees the first's
+`terminated_earlier`), no lock is held across a Response call or a ledger
+write, a kill worker that raises is logged and keeps running (the pool stays
+full and the question is still closed), and `test_kill_pool_default.py` holds
+all of this, including that 20 different PIDs at 300 ms per terminate are all
+requested within 1 s. `/monitor/stop` still does not stop the escalation
+threads, so start, stop, start reuses the one pool.
 
 **Check on Windows:**
 - R22 at the default: B ≤ 2.05 s in 8 of 8 runs, now also with a slow ledger.

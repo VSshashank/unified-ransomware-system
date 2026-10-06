@@ -178,10 +178,12 @@ _escalator: threading.Thread | None = None
 # start one.
 _ESCALATOR_LOCK = threading.Lock()
 # How many terminates may be in flight at once, each for a different PID
-# (`_KillLanes`; one PID never has two). 1 keeps them one at a time, as before;
-# see FIXES.md defect 22, review follow-ups (R-RACE), for why more is not the
-# default yet. Read when the escalation thread starts.
-KILL_WORKERS = max(1, int(os.getenv("MONITOR_KILL_WORKERS", "1")))
+# (`_KillLanes`; one PID never has two). The default is 16: with 20 different
+# writers a one-at-a-time Monitor made the 20th kill wait behind 19 others
+# (FIXES.md defect 22, review follow-ups (R-RACE) and the pool made default
+# there). MONITOR_KILL_WORKERS=1 keeps them one at a time, as before. Read
+# when the escalation thread starts.
+KILL_WORKERS = max(1, int(os.getenv("MONITOR_KILL_WORKERS", "16")))
 # Escalation blocks owed (action taken, block not yet written) before a kill
 # worker waits for the ledger writer: only reached if the ledger is down.
 MAX_OWED_BLOCKS = max(1, int(os.getenv("MONITOR_MAX_OWED_BLOCKS", "4096")))
@@ -1357,14 +1359,25 @@ class _Escalator(threading.Thread):
             if taken is None:
                 return
             pid, item = taken
+            # A worker that died would silently shrink the pool, and its question
+            # would never be `task_done`. `_escalation_act` already contains its
+            # own failures; this is for anything it did not foresee. The PID's
+            # lane is always released, and the question is closed without a block
+            # rather than left open.
+            done = None
             try:
                 done = _escalation_act(self.client, item)
+            except Exception:
+                logger.exception("kill worker: escalation failed unexpectedly")
             finally:
                 self.lanes.done(pid)
-            if done is None:
-                self.inbox.task_done()
-            else:
-                self.owed.put(("record", done))
+            try:
+                if done is None:
+                    self.inbox.task_done()
+                else:
+                    self.owed.put(("record", done))
+            except Exception:
+                logger.exception("kill worker: could not hand a result on")
 
     def _write(self) -> None:
         try:

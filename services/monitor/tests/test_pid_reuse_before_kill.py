@@ -337,20 +337,31 @@ def test_an_owner_started_inside_the_clock_tolerance_is_still_asked_for(rig):
 
 def test_a_pid_reused_while_its_question_waits_behind_a_slow_kill_is_not_killed(monkeypatch):
     """The reviewers' race: W's verified question waits on the escalation thread
-    behind another PID's slow kill; meanwhile W exits and its number goes to an
-    unrelated process. When W's turn comes, its new owner must not be killed."""
+    behind other PIDs' slow kills; meanwhile W exits and its number goes to an
+    unrelated process. When W's turn comes, its new owner must not be killed.
+
+    "Behind" means every kill worker is busy: kills for different PIDs run in
+    parallel (the pool), so there is one slow kill per worker and W's question
+    is the one after them. With one worker that is the single slow kill it
+    always was."""
     host = Host()
-    slow_entered, release = threading.Event(), threading.Event()
+    release = threading.Event()
     calls: list[tuple[str, dict]] = []
     lock = threading.Lock()
-    SLOW, WPID = 8800, 8804
+    WPID = 8804
+    SLOWS: list[int] = []  # one per kill worker, filled once the escalator exists
+    entered: set[int] = set()
+    all_slow_entered = threading.Event()
 
     def downstream(client, base_url, path, payload, *args, **kwargs):
         with lock:
             calls.append((path, payload))
         if path == "/response/terminate":
-            if payload["process_id"] == SLOW:
-                slow_entered.set()
+            if payload["process_id"] in SLOWS:
+                with lock:
+                    entered.add(payload["process_id"])
+                    if len(entered) == len(SLOWS):
+                        all_slow_entered.set()
                 release.wait(5.0)
             victim = host.exit(payload["process_id"])
             return None if victim is None else {"status": "terminated", "process_id": payload["process_id"]}
@@ -361,6 +372,7 @@ def test_a_pid_reused_while_its_question_waits_behind_a_slow_kill_is_not_killed(
     monkeypatch.setattr(monitor_app, "PIPELINE_ENABLED", True)
     pipeline.TERMINATIONS.clear()
     monitor_app._ensure_escalator()
+    SLOWS.extend(8810 + n for n in range(len(monitor_app._escalator.workers)))
 
     def closed(pid: int, image: str, name: str, written_at: float):
         event_id = "evt_" + uuid.uuid4().hex[:12]
@@ -375,13 +387,14 @@ def test_a_pid_reused_while_its_question_waits_behind_a_slow_kill_is_not_killed(
 
     try:
         now = time.time()  # a timestamp to anchor start times, never a duration
-        host.spawn(SLOW, r"C:\Temp\a.exe", now - 100)
+        for n, slow in enumerate(SLOWS):
+            host.spawn(slow, r"C:\Temp\a.exe", now - 100)
+            q1, a1, _ = closed(slow, r"C:\Temp\a.exe", f"a{n}.docx", now - 3)
+            monitor_app._on_question_closed(q1, a1, "verified")
         host.spawn(WPID, r"C:\Temp\w.exe", now - 100)
-        q1, a1, _ = closed(SLOW, r"C:\Temp\a.exe", "a.docx", now - 3)
         q2, a2, e2 = closed(WPID, r"C:\Temp\w.exe", "w.docx", now - 2)
-        monitor_app._on_question_closed(q1, a1, "verified")
         monitor_app._on_question_closed(q2, a2, "verified")
-        assert slow_entered.wait(5.0), "the slow kill never started"
+        assert all_slow_entered.wait(5.0), "the slow kills never all started"
         host.exit(WPID)
         host.spawn(WPID, OTHER_IMG, now)  # created 2 s after W's write
         release.set()
