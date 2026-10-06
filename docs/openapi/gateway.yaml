@@ -324,9 +324,12 @@ paths:
         existing lease with `already_held: true`, because suspension nests on
         Windows and a second suspend would need a second resume. Every
         outcome, refusals included, is recorded as a `process_suspended`
-        ledger block carrying the PID together with the gate that allowed it
-        (`attribution_confidence`, `attribution_source`, `attribution_reason`,
-        `gate: suspend_authorised`).
+        ledger block carrying the PID together with what the caller claimed
+        allowed it, recorded as the caller's (`attribution_confidence`,
+        `attribution_source`, `attribution_reason`,
+        `attribution_supplied_by: caller`, `gate` verbatim or null,
+        `gate_verified: false`, `gate_reason`). The Response service
+        evaluates no gate and never writes one of its own.
       requestBody:
         required: true
         content:
@@ -358,7 +361,9 @@ paths:
             (`attribution_confidence` is unknown), PID_NAMESPACE_ISOLATED (the
             Response service runs in a container's PID namespace, as in
             Compose, and cannot act on a host PID), WATCHDOG_UNAVAILABLE,
-            NOT_PERMITTED. The Response service returns the standard error
+            NOT_PERMITTED, MONITOR_PID_INVALID (`URDS_MONITOR_PID` is set but
+            does not parse), SHUTTING_DOWN, LEASE_STATE_UNCERTAIN. The
+            Response service returns the standard error
             envelope with `code` and `message` also at the top level; through
             the gateway it arrives wrapped as DOWNSTREAM_ERROR with that body
             in `details`.
@@ -950,14 +955,18 @@ components:
           type: number
           description: >-
             How long to hold it: about the attribution horizon (1.5 s) plus a
-            margin. Capped at RESPONSE_LEASE_MAX_SECONDS (default 10).
+            margin. A finite number above 0 (NaN or Infinity is a 400).
+            Capped at RESPONSE_LEASE_MAX_SECONDS (default 10).
           example: 3.0
         reason:
           type: string
           example: sole writer of report.docx
         attribution_confidence:
           type: string
-          description: The gate that allowed the suspend; recorded on every block naming the PID.
+          description: >-
+            The attribution the caller claims; recorded on every block naming
+            the PID as the caller's (`attribution_supplied_by: caller`). The
+            Response service cannot verify it.
           example: probable
         attribution_source:
           type: string
@@ -979,6 +988,16 @@ components:
             - type: number
             - type: string
           example: 1790000000.25
+        gate:
+          type: string
+          nullable: true
+          description: >-
+            The gate the caller says allowed the suspend (for example
+            `suspend_authorised` from a Monitor that evaluates one). Optional.
+            Recorded verbatim with `gate_verified: false`; without it the
+            blocks record `gate: null` and `gate_reason: no gate supplied
+            (operator request)`. The gateway forwards it only when given.
+          example: suspend_authorised
     SuspendResponse:
       type: object
       required: [lease_id, process_id, suspended, expires_at, already_held]

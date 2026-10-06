@@ -124,7 +124,11 @@ def test_a_suspend_creates_a_held_lease(table):
         "attribution_confidence": "probable",
         "attribution_source": "windows-security-4663",
         "attribution_reason": "one writer so far; pending",
-        "gate": "suspend_authorised",
+        # Review follow-up R8c: no gate is invented; the caller supplied none.
+        "attribution_supplied_by": "caller",
+        "gate": None,
+        "gate_verified": False,
+        "gate_reason": "no gate supplied (operator request)",
     }
 
 
@@ -231,7 +235,8 @@ def test_a_held_process_that_died_is_closed_out_before_a_new_lease(table, ended)
     process = FakeProcess(901)
     first, _ = take(table, process)
     process.alive = False
-    reborn = FakeProcess(901)  # the number, recycled
+    reborn = FakeProcess(901)  # the number, recycled - by a process started later
+    reborn.create_time = lambda: 1_700_000_000.0 + 901 + 60.0
     second, already = take(table, reborn)
     assert not already
     assert second.lease_id != first.lease_id

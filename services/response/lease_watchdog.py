@@ -78,7 +78,11 @@ class Watchdog:
         self.python = python or sys.executable
         self._pipe = None  # our end of the watchdog's stdin
         self._watch = None  # psutil.Process of the watchdog itself
+        #: Guards the pipe and `_held`; only ever held briefly. `drop()` runs
+        #: under the lease table's lock, so it must never wait for a spawn.
         self._lock = threading.Lock()
+        #: Serialises spawns, which can take seconds; nothing else waits on it.
+        self._spawn_lock = threading.Lock()
         #: lease_id -> (pid, started_at, image, monotonic deadline), so a
         #: respawned watchdog is told about everything still held.
         self._held: dict[str, tuple[int, float | None, str | None, float]] = {}
@@ -107,12 +111,30 @@ class Watchdog:
             return False
 
     def start(self) -> None:
-        with self._lock:
-            self._ensure()
+        """Make sure it is running, spawning (and re-arming) it if not.
+
+        The lease table calls this *outside* its own lock before every suspend
+        (review finding R-RACE 5: a respawn under the table lock held up every
+        expiry for up to 20 s).
+        """
+        with self._spawn_lock:
+            if self.alive():
+                return
+            pipe, watch = self._launch()
+            with self._lock:
+                self._pipe, self._watch = pipe, watch
+                # Re-arm a respawned watchdog with whatever is still held.
+                now = time.monotonic()
+                for lease_id, (pid, started_at, image, deadline) in self._held.items():
+                    self._send({"op": "hold", "lease_id": lease_id, "pid": pid, "started_at": started_at,
+                                "image": image, "seconds": max(0.0, deadline - now)})
 
     def hold(self, lease_id: str, pid: int, started_at: float | None, image: str | None, seconds: float) -> None:
+        """Tell it about a lease. Never spawns: a dead watchdog refuses the suspend."""
         with self._lock:
-            self._ensure()
+            if not self.alive():
+                raise _lease_error("WATCHDOG_UNAVAILABLE", "the lease watchdog is not running; refusing to "
+                                   "suspend anything a crash of this service could leave frozen")
             deadline = time.monotonic() + seconds
             self._held[lease_id] = (pid, started_at, image, deadline)
             self._send({"op": "hold", "lease_id": lease_id, "pid": pid, "started_at": started_at,
@@ -148,9 +170,8 @@ class Watchdog:
 
     # -- internals ----------------------------------------------------------
 
-    def _ensure(self) -> None:
-        if self.alive():
-            return
+    def _launch(self):
+        """Start a watchdog and return (its stdin, its psutil.Process). Touches no state."""
         import psutil  # noqa: PLC0415 - a requirement of this service
 
         script = str(Path(__file__).resolve())
@@ -197,13 +218,7 @@ class Watchdog:
         # Its stdout has served its purpose (the ready line). Its stdin stays
         # open for as long as this process lives; its closing is the signal.
         starter.stdout.close()
-        self._pipe = starter.stdin
-        self._watch = watch
-        # Re-arm a respawned watchdog with whatever is still held.
-        now = time.monotonic()
-        for lease_id, (pid, started_at, image, deadline) in self._held.items():
-            self._send({"op": "hold", "lease_id": lease_id, "pid": pid, "started_at": started_at,
-                        "image": image, "seconds": max(0.0, deadline - now)})
+        return starter.stdin, watch
 
     def _send(self, message: dict) -> None:
         try:

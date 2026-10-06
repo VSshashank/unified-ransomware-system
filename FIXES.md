@@ -1889,8 +1889,9 @@ this branch could freeze a writer before the kill gate opened at the horizon.
     `RESPONSE_OR_ANCESTOR`, `PID_GONE`, `NOT_INSPECTABLE` and
     `SYSTEM_PROCESS`; anything unmatched is `GUARD_REFUSED`.
   - `LEASE_WATCHDOG`: the watchdog itself.
-  - `MONITOR_OR_ANCESTOR`: the Monitor (`URDS_MONITOR_PID`, comma-separated)
-    or any of its ancestors.
+  - `MONITOR_OR_ANCESTOR`: the Monitor (`URDS_MONITOR_PID`) or any of its
+    ancestors. (As delivered it split on commas only; see "Review follow-ups"
+    for spaces, semicolons and `MONITOR_PID_INVALID`.)
   - `PID_REUSED`: the live process was created more than 50 ms after
     `started_at`, or runs an image other than `image`.
   - `IDENTITY_UNPROVEN`: neither `image` nor `started_at` was given, or
@@ -1912,10 +1913,13 @@ this branch could freeze a writer before the kill gate opened at the horizon.
     - `process_resumed` whenever a lease ends other than by a kill
       (`outcome: resumed | process_gone`, `reason`,
       `requested_by: caller | lease_expiry | shutdown | atexit`).
-    - Both carry the PID with the gate that allowed it:
-      `attribution_confidence`, `attribution_source`, `attribution_reason`,
-      `gate: "suspend_authorised"` (C-16). The three attribution fields are
-      required on the request (400 without them).
+    - Both carry the PID with the caller's attribution fields
+      (`attribution_confidence`, `attribution_source`, `attribution_reason`;
+      required on the request, 400 without them). **As delivered, they also
+      carried `gate: "suspend_authorised"`, written by the Response service
+      itself: a gate nobody had evaluated.** Corrected in "Review follow-ups":
+      the gate is now the caller's claim, verbatim or null, with
+      `gate_verified: false`.
     - Blocks join by `lease_id` and `incident_id`. The terminate block carries
       `lease_id` and `lease_released`.
 - **`services/response/Dockerfile`**: copies `leases.py` and
@@ -2031,8 +2035,9 @@ on port 18604, with the venv launcher; the log is not kept in the repo):
 - The 409 body is the project's error envelope with `code` and `message` also
   at the top level. Through the gateway, it arrives as `DOWNSTREAM_ERROR`
   with that body in `details`.
-- Refusals are recorded as `process_suspended` with `outcome: refused`, so
-  E2's C-16 scan sees them as gated PID blocks.
+- Refusals are recorded as `process_suspended` with `outcome: refused`, with
+  the same caller-claim fields as a suspension. (E2's C-16 scan for these
+  blocks was not built; see "Review follow-ups".)
 - `/resume` of an unknown lease returns 200 `resumed: false`, `state: unknown`.
 
 **Found outside this package:**
@@ -2046,6 +2051,178 @@ on port 18604, with the venv launcher; the log is not kept in the repo):
   validator's `ValueError` (`exc.errors()` carries the exception), which would
   turn a 400 into a 500. `ResumeRequest` checks "lease or PID" in the route
   instead.
+
+### Review follow-ups (R-SAFE, R-RACE), 2026-10-06
+
+The independent reviews of the merged branch found five things in this
+package. Each now has a test that **fails on the merged tip `1c2a791`** and
+passes here. Package E1b, `wp/e1-review-fixes`.
+
+**1. The Response service invented a gate (R-SAFE R8c).** Every suspend and
+resume block carried `gate: "suspend_authorised"`, written by
+`services/response/app.py` and `leases.py` themselves. That gate belongs to the
+Monitor (E2), which was never built, so the string claimed an evaluation that
+never happened. An operator suspend through the gateway asserting
+`attribution_confidence: certain` produced a block indistinguishable from a
+gated one.
+- **What changed.** The request takes an optional `gate`. Blocks record:
+  - `gate`: the request's `gate`, verbatim, or `null`;
+  - `gate_verified: false` always, because the Response service cannot verify
+    a gate;
+  - `gate_reason`: `no gate supplied (operator request)` when there was none,
+    otherwise "claimed by the caller ... cannot verify it";
+  - `attribution_supplied_by: "caller"` beside the three attribution fields,
+    which stay required.
+
+  The rule lives in `leases.gate_record`, used for suspension, refusal,
+  caller resume, expiry, shutdown and gone blocks alike. The gateway forwards
+  `gate` only when given.
+- **Not changed:** `scripts/ledger_coverage.py`. Its `unsupported_pid` still
+  reads only `attribution_confidence`, so an operator block that claims
+  `certain` still passes the C-16 scan. The claim is now marked as the
+  caller's, unverified, in the block itself. Extending the scan was E2's and is
+  not being built; that is outside this package.
+
+**2. `URDS_MONITOR_PID` failed open (R-SAFE R3c).** It was split on commas
+only, and anything non-numeric was skipped. `"<pid> 4"` parsed to nothing, and
+the Monitor was unprotected while it looked configured.
+- **What changed.** Spaces, commas and semicolons all separate. A token that
+  is not a positive integer raises, and `vet_suspend` then refuses **every**
+  suspend with `MONITOR_PID_INVALID`, recorded like any refusal. Unset or blank
+  still means "no Monitor configured".
+
+**3. Lease expiry waited on ledger I/O and on the watchdog (R-RACE 5).** Three
+separate waits:
+- The reaper wrote each ended lease's block (up to `LEDGER_TIMEOUT`, 3 s)
+  before its next pass, so a lease expiring meanwhile stayed frozen.
+- `acquire` called `watchdog.hold()` under the table lock, and `hold()`
+  respawned a dead watchdog (up to 15 + 5 s). Every expiry, resume and
+  terminate waited behind it.
+- A suspend after shutdown (`resume_all` + `stop`) was granted, and nothing
+  would ever reap it.
+
+What changed:
+- Ended leases go to a recorder thread (`lease-recorder`). The reaper resumes
+  and moves on. `stop()` drains the recorder, so every block is still written
+  before exit, and `drain()` lets tests wait for it.
+- `acquire` calls `watchdog.start()` (spawn and re-arm) **before** taking the
+  table lock. Inside the lock, `hold()` only writes a line, and refuses if the
+  watchdog is dead. In `Watchdog`, spawning has its own lock, so `drop()`,
+  which runs under the table lock, never waits for a spawn.
+- `LeaseTable.shutdown()` closes the table under its lock, then resumes
+  everything and stops. A racing suspend either lands first and is resumed, or
+  is refused with `SHUTTING_DOWN`. `stop()` also closes it; `start()` reopens
+  it. The lifespan and `atexit` call `shutdown()`.
+
+**4. A non-finite `lease_seconds` was a 500, or was accepted (R-SAFE R8,
+R8b).** Pydantic rejected `NaN` and `-Infinity`, but the validation handler
+echoed the value back, and JSON could not serialise it: a 500. `Infinity`
+passed `gt=0`, and on `1c2a791` it was **granted**: a 200, capped to a 10 s
+lease, at both the Response service and the gateway.
+- **What changed.**
+  - `lease_seconds` is `allow_inf_nan=False`.
+  - The handler makes the error list serialisable (`_json_safe`). This also
+    covers the validator-`ValueError` case noted above under "Found outside
+    this package".
+  - `LeaseTable.acquire` refuses a non-finite or non-positive lease itself
+    (`INVALID_LEASE`).
+  - The gateway range-checks `lease_seconds` in the route and returns its own
+    400, because its validation handler is not this package's file.
+
+**5. A false "not running" could nest a second suspend (R-SAFE R7b).** If
+psutil wrongly reported a held process as not running, `acquire` ended its
+lease `gone` **without resuming** and suspended it again. The process then
+needed two resumes, the table held one lease, and one resume left it frozen.
+- **What changed.** `acquire` no longer believes the held handle alone. It
+  vets the PID afresh and compares the live start time with the lease's:
+  - same start time: the same process, still suspended. The existing lease is
+    returned (`already_held`, with a fresh handle) and nothing is suspended
+    again.
+  - different start time: a really reused PID. The old lease ends `gone`, and
+    the new process gets a fresh lease, as before.
+  - start time unreadable on either side: refused (`LEASE_STATE_UNCERTAIN`)
+    rather than risk a nested suspend. The old lease stays held, so the reaper
+    still ends it.
+
+  Simple, and it fails closed. The resume path itself is unchanged.
+
+**Tests:**
+- `services/response/tests/suspend/test_review_followups.py` (28):
+  - **the gate:** an operator suspend without a gate (suspend and resume
+    blocks); a claimed gate recorded verbatim and unverified (suspend and
+    expiry blocks); a refusal recorded the same way;
+  - **`URDS_MONITOR_PID`:** five separator spellings on a real child; five
+    unparsable values refused and recorded;
+  - **expiry not waiting:**
+    - on another lease's slow block (stub `on_end`, injected clock);
+    - on a slow watchdog respawn (stub watchdog);
+    - the real `Watchdog.drop()` during a slow spawn (patched `Popen`);
+  - **shutdown:** a suspend after shutdown at table level, and through the app
+    after its lifespan ended;
+  - **NaN/Infinity:** a 400 at the route, and refused by the table, as are 0
+    and -1;
+  - **R7b:** on a real child, a false "not running" returns the held lease and
+    one resume unfreezes; a really reused PID still gets a fresh lease; an
+    unreadable start time is refused.
+- `services/gateway/tests/test_response_suspend_review.py` (5): NaN, Infinity
+  and -Infinity are a 400 and are not forwarded; a gate claim is forwarded;
+  the gate is optional.
+- Edited, because these findings change their contract (both files are
+  package E1's own):
+  - `test_lease_table.py`: `gate_fields` now records the caller's claim; the
+    recycled PID in "a dead holder is closed out" now has a later start time,
+    as a real reused PID does.
+  - `test_suspend_real.py`: blocks carry `gate: null` and `gate_verified:
+    false`, not `suspend_authorised`; the expiry test waits for the recorder
+    (`drain()`).
+
+  No other test was edited.
+- **On `1c2a791`: 23 of 28 fail** (response), and **4 of 5 fail** (gateway).
+  The 5 response tests that pass on base are guards, not proofs:
+  - the comma, semicolon and mixed separators, which already worked (only the
+    space failed);
+  - "a really reused PID still gets a fresh lease".
+
+  The gateway test that passes on base is "the gate is optional".
+
+  How the base failures read:
+  - the gate tests: `gate` is `'suspend_authorised'`, and `gate_verified` is
+    missing;
+  - the space separator: `MONITOR_OR_ANCESTOR` is not raised;
+  - unparsable values: the suspend succeeds;
+  - the two waits: "B stayed frozen behind A's ledger write" and "an expired
+    lease waited for the respawn";
+  - `drop()`: "waited for a respawn in progress";
+  - after shutdown: the suspend is granted;
+  - `NaN` and `-Infinity`: a 500; `Infinity`: a 200;
+  - R7b: "frozen with no lease held: suspended twice, resumed once".
+
+  Proof: `C:\URDS-wp-e1-proofs\review\base_response.txt` and
+  `base_gateway.txt`.
+- Run 3 times: `tests/suspend` 77/77 each time. A process scan after each run
+  found 0 leftover children or watchdogs.
+
+**Check on Windows** (done here, unelevated, against a real uvicorn Response
+from this worktree, with a ledger stub; `C:\URDS-wp-e1-proofs\review\live_review.txt`):
+- An operator suspend with `certain` and no gate recorded `gate: null`,
+  `gate_verified: false`, `no gate supplied (operator request)` and
+  `attribution_supplied_by: caller` on both blocks. A suspend claiming
+  `suspend_authorised` recorded it verbatim, with `gate_verified: false`.
+- `NaN` and `Infinity` `lease_seconds` returned 400, and the child kept
+  running.
+- `URDS_MONITOR_PID="999999 <child>"` refused with `MONITOR_OR_ANCESTOR`.
+  `URDS_MONITOR_PID=monitor` refused with `MONITOR_PID_INVALID`, and the child
+  kept running.
+- `taskkill /T /F` on the service mid-lease, 3 times with the restructured
+  watchdog: the heartbeat came back within 0.015-0.032 s each time.
+- Still for the VM: the same check elevated.
+
+**Not changed here:**
+- `guard()`, `terminate_process` and the kill gate.
+- `scripts/ledger_coverage.py` and the Monitor.
+- R-SAFE R6b, a documented limit: a watchdog killed mid-lease is noticed only
+  at the next suspend. If the service is then killed outright before one, the
+  process stays frozen.
 
 ## 27. The dashboard logged Streamlit's `use_container_width` deprecation on every refresh
 
