@@ -12,6 +12,7 @@ mounted here unchanged.
 
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -44,6 +45,10 @@ async def lifespan(app: FastAPI):
     # container - this logs why it cannot run and returns False; startup
     # continues either way.
     _vss_manager.start_scheduler()
+    # The ledger client is built now, off the request path, so the first kill's
+    # block does not pay for it (see `_ledger_client`). On its own thread, so
+    # startup does not wait for it either.
+    threading.Thread(target=_ledger_client, name="response-ledger-client", daemon=True).start()
     yield
     _vss_manager.stop_scheduler()
 
@@ -127,11 +132,29 @@ async def http_exception_handler(request, exc: StarletteHTTPException) -> JSONRe
     return JSONResponse(status_code=exc.status_code, content=build_error(code, str(exc.detail)))
 
 
+# One client for every ledger write, built once. `log_action` used to call
+# `httpx.post`, which builds a client - an SSL context and certifi's CA bundle -
+# per call: 200 ms of the 252 ms the terminate handler took to refuse a dead PID
+# on the VM, and the reason R16's refused escalations went out 0.30-0.38 s apart
+# (FIXES.md, defect 22). httpx.Client is safe to share across FastAPI's worker
+# threads.
+_LEDGER_CLIENT: httpx.Client | None = None
+_LEDGER_CLIENT_LOCK = threading.Lock()
+
+
+def _ledger_client() -> httpx.Client:
+    global _LEDGER_CLIENT
+    with _LEDGER_CLIENT_LOCK:
+        if _LEDGER_CLIENT is None:
+            _LEDGER_CLIENT = httpx.Client(timeout=LEDGER_TIMEOUT)
+        return _LEDGER_CLIENT
+
+
 def log_action(event_type: str, event_data: dict) -> dict | None:
     """Best-effort ledger write. A response that happened must be recorded, but
     an unreachable ledger must not stop the next action from being taken."""
     try:
-        response = httpx.post(
+        response = _ledger_client().post(
             f"{LEDGER_URL}/ledger/log",
             json={"event_type": event_type, "event_data": event_data},
             timeout=LEDGER_TIMEOUT,
