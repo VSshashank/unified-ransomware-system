@@ -299,10 +299,72 @@ class Attribution:
     #: tell why (monitor/dispatch.py); this is the number that would have said so.
     wait_overrun_ms: float = 0.0
 
+    # What `suspend_authorised` reads, beyond the fields above. All of them
+    # `compare=False`, so two answers that differ only in them are equal, and
+    # none of them is in `as_event_fields`: they are evidence for one gate, not
+    # part of the answer's shape on the event or in the ledger. Every default is
+    # the refusing value, so an answer nobody has assessed is never authorised.
+    #: The source that produced this answer can see the kernel's view of a write.
+    kernel_grade: bool = field(default=False, compare=False)
+    #: The write log evicted a record inside the competition window, so a second
+    #: writer cannot be ruled out. Set by the lookup.
+    window_evicted: bool = field(default=False, compare=False)
+    #: The PID's live process is the one the record names (image and start
+    #: time: `Attributor.verify`'s check). Set by `Attributor.assess_suspend`.
+    identity_verified: bool = field(default=False, compare=False)
+    #: The verified process's creation time, for the suspend request's `started_at`.
+    process_started_at: float | None = field(default=None, compare=False)
+    #: Why this PID must never be suspended (the Monitor, an ancestor, an
+    #: excluded or system process); None when nothing protects it.
+    protected: str | None = field(default=None, compare=False)
+    #: The path is inside a watched root.
+    in_watched_roots: bool = field(default=False, compare=False)
+
     @property
     def kill_authorised(self) -> bool:
         """The single question the pipeline asks. Fail-closed by construction."""
         return self.confidence in KILL_AUTHORISING and self.pid is not None and not self.pending
+
+    def suspend_blockers(self) -> list[str]:
+        """Every condition of `suspend_authorised` this answer fails, in words. [] if none."""
+        blockers = []
+        if not self.kernel_grade:
+            blockers.append("the source is not kernel-grade")
+        if self.pid is None:
+            blockers.append("no process is named")
+        if self.candidates != ((self.pid,) if self.pid is not None else None):
+            blockers.append(f"not exactly one writer so far (candidates {list(self.candidates)})")
+        if self.window_evicted:
+            blockers.append("a record was evicted inside the competition window")
+        if not self.identity_verified:
+            blockers.append("the PID's identity is not proven")
+        if self.protected is not None:
+            blockers.append(f"the PID is protected ({self.protected})")
+        if not self.in_watched_roots:
+            blockers.append("the path is not inside a watched root")
+        if self.confidence not in (CERTAIN, PROBABLE):
+            blockers.append(f"attribution is {self.confidence}")
+        return blockers
+
+    @property
+    def suspend_authorised(self) -> bool:
+        """May this process be frozen now? Weaker than `kill_authorised` for ONE reason.
+
+        A suspension can be undone; a kill cannot. That is the whole difference,
+        and it is why a PENDING answer - one the delivery horizon has not
+        finalised - may pass this gate and can never pass the kill gate. Nothing
+        else is relaxed: a live kernel-grade source, a PID, exactly one writer of
+        the path in the competition window so far and no eviction in it, the PID
+        identity check `Attributor.verify` makes, a PID that is not the Monitor
+        or its ancestors or an excluded or system process, and a path inside the
+        watched roots, ALL of which are needed. Independent of `kill_authorised`
+        and never consulted by it.
+
+        Read from the answer's own fields (`Attributor.assess_suspend` fills the
+        ones only the Attributor can know), so each condition can be taken away
+        on its own in a test. Fail-closed: the fields default to refusing.
+        """
+        return not self.suspend_blockers()
 
     def as_event_fields(self) -> dict:
         """The shape that travels on the event, and so into the ledger.
@@ -740,6 +802,7 @@ class WriteLog:
             written_at=newest.written_at,
             delivered_at=newest.delivered_at,
             settle_at=settle_at,
+            kernel_grade=bool(kernel_grade),
         )
 
         if len(distinct) > 1:
@@ -773,6 +836,8 @@ class WriteLog:
                 written_at=named.written_at,
                 delivered_at=named.delivered_at,
                 settle_at=settle_at,
+                kernel_grade=bool(kernel_grade),
+                window_evicted=overflowed,
             )
 
         if not kernel_grade:
@@ -796,6 +861,7 @@ class WriteLog:
                     f"so a second writer cannot be ruled out"
                 ),
                 candidates=(newest.pid,),
+                window_evicted=True,
                 **evidence,
             )
 
@@ -1183,6 +1249,49 @@ def same_image(left: str | None, right: str | None) -> bool:
     return _image_key(left) == _image_key(right)
 
 
+#: Directories whose processes freeze-first never suspends, whatever they are
+#: called: the same roots the Response service's own guard refuses
+#: (`actions.PROTECTED_IMAGE_ROOTS`), because a suspend request for one would
+#: be a 409 there anyway and the Monitor should not be asking. `%SystemRoot%`
+#: is read from the environment because it is not always `C:\Windows`.
+SYSTEM_IMAGE_ROOTS = tuple(
+    root
+    for root in (
+        os.environ.get("SystemRoot"),
+        r"C:\Windows",
+        "/usr/sbin",
+        "/sbin",
+        "/usr/lib/systemd",
+    )
+    if root
+)
+
+
+def _under(key: str, root_key: str) -> bool:
+    """Is `key` the directory `root_key` or inside it? Both from `_image_key`."""
+    sep = "\\" if ("\\" in root_key or re.match(r"^[A-Za-z]:", root_key)) else "/"
+    return key == root_key or key.startswith(root_key.rstrip(sep) + sep)
+
+
+def under_system_directory(image: str | None) -> str | None:
+    """The system directory `image` runs from, or None. Never raises."""
+    if not image:
+        return None
+    key = _image_key(image)
+    for root in SYSTEM_IMAGE_ROOTS:
+        if _under(key, _image_key(root)):
+            return root
+    return None
+
+
+def inside_roots(path: str | None, roots: Iterable[str]) -> bool:
+    """Is `path` inside one of the watched roots? No roots means no."""
+    if not path:
+        return False
+    key = _image_key(path)
+    return any(_under(key, _image_key(root)) for root in roots if root)
+
+
 # ------------------------------------------------------------- open questions
 
 
@@ -1420,7 +1529,17 @@ class Attributor:
         """
         if not answer.kill_authorised:
             return answer, "not_certain"
+        checked, outcome, _ = self._check_identity(answer)
+        return checked, outcome
 
+    def _check_identity(self, answer: Attribution) -> tuple[Attribution, str, ProcessFacts | None]:
+        """`verify`'s three checks, on any answer that names a PID.
+
+        Shared by the kill path (`verify`, which only calls it for a CERTAIN
+        answer) and the suspend path (`assess_suspend`, which calls it for a
+        pending one). The third element is what the probe saw, for the caller
+        that wants more than the verdict; None when nothing could be read.
+        """
         pid = int(answer.pid)
         wrote_as = answer.image or "an unnamed image"
         try:
@@ -1434,6 +1553,7 @@ class Attributor:
                     f"still the writer ({exc}), so nothing is acted on",
                 ),
                 "identity_unverifiable",
+                None,
             )
 
         if facts is None:
@@ -1445,6 +1565,7 @@ class Attributor:
                     f"nothing left to act on",
                 ),
                 "process_exited",
+                None,
             )
 
         tolerance_s = CLOCK_TOLERANCE_MS / 1000.0
@@ -1464,6 +1585,7 @@ class Attributor:
                     f"PID was reused, and the process that wrote is gone",
                 ),
                 "pid_reused",
+                facts,
             )
 
         if facts.image and answer.image and not same_image(facts.image, answer.image):
@@ -1478,6 +1600,7 @@ class Attributor:
                     f"wrote is gone",
                 ),
                 "pid_reused",
+                facts,
             )
 
         image_proven = bool(facts.image and answer.image)
@@ -1491,15 +1614,74 @@ class Attributor:
                     f"the writer",
                 ),
                 "identity_unverifiable",
+                facts,
             )
 
         proven_by = "image and start time" if image_proven and time_checked else (
             "image" if image_proven else "start time"
         )
         return (
-            replace(answer, reason=f"{answer.reason}; pid {pid} verified as the writer by {proven_by}"),
+            replace(
+                answer,
+                reason=f"{answer.reason}; pid {pid} verified as the writer by {proven_by}",
+                identity_verified=True,
+                process_started_at=facts.created_at,
+            ),
             "verified",
+            facts,
         )
+
+    def assess_suspend(
+        self, answer: Attribution, path: str, roots: Iterable[str]
+    ) -> tuple[Attribution, str]:
+        """Fill in what only the Attributor can know, and say whether the gate is met.
+
+        Returns a COPY of `answer` with `identity_verified`, `protected`,
+        `in_watched_roots` and `process_started_at` set, and a short outcome
+        code: `suspend_authorised` when `Attribution.suspend_authorised` holds,
+        otherwise the first condition that failed. The caller's own answer is
+        never changed: this is evidence for one gate, and what the pipeline acts
+        on (the event, the kill, the ledger) stays exactly as it was.
+
+        Cheap checks first, the probe last, so a refusal that needs no look at
+        the process makes none. The identity check is `verify`'s own, applied to
+        an answer that is still pending.
+        """
+        if not (self.source.available and self.source.kernel_grade and answer.kernel_grade):
+            return answer, "no_live_kernel_source"
+        if answer.pid is None:
+            return answer, "no_pid"
+        if answer.candidates != (answer.pid,):
+            return answer, "not_sole_writer"
+        if answer.window_evicted:
+            return answer, "window_evicted"
+
+        pid = int(answer.pid)
+        why = self._protected_pid(pid)
+        if why is not None:
+            return replace(answer, protected=why), "protected"
+        if not inside_roots(path, roots):
+            return answer, "outside_watched_roots"
+
+        checked, outcome, facts = self._check_identity(answer)
+        if outcome != "verified":
+            return checked, outcome
+        for image in (answer.image, facts.image if facts else None):
+            under = under_system_directory(image)
+            if under is not None:
+                return replace(checked, protected=f"it runs from the system location {under}"), "protected"
+        assessed = replace(checked, in_watched_roots=True)
+        return assessed, "suspend_authorised" if assessed.suspend_authorised else "not_authorised"
+
+    def _protected_pid(self, pid: int) -> str | None:
+        """Why `pid` must never be suspended, by number alone; None if nothing says so."""
+        if pid <= 4:
+            return "a reserved system PID"
+        if pid in _self_and_ancestors():
+            return "the Monitor or one of its ancestors"
+        if pid in self.log.excluded:
+            return "an excluded PID"
+        return None
 
     def final(self, question: Question) -> tuple[Attribution, str]:
         """The closing answer to an open question, identity-checked.
@@ -1545,9 +1727,17 @@ class PendingAttribution:
         on_closed: Callable[[Question, Attribution, str], None],
         sweep_ms: float = SWEEP_MS,
         max_pending: int = MAX_PENDING,
+        on_recheck: Callable[[Question, Attribution], None] | None = None,
     ) -> None:
         self.attributor = attributor
         self._on_closed = on_closed
+        #: Told, on this thread, of every re-ask of a question that is still
+        #: open and now names a writer. It cannot close a question or change an
+        #: answer - it only hears it. Freeze-first listens here: on the VM the
+        #: first look (at detection) usually names nobody, because the audit
+        #: record arrives 0.1-1.3 s after the write, so the answer that first
+        #: names a sole writer is the one a re-ask finds.
+        self._on_recheck = on_recheck
         self.sweep_ms = float(sweep_ms)
         self.max_pending = int(max_pending)
 
@@ -1665,6 +1855,11 @@ class PendingAttribution:
                     done.append((question, answer, outcome))
                     continue
                 current = self.attributor.recheck(question)
+                if self._on_recheck is not None and current.pid is not None:
+                    try:
+                        self._on_recheck(question, current)
+                    except Exception:  # a listener must never break the sweep
+                        logger.debug("attribution: re-check listener failed for %s", question.path, exc_info=True)
                 if not current.pending and current.confidence == PROBABLE and len(current.candidates) > 1:
                     done.append((question, current, "ambiguous"))
             except Exception:

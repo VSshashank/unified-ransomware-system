@@ -22,6 +22,7 @@ import os
 import queue
 import threading
 from collections import OrderedDict, deque
+from contextlib import asynccontextmanager
 from fnmatch import fnmatch
 from datetime import datetime, timezone
 from time import perf_counter, time
@@ -40,6 +41,7 @@ from watchdog.observers.polling import PollingObserver
 import attribution
 import dispatch
 import pipeline
+import suspend_policy
 from admissibility import adjudicate
 from attribution import attributor, build_source
 from containers import (
@@ -74,7 +76,19 @@ def pe_imports_count(path: str) -> int:
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("monitor")
 
-app = FastAPI(title="URDS Monitor", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Nothing stays frozen because the Monitor stopped (freeze-first, `suspend_policy`).
+
+    The Response service's lease expiry is the backstop for a crash; this is
+    the orderly half, and it also refuses any further suspend.
+    """
+    yield
+    suspend_policy.shutdown()
+
+
+app = FastAPI(title="URDS Monitor", version="1.0.0", lifespan=lifespan)
 
 ENTROPY_THRESHOLD = float(os.getenv("ENTROPY_THRESHOLD", DEFAULT_ENTROPY_THRESHOLD))
 
@@ -904,7 +918,16 @@ def _correlate(
         # escalation's ledger block - which goes through the same queue when
         # the question closes first - lands after this incident's own blocks.
         _work.put(("detection", event, features, verdict))
-        if attributor.should_park(first):
+        parked = attributor.should_park(first)
+        # Freeze-first: before the question is opened, so it cannot close
+        # (and look for a lease) while the suspend is still being asked for -
+        # the lease is registered before this returns, the request is made on
+        # a thread of its own, and a close that comes meanwhile waits for it.
+        suspend_policy.on_first_answer(
+            attributor, event, first, path, (_watch_path,) if _watch_path else (), parked=parked, lock=_LOCK,
+            background=True,
+        )
+        if parked:
             _open_question(event, path, observed_at, read_at, read_mono, first, also, epoch=epoch)
 
 
@@ -1188,10 +1211,30 @@ def _ensure_pending() -> attribution.PendingAttribution:
         if _pending is None or _pending.attributor is not attributor:
             if _pending is not None:
                 _pending.stop(timeout=1.0)
-            _pending = attribution.PendingAttribution(attributor, _question_closed)
+            _pending = attribution.PendingAttribution(
+                attributor, _question_closed, on_recheck=_question_rechecked
+            )
         if not _pending.running:
             _pending.start()
         return _pending
+
+
+def _question_rechecked(question: attribution.Question, answer: attribution.Attribution) -> None:
+    """The pending thread re-asked an open question and it now names a writer.
+
+    The first look, at detection, usually names nobody - the audit record
+    arrives 0.1-1.3 s after the write - so this is where freeze-first usually
+    first sees a sole writer (`suspend_policy.on_first_answer`, the same hook
+    `_correlate` calls). Runs on the pending thread, which must keep closing
+    questions on time, so the suspend request is made on its own thread.
+    """
+    event = question.context if isinstance(question.context, dict) else None
+    if event is None:
+        return
+    suspend_policy.on_first_answer(
+        attributor, event, answer, question.path, (_watch_path,) if _watch_path else (),
+        parked=True, lock=_LOCK, incident_id=question.key, background=True,
+    )
 
 
 def _question_closed(question: attribution.Question, answer: attribution.Attribution, outcome: str) -> None:
@@ -1414,7 +1457,8 @@ def _escalation_act(client: httpx.Client, item: tuple):
         action = pipeline.escalation_action(client, question, answer)
         _show_closed(event, question, answer, outcome,
                      {"result": pipeline.escalation_result(answer, action),
-                      "response_dispatched_at": action["response_dispatched_at"]}, None)
+                      "response_dispatched_at": action["response_dispatched_at"],
+                      "suspension": action.get("lease")}, None)
         return event, question, answer, outcome, action
     except Exception:  # a bad escalation must not kill the worker
         logger.exception("escalation failed for %s", event.get("file_path"))
@@ -1454,6 +1498,9 @@ def _show_closed(event: dict, question, answer, outcome: str, record: dict, bloc
             "block_id": (block or {}).get("block_id"),
             "response_dispatched_at": record["response_dispatched_at"],
         }
+        if record.get("suspension"):
+            # Freeze-first: what became of the lease this incident's writer was held under.
+            event["attribution_escalation"]["suspension"] = record["suspension"]
 
 
 def _run_escalation_record(client: httpx.Client, event: dict, question, answer, outcome: str, action: dict) -> None:
@@ -1516,6 +1563,9 @@ def _ensure_worker() -> None:
     # With the worker, when the watch starts, rather than when the first
     # question closes - see _ensure_escalator for what that cost.
     _ensure_escalator()
+    # The same reasoning for the freeze-first client: its construction must not
+    # be paid by the first suspend, the one that matters most.
+    suspend_policy.warm()
 
 
 class MonitorHandler(FileSystemEventHandler):
@@ -1641,6 +1691,11 @@ def stop_monitoring(payload: MonitorStopRequest | None = None) -> JSONResponse:
     # After the observer, so nothing new arrives; finishing what is queued
     # means every detection already seen still gets its response.
     _lanes.stop(timeout=5)
+    # Nothing stays frozen because this Monitor stopped: every lease it holds
+    # is released now (best effort, short; the Response service's lease expiry
+    # is the backstop). A question still open when this runs closes later and
+    # kills, if the unchanged gate says so, without a lease.
+    suspend_policy.release_all("monitor_stop")
 
     stopped = _monitor_id
     _monitor_id = None
@@ -1707,6 +1762,8 @@ def monitor_attribution() -> dict:
     # incident isolated on a pending answer and never escalated shows up here as
     # a close outcome rather than as silence.
     status["pending"] = _pending.stats() if _pending is not None else {"running": False, "open": 0}
+    # Freeze-first (suspend_policy): whether it is on, and what it has done.
+    status["suspend_first"] = suspend_policy.stats()
     return status
 
 
