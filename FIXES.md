@@ -1992,12 +1992,12 @@ on port 18604, with the venv launcher; the log is not kept in the repo):
   | CTRL_BREAK, a graceful stop | the lifespan |
 - **Before the watchdog was detached,** `taskkill /T /F` took the watchdog
   down with the service, and the child stayed frozen until the test's cleanup
-  resumed it (`e1_tree_kill_before_detach.txt`).
-- With a ledger that answers (`e1_latency.txt`): the suspend round trip had a
+  resumed it.
+- With a ledger that answers: the suspend round trip had a
   median of 274 ms (252-351) and resume 208 ms, over 10 each. The suspension
   itself is sub-millisecond and happens before the ledger write. Almost all
   of the round trip is `log_action` (see "Found outside this package").
-- Still for the VM: the same check elevated, with E2's Monitor calling it.
+- Still for the VM: the same check elevated, with the operator calling the routes through the gateway (nothing in the Monitor calls them yet).
   `Get-Process -Id <pid>` CPU staying flat while suspended is the
   operator-visible version of the heartbeat check.
 
@@ -2038,10 +2038,10 @@ on port 18604, with the venv launcher; the log is not kept in the repo):
 **Found outside this package:**
 - **`log_action` in `services/response/app.py` builds a new `httpx` client
   per ledger write.** That cost a median of 201 ms here, against 11.8 ms on a
-  shared client (`e1_httpx_cost.py`): defect 13's cause, in the Response
+  shared client: defect 13's cause, in the Response
   service. Every `/terminate` pays it before it returns. It is a plausible
   part of R16's 0.30-0.38 s spacing between terminates. Not changed here,
-  because terminate's timing is package A's.
+  because terminate's timing is package A's. Fixed there: see defect 22, which reuses one client.
 - The Response service's `RequestValidationError` handler cannot serialise a
   validator's `ValueError` (`exc.errors()` carries the exception), which would
   turn a 400 into a 500. `ResumeRequest` checks "lease or PID" in the route
