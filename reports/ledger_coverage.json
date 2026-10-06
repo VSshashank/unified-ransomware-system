@@ -1,8 +1,8 @@
 {
   "schema": "urds.ledger_coverage/1",
-  "generated_at": "2026-10-04T15:21:09.536405Z",
-  "commit": "9e3ecb649712b5ed5ffabae8dab02ac4c3d36098",
-  "branch": "fix/windows-integration-defects",
+  "generated_at": "2026-10-06T04:12:22.689525Z",
+  "commit": "c64addd594402a89f71bb057db19b112a501c22c",
+  "branch": "fix/vm-2026-10-05-findings",
   "table_9_8_row": "Mitigation decisions reaching the ledger",
   "target": "100%",
   "measured_coverage": 1.0,

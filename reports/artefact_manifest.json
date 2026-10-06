@@ -1,8 +1,8 @@
 {
   "schema": "urds.artefact_manifest.v1",
-  "generated_at": "2026-10-04T15:27:42.602608+00:00",
-  "commit": "fa8ec86269b0fc58b1f6018d56b23a07c1cadc0d",
-  "branch": "fix/windows-integration-defects",
+  "generated_at": "2026-10-06T04:13:17.339573+00:00",
+  "commit": "c64addd594402a89f71bb057db19b112a501c22c",
+  "branch": "fix/vm-2026-10-05-findings",
   "what_the_two_digests_mean": {
     "sha256": "over the committed bytes; detects an edited artefact",
     "stable_sha256": "over the JSON with the listed volatile paths removed and keys sorted; this is the digest a reproducer compares"
@@ -119,8 +119,8 @@
         "**/branch"
       ],
       "present": true,
-      "bytes": 7057,
-      "sha256": "37a5ca310cc79ad93fa6fa20ecca4e7f3e640af2f287e8bb40760dd3abd9c2ad",
+      "bytes": 7052,
+      "sha256": "59c5e9479aee977e004317e63e154764519405efc4514e501fb094cd59c78a46",
       "stable_sha256": "a223fd231d2dce2d453aaf739f0caae7b278728b2944c1658f44ec979856e15c"
     },
     {
@@ -137,8 +137,8 @@
         "**/branch"
       ],
       "present": true,
-      "bytes": 10395,
-      "sha256": "388a9e1759cc8b21f3172720eebc4e22adebe55cc20b2ddaeb5a68d08cce30e8",
+      "bytes": 10380,
+      "sha256": "18d2507f6ef1fc8d98854635ba6341282b62be68fff6fcaa8ccaa7931b2f42f6",
       "stable_sha256": "6d2bf06d446539e401be309dc4d2d43ca1e395c6e325735cb12748d8fd603cd0"
     },
     {
@@ -240,8 +240,8 @@
   "source": [
     {
       "path": "services/monitor/detection.py",
-      "sha256": "7ccbd60e7684d9149354aae662c9c056b7818fc56fe62f9812ef8d039bb7f3e4",
-      "bytes": 47612
+      "sha256": "ff0cee3ff116acff0cd3707fbde151e81583c7bb03a9cc7bed2ea8dc799ea329",
+      "bytes": 48231
     },
     {
       "path": "services/monitor/admissibility.py",
@@ -255,13 +255,13 @@
     },
     {
       "path": "services/monitor/pipeline.py",
-      "sha256": "599806a4c7db37cd29264b44a379f4b7ee9f2c564647e7dcee9fec5d60e3caf5",
-      "bytes": 23440
+      "sha256": "7d8a603790909ae07b8d1ca3a21fb4eb42f804c5342b03c156be46abe740533b",
+      "bytes": 35719
     },
     {
       "path": "services/monitor/app.py",
-      "sha256": "d634ff148ff9de66c8571a7667dee4fb0f4e31e4596b9bb43c2859bb610065bc",
-      "bytes": 56766
+      "sha256": "d6eb88ab3bddad2de2b980046d0a28f9c5fef2da7d3db47d80f1a2761280ba08",
+      "bytes": 74380
     },
     {
       "path": "services/ledger/hash_chain.py",
