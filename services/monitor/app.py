@@ -84,8 +84,11 @@ async def lifespan(_app: FastAPI):
     The Response service's lease expiry is the backstop for a crash; this is
     the orderly half, and it also refuses any further suspend.
     """
-    yield
-    suspend_policy.shutdown()
+    try:
+        yield
+    finally:
+        # Also when the app leaves through an exception: nothing stays frozen.
+        suspend_policy.shutdown()
 
 
 app = FastAPI(title="URDS Monitor", version="1.0.0", lifespan=lifespan)
@@ -928,6 +931,8 @@ def _correlate(
         suspend_policy.on_first_answer(
             attributor, event, first, path, (_watch_path,) if _watch_path else (), parked=parked, lock=_LOCK,
             background=True,
+            # The question's horizon, on the horizon clock: no freeze starts after it.
+            deadline=read_mono + attribution._settle_span_s(attributor.horizon_ms),
         )
         if parked:
             _open_question(event, path, observed_at, read_at, read_mono, first, also, epoch=epoch)
@@ -1236,6 +1241,7 @@ def _question_rechecked(question: attribution.Question, answer: attribution.Attr
     suspend_policy.on_first_answer(
         attributor, event, answer, question.path, (_watch_path,) if _watch_path else (),
         parked=True, lock=_LOCK, incident_id=question.key, background=True,
+        deadline=question.settle_mono,
     )
 
 
@@ -1641,6 +1647,8 @@ def start_monitoring(payload: MonitorStartRequest) -> JSONResponse:
 
     _ensure_worker()
     _lanes.start()
+    # A stop paused freeze-first (stop_monitoring); a start lifts it.
+    suspend_policy.unpause()
 
     _observer, _observer_backend, _observer_reason = build_observer(watch_path)
     _observer.schedule(MonitorHandler(), watch_path, recursive=payload.recursive)
@@ -1697,6 +1705,9 @@ def stop_monitoring(payload: MonitorStopRequest | None = None) -> JSONResponse:
             ),
         )
 
+    # First, so that nothing is frozen after this returns - the sweeper's re-ask of a
+    # question still open included. `/monitor/start` lifts it.
+    suspend_policy.pause()
     if _observer is not None:
         _observer.stop()
         _observer.join(timeout=5)

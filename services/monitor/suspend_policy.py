@@ -55,6 +55,7 @@ from __future__ import annotations
 import atexit
 import logging
 import os
+import re
 import threading
 import time
 from collections import OrderedDict, Counter
@@ -119,6 +120,11 @@ BACKOFF_S = float(os.getenv("MONITOR_SUSPEND_BACKOFF_S", "5"))
 GLOBAL_REFUSALS = frozenset({"PID_NAMESPACE_ISOLATED", "MONITOR_PID_INVALID", "SHUTTING_DOWN",
                              "WATCHDOG_UNAVAILABLE"})
 
+#: A held lease is stale once this much time has passed beyond its length on the
+#: monotonic clock: the Response service has expired it and resumed the process,
+#: whatever became of our own resume. Stale holds are ended, not kept for ever.
+STALE_MARGIN_S = float(os.getenv("MONITOR_SUSPEND_STALE_MARGIN_S", str(KILL_DISPATCH_MARGIN_MS / 1000.0)))
+
 #: Holds remembered (active ones and recently ended ones, which later questions
 #: of the same writer still report). Bounded like every per-event structure here.
 MAX_HOLDS = int(os.getenv("MONITOR_SUSPEND_MAX_HOLDS", "1024"))
@@ -128,6 +134,43 @@ MAX_HOLDS = int(os.getenv("MONITOR_SUSPEND_MAX_HOLDS", "1024"))
 ACTIVE = ("requesting", "held", "uncertain")
 #: ... and once its request has been answered, one of these may still need undoing.
 RELEASABLE = ("held", "uncertain", "terminating")
+
+
+#: What a ledger block may carry about a lease. All of it is non-identifying: ids
+#: the Response service made up, times, a refusal code, our own fixed wording. No
+#: free text from the Response service (`detail`) and nothing that quotes the
+#: attribution's own text, which names PIDs and images: a block names a process
+#: only when attribution resolved to certain (C-16), and the answers a suspension
+#: is taken on are not. `scripts/ledger_coverage.py` checks the same list.
+LEDGER_FIELDS = frozenset({
+    "lease_id", "gate", "outcome", "suspended_at", "expires_at", "lease_seconds", "already_held", "code",
+    "action", "reason", "resumed_at", "shared_with_incident", "decided_by_incident",
+})
+#: A string that could name a process: a path separator, or the word PID (not PID_REUSED).
+_IDENTIFYING = re.compile(r"[\\/]|\bpid\b", re.IGNORECASE)
+_WITHHELD = "[withheld: could identify a process]"
+_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_CODE = re.compile(r"^[A-Z0-9_]{1,40}$")
+
+
+def ledger_copy(record: dict | None) -> dict | None:
+    """The part of a lease record that goes in the chain: the allow-list, with any string that
+    could name a process withheld. The in-memory record keeps `detail` and the rest."""
+    if record is None:
+        return None
+    copy = {}
+    for key, value in record.items():
+        if key not in LEDGER_FIELDS:
+            continue
+        if isinstance(value, str) and _IDENTIFYING.search(value):
+            value = _WITHHELD
+        copy[key] = value
+    return copy
+
+
+def _shaped(value, pattern: re.Pattern, fallback):
+    """A value from the Response service, kept only if it looks like what it should."""
+    return value if isinstance(value, str) and pattern.match(value) else fallback
 
 
 def enabled() -> bool:
@@ -170,9 +213,36 @@ class Hold:
     disposition: dict | None = None
     decided_by: str | None = None
     ended: float | None = None
+    #: The horizon this freeze is for, on the attributor's clock (`Question.settle_mono`),
+    #: and that clock. No freeze is started once it has passed.
+    deadline: float | None = None
+    horizon_clock: object = field(default=None, repr=False)
+    #: When the reply to the suspend arrived, on the policy's monotonic clock.
+    frozen_mono: float | None = None
+    #: A close that came while the suspend request was still in flight and was not a
+    #: kill: (safe reason, full reason, incident). The suspend thread resumes when its
+    #: reply arrives, so the close never waits for the freeze.
+    close_requested: tuple | None = None
+    #: A kill-authorised close that came while the request was still in flight: the
+    #: terminate went out without a lease, and the thread must not resume it.
+    kill_decided: bool = False
+
+    def stale(self, now: float) -> bool:
+        """Has the lease run out (and a margin), so the Response service has resumed it?"""
+        if self.frozen_mono is None or self.state not in ("held", "uncertain"):
+            return False
+        try:
+            length = float(self.lease_seconds) if self.lease_seconds is not None else SUSPEND_LEASE_S
+        except (TypeError, ValueError):
+            length = SUSPEND_LEASE_S
+        return now > self.frozen_mono + length + STALE_MARGIN_S
 
     def record(self, outcome: str, **extra) -> dict:
-        """The lease's part of the escalation block. Names no process: C-16."""
+        """The lease's record: `ledger_copy` of it is what goes in the escalation block.
+
+        `detail` is free text (the Response service's refusal message, a transport
+        error, the attribution's own words) and stays on the in-memory event: it
+        can name a PID and an image, and the chain may not, short of certain."""
         out = {
             "lease_id": self.lease_id,
             "gate": GATE,
@@ -204,7 +274,19 @@ class SuspendPolicy:
         self._handled: "OrderedDict[tuple[str, int], bool]" = OrderedDict()
         self._backoff_until = 0.0
         self._closing = False
+        #: Set by `/monitor/stop`, cleared by `/monitor/start`: nothing new is frozen between.
+        self._paused = False
         self.counts: Counter = Counter()
+
+    def pause(self) -> None:
+        """`/monitor/stop`: no suspend starts after this, the sweeper's re-ask included."""
+        with self._lock:
+            self._paused = True
+
+    def unpause(self) -> None:
+        """`/monitor/start`."""
+        with self._lock:
+            self._paused = False
 
     # -- the Response client ---------------------------------------------
 
@@ -221,7 +303,7 @@ class SuspendPolicy:
         the loaded 4-vCPU VM (FIXES.md defect 22). The first suspend is the one
         that matters most, and must not pay for it. Called when the watch starts.
         """
-        if self._client is None:
+        if self._client is None and enabled():
             threading.Thread(target=self._http, name="monitor-suspend-warm", daemon=True).start()
 
     def _call(self, path: str, payload: dict, timeout: float) -> tuple[int, dict]:
@@ -253,6 +335,7 @@ class SuspendPolicy:
         lock=None,
         incident_id: str | None = None,
         background: bool = False,
+        deadline: float | None = None,
     ) -> dict | None:
         """Freeze the writer `first` names, if `suspend_authorised` and not already frozen.
 
@@ -268,20 +351,23 @@ class SuspendPolicy:
         `background`: the caller is the sweeper, which must go on closing
         questions on time; the request is made on a thread of its own (the
         lease is still registered before this returns, so a close that comes
-        meanwhile waits for it). Returns the record put on the event
+        meanwhile never waits for it: a kill goes out at once, anything else is
+        resumed by the thread that is making the request when its reply arrives).
+        `deadline`: the question's horizon on the attributor's clock; no freeze is
+        started once it has passed. Returns the record put on the event
         (`event["suspension"]`), or None when no request was made - which is
         every case with the switch off, and leaves the event exactly as it was.
         """
         try:
             return self._first_answer(attributor, event, first, path, roots, parked, lock,
-                                      incident_id, background)
+                                      incident_id, background, deadline)
         except Exception:  # nothing here may break correlation
             logger.exception("freeze-first failed for %s; carrying on without it", path)
             return None
 
     def _first_answer(self, attributor, event, first, path, roots, parked, lock, incident_id,
-                      background) -> dict | None:
-        if not enabled() or self._closing or not parked or first.pid is None:
+                      background, deadline) -> dict | None:
+        if not enabled() or self._closing or self._paused or not parked or first.pid is None:
             return None
         incident = incident_id or event.get("incident_id")
         if not incident:
@@ -290,9 +376,17 @@ class SuspendPolicy:
         now = self._clock()
         if (incident, pid) in self._handled:
             return None
+        if deadline and attributor.clock() >= deadline:
+            # The horizon has closed: the kill decision is due now, and a freeze
+            # started after it has nothing left to protect.
+            self.counts["skipped_horizon_passed"] += 1
+            return None
 
         with self._lock:
             hold = self._holds.get(pid)
+            if hold is not None and hold.stale(now):
+                self._end_stale(hold, now)
+                hold = None
             if hold is not None and hold.state in ACTIVE:
                 self.counts["pid_already_held"] += 1
                 self._link(incident, hold)
@@ -319,12 +413,15 @@ class SuspendPolicy:
             return None
 
         with self._lock:
+            if self._paused or self._closing:
+                return None  # the Monitor stopped while this was being assessed
             hold = self._holds.get(pid)
             if hold is not None and hold.state in ACTIVE:
                 mine = False  # another lane got there between the check and now
             else:
                 mine = True
-                hold = Hold(pid=pid, incident_id=incident, created=now)
+                hold = Hold(pid=pid, incident_id=incident, created=now, deadline=deadline,
+                            horizon_clock=attributor.clock)
                 hold.lock.acquire()
                 self._holds[pid] = hold
                 self._prune(now)
@@ -348,14 +445,51 @@ class SuspendPolicy:
         """
         try:
             try:
-                record = self._suspend(hold, answer, incident)
+                if hold.deadline and hold.horizon_clock() >= hold.deadline:
+                    self.counts["skipped_horizon_passed"] += 1
+                    record = self._failed(hold, "skipped", "HORIZON_PASSED",
+                                          "the horizon closed before the request went out", backoff=False)
+                else:
+                    record = self._suspend(hold, answer, incident)
             except Exception:  # the hold must not stay locked, whatever happened
                 logger.exception("freeze-first: suspending for %s failed", incident)
                 record = self._uncertain(hold, "unexpected error while suspending")
             self._annotate(event, record, lock)
+            try:
+                self._after_reply(hold)
+            except Exception:
+                logger.exception("freeze-first: finishing a close that came during the suspend failed")
             return record
         finally:
             hold.lock.release()
+
+    def _after_reply(self, hold: Hold) -> None:
+        """The suspend has been answered. If a close came while it was in flight, act on it now.
+
+        A kill that came meanwhile already went out without a lease: nothing to
+        undo, and nothing resumed. A close that was not a kill is resumed here,
+        by lease, or by PID when the reply was lost. The hold lock is held.
+        """
+        with self._lock:
+            requested, killed, state = hold.close_requested, hold.kill_decided, hold.state
+            if killed and state == "held":
+                hold.state = "terminating"
+                hold.ended = self._clock()
+        if requested is None or killed:
+            return
+        safe, full, incident = requested
+        if state not in ("held", "uncertain"):
+            return  # refused or skipped: nothing is frozen
+        if not hold.owned:
+            record = hold.record("left_to_expire", action=None,
+                                 reason="the lease was already held by someone else; it is not this Monitor's to "
+                                        "resume and ends on its own expiry")
+            with self._lock:
+                hold.state = "ended"
+                hold.ended = self._clock()
+        else:
+            record = self._resume(hold, safe, full, incident)
+        hold.disposition = record
 
     def _join(self, hold: Hold, incident: str, event: dict, lock, background: bool) -> dict | None:
         """This incident's writer is already frozen (or refused): say so on the event."""
@@ -397,7 +531,6 @@ class SuspendPolicy:
         }
         payload = {key: value for key, value in payload.items() if value is not None}
         self.counts["requested"] += 1
-        stamp = attribution.iso_utc(time.time())
         try:
             status, body = self._call("/response/suspend", payload, SUSPEND_TIMEOUT_S)
         except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
@@ -410,21 +543,30 @@ class SuspendPolicy:
             return self._uncertain(hold, f"{type(exc).__name__}: {exc}")
 
         if status >= 400:
-            code = body.get("code") or (body.get("error") or {}).get("code") or f"HTTP_{status}"
+            raw_code = body.get("code") or (body.get("error") or {}).get("code") or f"HTTP_{status}"
+            code = _shaped(raw_code, _CODE, "UNEXPECTED_CODE")
             detail = body.get("message") or (body.get("error") or {}).get("message") or ""
-            return self._failed(hold, "refused", str(code), str(detail),
-                                backoff=str(code) in GLOBAL_REFUSALS or status >= 500)
+            return self._failed(hold, "refused", code, str(detail),
+                                backoff=code in GLOBAL_REFUSALS or status >= 500)
 
-        lease_id = body.get("lease_id")
+        lease_id = _shaped(body.get("lease_id"), _ID, None)
         if not lease_id or body.get("suspended") is False:
-            return self._failed(hold, "refused", "UNEXPECTED_RESPONSE", f"no lease in the reply: {body!r}"[:200],
+            return self._failed(hold, "refused", "UNEXPECTED_RESPONSE", f"no usable lease in the reply: {body!r}"[:200],
                                 backoff=True)
+        expires_at = body.get("expires_at")
+        if not (isinstance(expires_at, str) and len(expires_at) <= 40 and not _IDENTIFYING.search(expires_at)):
+            expires_at = None
+        try:
+            lease_seconds = float(body.get("lease_seconds", SUSPEND_LEASE_S))
+        except (TypeError, ValueError):
+            lease_seconds = SUSPEND_LEASE_S
         with self._lock:
-            hold.lease_id = str(lease_id)
+            hold.lease_id = lease_id
             hold.owned = not body.get("already_held")
-            hold.suspended_at = stamp
-            hold.expires_at = body.get("expires_at")
-            hold.lease_seconds = body.get("lease_seconds", SUSPEND_LEASE_S)
+            hold.suspended_at = attribution.iso_utc(time.time())
+            hold.expires_at = expires_at
+            hold.lease_seconds = lease_seconds
+            hold.frozen_mono = self._clock()
             hold.state = "held"
         self.counts["suspended" if hold.owned else "already_held_elsewhere"] += 1
         logger.info("freeze-first: pid %s suspended under lease %s%s", hold.pid, lease_id,
@@ -438,6 +580,7 @@ class SuspendPolicy:
             hold.state = "uncertain"
             hold.detail = detail
             hold.suspended_at = None
+            hold.frozen_mono = now
             self._backoff_until = now + BACKOFF_S
         self.counts["suspend_uncertain"] += 1
         logger.warning("freeze-first: no answer to the suspend of pid %s (%s); treating it as possibly frozen "
@@ -472,6 +615,31 @@ class SuspendPolicy:
         if hold.state == "uncertain":
             return hold.record("uncertain", detail=hold.detail, shared_with_incident=hold.incident_id)
         return hold.record("suspended", shared_with_incident=hold.incident_id)
+
+    def _end_stale(self, hold: Hold, now: float) -> None:
+        """The lease ran out without anyone ending it: forget the hold, and say so. Under the lock.
+
+        The Response service expires every lease and resumes the process; a resume of
+        ours that failed (or timed out against a slow ledger) must not leave the hold
+        `held` for ever and silently end freeze-first for this PID. The cooldown runs
+        from the end of the lease.
+        """
+        hold.state = "ended"
+        hold.ended = now
+        if self._holds.get(hold.pid) is hold:
+            del self._holds[hold.pid]
+        try:
+            length = float(hold.lease_seconds) if hold.lease_seconds is not None else SUSPEND_LEASE_S
+        except (TypeError, ValueError):
+            length = SUSPEND_LEASE_S
+        self._cooldown[hold.pid] = (hold.frozen_mono or now) + length + STALE_MARGIN_S + COOLDOWN_S
+        self.counts["ended_stale"] += 1
+        if hold.disposition is None:
+            hold.disposition = hold.record(
+                "lease_expired", action=None,
+                reason="the lease ran out and the Response service resumed the process; the hold is ended",
+            )
+            hold.decided_by = hold.incident_id
 
     def _link(self, incident: str, hold: Hold) -> None:
         self._by_incident[incident] = hold
@@ -531,26 +699,37 @@ class SuspendPolicy:
             hold = self._by_incident.pop(question.key, None)
         if hold is None:
             return None
+        # The kill decision is the caller's, from `answer.kill_authorised` alone: the
+        # hold only says whether there is a lease to name on it.
+        kill = bool(answer.kill_authorised and answer.pid == hold.pid)
+
+        with self._lock:
+            if kill:
+                return self._close_kill(hold, question)
+            if hold.state == "requesting":
+                # The suspend request is still in flight. Do not wait for it: the
+                # thread making it resumes the process the moment its reply arrives.
+                safe, full = self._why_not_killed(answer, hold)
+                hold.close_requested = (safe, full, question.key)
+                record = hold.record(
+                    "resume_deferred", action="resume", reason=safe,
+                    detail="the suspend request was still in flight; it is resumed as soon as its reply arrives",
+                )
+                if hold.disposition is None:
+                    hold.disposition = record
+                    hold.decided_by = question.key
+                return record
+
+        # A freeze that has been answered: undo it (or report what became of it).
         if not hold.lock.acquire(timeout=SUSPEND_TIMEOUT_S + RESUME_TIMEOUT_S + 1.0):
-            logger.warning("freeze-first: a suspend request for %s is still in flight; its lease will expire",
-                           question.key)
+            logger.warning("freeze-first: the hold for %s is busy; its lease will expire", question.key)
             return None
         try:
-            if hold.state == "refused":
+            if hold.state in ("refused",):
                 return hold.record(hold.failure or "refused", detail=hold.detail, action=None)
             if hold.disposition is not None:
                 return {**hold.disposition, "action": None, "decided_by_incident": hold.decided_by}
-
-            kill = bool(answer.kill_authorised and answer.pid == hold.pid)
-            if kill:
-                record = hold.record(
-                    "terminate_requested", action="terminate",
-                    reason="the kill gate is satisfied at the horizon: the kill goes out carrying the lease",
-                )
-                with self._lock:
-                    hold.state = "terminating"
-                    hold.ended = self._clock()
-            elif not hold.owned:
+            if not hold.owned:
                 record = hold.record(
                     "left_to_expire", action=None,
                     reason="the lease was already held by someone else; it is not this Monitor's to resume "
@@ -560,46 +739,88 @@ class SuspendPolicy:
                     hold.state = "ended"
                     hold.ended = self._clock()
             else:
-                record = self._resume(hold, self._why_not_killed(answer, hold), question.key)
+                safe, full = self._why_not_killed(answer, hold)
+                record = self._resume(hold, safe, full, question.key)
             hold.disposition = record
             hold.decided_by = question.key
             return record
         finally:
             hold.lock.release()
 
-    @staticmethod
-    def _why_not_killed(answer, hold: Hold) -> str:
-        if answer.kill_authorised and answer.pid != hold.pid:
-            return ("the kill gate is not satisfied for the frozen process: the closing answer names a "
-                    "different process")
-        pending = ", still pending" if answer.pending else ""
-        return (f"the kill gate is not satisfied at the horizon ({answer.confidence}{pending}): "
-                f"{answer.reason}")
+    def _close_kill(self, hold: Hold, question) -> dict:
+        """A kill-authorised close. Never waits: reads the hold under the policy lock, takes no other. Under it."""
+        if hold.state == "refused":
+            return hold.record(hold.failure or "refused", detail=hold.detail, action=None)
+        if hold.disposition is not None and hold.state != "requesting":
+            # Decided by another of this writer's questions; the kill is the caller's.
+            return {**hold.disposition, "action": None, "decided_by_incident": hold.decided_by}
+        if hold.state == "requesting":
+            hold.kill_decided = True
+            record = hold.record(
+                "terminate_requested", action="terminate",
+                reason="the kill gate is satisfied at the horizon while the suspend request was still in flight: "
+                       "the kill goes out at once, without a lease",
+            )
+        else:
+            record = hold.record(
+                "terminate_requested", action="terminate",
+                reason="the kill gate is satisfied at the horizon: the kill goes out carrying the lease",
+            )
+            hold.state = "terminating"
+            hold.ended = self._clock()
+        hold.disposition = record
+        hold.decided_by = question.key
+        return record
 
-    def _resume(self, hold: Hold, reason: str, incident: str) -> dict:
+    @staticmethod
+    def _why_not_killed(answer, hold: Hold) -> tuple[str, str]:
+        """(for the ledger, for the Response service and the in-memory event).
+
+        The first is our own fixed wording and names nothing. The second adds the
+        answer's own reason, which names PIDs and images, and is never recorded in a
+        block whose attribution is not certain.
+        """
+        if answer.kill_authorised and answer.pid != hold.pid:
+            safe = ("the kill gate is not satisfied for the frozen process: the closing answer names a "
+                    "different process")
+            return safe, safe
+        pending = ", still pending" if answer.pending else ""
+        safe = f"the kill gate is not satisfied at the horizon ({answer.confidence}{pending})"
+        return safe, f"{safe}: {answer.reason}"
+
+    def _resume(self, hold: Hold, safe: str, full: str, incident: str) -> dict:
         """Undo the freeze. Idempotent: resuming a released lease is a 200 that says it was not held.
 
-        On a failure the hold stays `held`: `release_all` tries again, and
-        failing that the Response service's expiry ends the lease.
+        On a failure the hold stays `held` - `release_all` tries again - unless the
+        lease has run out, in which case the Response service has resumed the process
+        and the hold is ended.
         """
-        payload = {"incident_id": incident, "reason": reason}
+        payload = {"incident_id": incident, "reason": full}
         # By lease when there is one; by PID when the suspend's answer was lost.
         payload.update({"lease_id": hold.lease_id} if hold.lease_id else {"process_id": hold.pid})
         resumed_at = attribution.iso_utc(time.time())
         try:
             status, body = self._call("/response/resume", payload, RESUME_TIMEOUT_S)
+            failure = None if status < 400 else f"HTTP {status}"
         except (httpx.HTTPError, ValueError) as exc:
+            status, body, failure = 0, {}, f"{type(exc).__name__}: {exc}"
+        if failure is not None:
             self.counts["resume_failed"] += 1
-            logger.warning("freeze-first: resuming lease %s failed (%s: %s); it expires at %s",
-                           hold.lease_id, type(exc).__name__, exc, hold.expires_at)
-            return hold.record("resume_failed", action="resume", reason=reason,
-                               detail=f"{type(exc).__name__}: {exc}; the lease expires on its own")
-        if status >= 400:
-            self.counts["resume_failed"] += 1
-            logger.warning("freeze-first: resuming lease %s was refused (HTTP %s); it expires at %s",
-                           hold.lease_id, status, hold.expires_at)
-            return hold.record("resume_failed", action="resume", reason=reason,
-                               detail=f"HTTP {status}; the lease expires on its own")
+            logger.warning("freeze-first: resuming lease %s failed (%s); it expires at %s",
+                           hold.lease_id, failure, hold.expires_at)
+            now = self._clock()
+            with self._lock:
+                stale = hold.stale(now)
+                if stale:
+                    self._end_stale(hold, now)
+            if stale:
+                self.counts["lease_expired"] += 1
+                return hold.record(
+                    "lease_expired", action="resume", reason=safe,
+                    detail=f"{failure}; the lease has run out and the Response service has resumed the process",
+                )
+            return hold.record("resume_failed", action="resume", reason=safe,
+                               detail=f"{failure}; the lease expires on its own")
         with self._lock:
             hold.state = "ended"
             hold.ended = self._clock()
@@ -608,11 +829,11 @@ class SuspendPolicy:
             self._cooldown[hold.pid] = self._clock() + COOLDOWN_S
         if body.get("resumed") is False:
             self.counts["resume_not_needed"] += 1
-            return hold.record("resume_not_needed", action="resume", reason=reason, resumed_at=resumed_at,
+            return hold.record("resume_not_needed", action="resume", reason=safe, resumed_at=resumed_at,
                                detail=f"the lease had already ended ({body.get('state')})")
         self.counts["resumed"] += 1
-        logger.info("freeze-first: lease %s resumed: %s", hold.lease_id, reason)
-        return hold.record("resumed", action="resume", reason=reason, resumed_at=resumed_at)
+        logger.info("freeze-first: lease %s resumed: %s", hold.lease_id, full)
+        return hold.record("resumed", action="resume", reason=safe, resumed_at=resumed_at, detail=full)
 
     # -- stop, shutdown, exit -------------------------------------------------
 
@@ -656,6 +877,9 @@ class SuspendPolicy:
                     failed += 1
                     logger.warning("freeze-first: releasing lease %s failed (%s); it expires at %s",
                                    hold.lease_id, exc, hold.expires_at)
+                    with self._lock:
+                        if hold.stale(self._clock()):
+                            self._end_stale(hold, self._clock())
                     continue
                 if status >= 400:
                     failed += 1
@@ -692,6 +916,7 @@ class SuspendPolicy:
             held = [h for h in self._holds.values() if h.state in ACTIVE]
             return {
                 "enabled": enabled(),
+                "paused": self._paused,
                 "lease_seconds": SUSPEND_LEASE_S,
                 "held": len(held),
                 "lease_ids": [h.lease_id for h in held if h.lease_id],
@@ -718,6 +943,14 @@ def release_all(reason: str, timeout: float | None = None) -> dict:
 
 def shutdown() -> dict:
     return POLICY.shutdown()
+
+
+def pause() -> None:
+    POLICY.pause()
+
+
+def unpause() -> None:
+    POLICY.unpause()
 
 
 def warm() -> None:

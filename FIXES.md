@@ -2640,6 +2640,93 @@ encrypted before the suspension; files encrypted before the kill; the matching
 safety-invariant table, the Response service, the gateway. C-16 keeps its
 figures. No dependency was added.
 
+### Review follow-ups, freeze-first, 2026-10-06
+
+An independent review of the Monitor side found defects. Each has a test of its
+own in `services/monitor/tests/test_suspend_review.py` (37 tests), written first
+and run on the reviewed tip: **29 failed, 7 passed in 18.72s** (the 7 are guards:
+the kill gate's independence of the hold's state, and the cases that already
+held). Excerpts, verbatim:
+
+1. **A kill waited for a suspend still in flight** (the close took the hold's
+   lock, held for the whole request: 0.87 s with a stuck suspend).
+   ```
+   E   AssertionError: the terminate went out 1.52s after the close: it waited for the freeze
+   E   assert 0.8026844999985769 < 0.5            (a close that is not a kill: "waited 0.80s for the suspend")
+   E   TypeError: SuspendPolicy.on_first_answer() got an unexpected keyword argument 'deadline'
+   ```
+   Now: a kill-authorised close reads the hold under the policy lock and takes no
+   other; while the request is in flight the terminate goes out at once without a
+   lease (the record says so), and the thread making the request does not resume
+   it. A close that is not a kill sets `close_requested` and returns
+   (`outcome: resume_deferred`); that thread resumes when its reply arrives, by
+   lease, or by PID if the reply was lost. No freeze starts once the question's
+   horizon has passed (`deadline`, `Question.settle_mono`, checked again when the
+   request thread starts). The kill decision still comes only from
+   `answer.kill_authorised`; a test runs `escalation_action` over confidence x
+   pending x PID x candidates x seven hold states (252 cases) and asserts a
+   terminate is sent if and only if the answer is kill-authorised.
+2. **`suspension.detail` and `reason` put a PID and an image path in a block that
+   is not certain** (C-16).
+   ```
+   E   assert 'detail' not in {'action': None, 'already_held': False, 'code': 'PID_REUSED', 'detail': 'PID 2376 is now C:\\Users\\victim\\AppData\\e...
+   E   assert ('10856' not in ['1', '2', '05', '2', '3000', '10856', ...])
+   E   AttributeError: module 'suspend_policy' has no attribute 'ledger_copy'
+   E   AttributeError: module 'urds_ledger_coverage_review' has no attribute 'unsupported_suspension'
+   ```
+   The `reason` carried the attribution's own words ("2 processes wrote this path
+   ... (pid, pid)"), not only `detail`. Now the chain gets
+   `suspend_policy.ledger_copy`: an allow-list of non-identifying keys, our own
+   fixed `reason` wording, any string with a path separator or the word PID
+   withheld; ids, codes and times from the Response service are shaped before use.
+   `detail` and the full reason stay on the in-memory event. The C-16 scan
+   (`ledger_coverage.unsupported_suspension`) fails a block whose `suspension` has
+   a key outside the same allow-list, or a string value (or top-level `lease_id`)
+   with a path separator or the word PID; `PID_REUSED` is a code, not the word.
+   `claim_matrix.py` is untouched and C-16 gives the same figures.
+3. **A failed or late resume left the hold `held` for ever** (a slow ledger makes
+   the Response service's reply late, so a successful resume read `resume_failed`).
+   ```
+   E   assert 'resume_failed' == 'lease_expired'
+   ```
+   A hold is stale once its lease length plus `MONITOR_SUSPEND_STALE_MARGIN_S`
+   (0.5 s) has passed on the monotonic clock; a resume that failed after that, or a
+   later incident of the PID, ends it (`outcome: lease_expired`), and the 30 s
+   cooldown runs from the end of the lease.
+4. **A suspend could start after `/monitor/stop` returned.**
+   ```
+   E   AssertionError: a suspend started after the Monitor stopped
+   E   KeyError: 'paused'
+   ```
+   `/monitor/stop` now pauses freeze-first first (the sweeper's re-ask is covered)
+   and `/monitor/start` lifts it; the question still closes and the kill is the
+   ordinary one.
+5. **The lifespan shutdown released nothing if the app left through an
+   exception** (`assert 0 == 1`, resume requests): `try`/`finally`.
+   `warm()` built a client with freeze-first off (`assert <httpx.Client ...> is
+   None`): it now respects `enabled()`.
+
+One test of the first freeze-first commit encoded the defect in (1)
+(`test_a_close_that_comes_while_the_suspend_is_in_flight_waits_for_it`, now
+`..._is_resumed_when_the_reply_arrives`); it was changed to the new contract and
+nothing else of the earlier tests was. The freeze-first tests honour
+`MONITOR_SUSPEND_FIRST`: under `=0` the ones that need it on are skipped, and
+`test_the_environment_alone_decides_whether_a_sole_writer_is_frozen` checks the
+off path end to end.
+
+**Suites** (monitor, after merging `fix/vm-2026-10-05-findings`, which has 785):
+default environment **823 passed** (785 + 38 new); `MONITOR_SUSPEND_FIRST=0` 752 passed, 68 skipped (the freeze-first tests that need it on), 3 failed in the full pass: `test_differential_entropy_catches_in_place_encryption_end_to_end`, `test_detected_event_carries_every_feature_the_model_scores` and `test_detection_latency_under_100ms`, the real-watcher and latency tests this file already records as failing when other agents load the host (other suites were running). Re-run with `=0`: `test_api.py` and `test_benchmarks.py` 50 passed, then 49 passed with the latency test failing once; that test alone, 3 of 3 passed.
+
+**Known limits, not changed here:**
+- A kill authorised after the lease has expired is the ordinary kill of a process
+  that has been running again since the expiry; freeze-first protects only the
+  stretch before it.
+- The terminate request carries no identity (image or start time), so the Response
+  service kills by PID alone; that predates freeze-first and is unchanged.
+- The resume of a spared writer goes through the escalation writer thread, behind
+  any ledger writes queued on it, so on a slow ledger it can come later than the
+  early close that asked for it; the lease's expiry is the bound.
+
 ## 27. The dashboard logged Streamlit's `use_container_width` deprecation on every refresh
 
 Found in the 2026-10-05 VM run: the open dashboard's log held 69,510 lines in 35

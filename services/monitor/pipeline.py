@@ -690,8 +690,9 @@ def _lease_after(lease: dict, action: dict) -> dict:
         return lease
     termination = action.get("termination")
     if termination is not None and termination.get("status") == "terminated":
-        return {**lease, "outcome": "terminated",
-                "reason": "killed at the horizon: the kill gate was satisfied; the kill carried the lease"}
+        # The lease's own reason stays: it says whether the kill carried the lease or
+        # went out without one because the suspend was still in flight.
+        return {**lease, "outcome": "terminated"}
     if action.get("response_dispatched_at") is None:
         # The kill was not sent (terminated earlier, PID reused, retry budget
         # spent). A frozen process cannot have lost its PID, so this is a
@@ -840,8 +841,13 @@ def record_escalation(
         # refused...) and why. No process id: the Response service's own
         # `process_suspended` / `process_resumed` blocks name it, with the gate
         # (C-16, scripts/ledger_coverage.py). Absent when nothing was asked.
-        record["lease_id"] = action["lease"].get("lease_id")
-        record["suspension"] = action["lease"]
+        # Only the allow-list of non-identifying fields (`suspend_policy.ledger_copy`):
+        # the free text - a refusal message, the answer's own reason - can name a PID and
+        # an image, which a block whose attribution is not certain may not (C-16). It
+        # stays on the in-memory event.
+        shown = suspend_policy.ledger_copy(action["lease"])
+        record["lease_id"] = shown.get("lease_id")
+        record["suspension"] = shown
     block = log_to_ledger(client, "attribution_escalation", record)
     return {"record": record, "block": block, "termination": termination, "result": result}
 

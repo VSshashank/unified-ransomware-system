@@ -37,6 +37,7 @@ import gzip
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -121,15 +122,53 @@ def unsupported_pid(event_data: dict, event_type: str | None = None) -> str | No
     return None
 
 
+#: What the nested `suspension` object of an `attribution_escalation` block may carry.
+#: Every field is non-identifying: ids the Response service made up, times, a refusal
+#: code, the Monitor's own fixed wording. The Monitor's copy of this list is
+#: `suspend_policy.LEDGER_FIELDS` (a test keeps the two equal). The free text that can
+#: name a PID and an image (`detail`) is not on it.
+SUSPENSION_FIELDS = frozenset({
+    "lease_id", "gate", "outcome", "suspended_at", "expires_at", "lease_seconds", "already_held", "code",
+    "action", "reason", "resumed_at", "shared_with_incident", "decided_by_incident",
+})
+#: A string that could name a process: a path separator, or the word PID (PID_REUSED is a code, not a PID).
+_IDENTIFYING = re.compile(r"[\\/]|\bpid\b", re.IGNORECASE)
+
+
+def unsupported_suspension(event_data: dict) -> str | None:
+    """Why this block's lease fields could name a process, or None.
+
+    The `process_id` rule above reads one field; a block can also name a process in
+    prose. A suspension is taken on an answer that is not CERTAIN, so its record in the
+    chain is held to: only the allow-list of keys, and no string value with a path
+    separator or the word PID, in `suspension` and in the top-level `lease_id`.
+    """
+    problems = []
+    suspension = event_data.get("suspension")
+    if suspension is not None:
+        if not isinstance(suspension, dict):
+            return "suspension is not an object"
+        extra = sorted(set(suspension) - SUSPENSION_FIELDS)
+        if extra:
+            problems.append(f"suspension carries {extra}, outside the allow-list of non-identifying fields")
+        for key, value in suspension.items():
+            if isinstance(value, str) and _IDENTIFYING.search(value):
+                problems.append(f"suspension.{key} contains a path separator or the word PID")
+    lease_id = event_data.get("lease_id")
+    if isinstance(lease_id, str) and _IDENTIFYING.search(lease_id):
+        problems.append("lease_id contains a path separator or the word PID")
+    return "; ".join(problems) or None
+
+
 def scan_writes(writes: list[dict]) -> dict:
-    """`unsupported_pid` over ledger writes shaped `{event_type, event_data}`."""
+    """`unsupported_pid` (and `unsupported_suspension`) over ledger writes shaped `{event_type, event_data}`."""
     offences = []
     named = 0
     for write in writes:
         data = write.get("event_data") or {}
         if data.get("process_id") is not None:
             named += 1
-        why = unsupported_pid(data, write.get("event_type"))
+        why = unsupported_pid(data, write.get("event_type")) or unsupported_suspension(data)
         if why is None:
             continue
         offences.append({
