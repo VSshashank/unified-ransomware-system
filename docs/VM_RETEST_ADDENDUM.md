@@ -11,9 +11,10 @@
 
 **Target:** the tip of branch `fix/vm-2026-10-05-findings`. Take the SHA from
 `git rev-parse HEAD` in the checkout under test and write it, with the date, in the
-report's title and "Environment" section, in place of `dc089ff`. It is **not
-pushed**: the operator makes the checkout available (for example
-`C:\URDS-fix1005`, a worktree of the `C:\URDS-main` repository).
+report's title and "Environment" section, in place of `dc089ff`. It was
+first run from a local worktree (`C:\URDS-fix1005`, a worktree of the `C:\URDS-main`
+repository) and is now also on GitHub. **Results of that run:**
+`docs/VM_RETEST_RESULTS_2026-10-06.md`.
 **Previous VM test of this lineage:** `dc089ff`, 2026-10-05
 (`reports/VM_TEST_REPORT_2026-10-05_dc089ff.md`, verdict **FAIL** on R16 and
 R14(b)). Report every comparison against its numbers.
