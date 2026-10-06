@@ -177,6 +177,14 @@ _escalator: threading.Thread | None = None
 # the pending thread when a question closes; one lock so they cannot both
 # start one.
 _ESCALATOR_LOCK = threading.Lock()
+# How many terminates may be in flight at once, each for a different PID
+# (`_KillLanes`; one PID never has two). 1 keeps them one at a time, as before;
+# see FIXES.md defect 22, review follow-ups (R-RACE), for why more is not the
+# default yet. Read when the escalation thread starts.
+KILL_WORKERS = max(1, int(os.getenv("MONITOR_KILL_WORKERS", "1")))
+# Escalation blocks owed (action taken, block not yet written) before a kill
+# worker waits for the ledger writer: only reached if the ledger is down.
+MAX_OWED_BLOCKS = max(1, int(os.getenv("MONITOR_MAX_OWED_BLOCKS", "4096")))
 
 # One incident per file, not per notification - F6, FIXES.md defect 25.
 # Windows reports one write as one to three notifications (`created`, then one
@@ -956,7 +964,7 @@ def _run_detection(client: httpx.Client, event: dict, features: dict, verdict: d
     finally:
         # The incident's own blocks are in the chain, or as far in as they are
         # going to get: an escalation closing from now on writes its block at
-        # once rather than queueing it behind this one (`_escalate_loop`).
+        # once rather than queueing it behind this one (`_Escalator`).
         _mark_in_chain(event.get("event_id"))
 
 
@@ -1200,8 +1208,66 @@ def _on_question_closed(question: attribution.Question, answer: attribution.Attr
     _escalations.put((question, answer, outcome))
 
 
-def _escalate_loop() -> None:
-    """Take each closed question's action now; write its block in order.
+class _KillLanes:
+    """Closed questions that authorise a kill, one FIFO lane per PID.
+
+    At most one question per PID is out at a time, so one process never has
+    two terminates in flight and its later questions see what its earlier one
+    found (`pipeline.TERMINATIONS`). Lanes with work are taken in turn: a
+    fresh PID waits for at most the requests already in flight, not for every
+    later question about a PID ahead of it. Keyed by PID alone, which is
+    stricter than PID plus start time: the Response service kills by PID.
+    Empty lanes are dropped, so this holds only what is queued.
+    """
+
+    def __init__(self) -> None:
+        self._cond = threading.Condition()
+        self._lanes: dict[int, deque] = {}
+        self._ready: deque[int] = deque()
+        self._busy: set[int] = set()
+        self._closed = False
+
+    def put(self, pid: int, item: tuple) -> None:
+        with self._cond:
+            lane = self._lanes.setdefault(pid, deque())
+            if not lane and pid not in self._busy:
+                self._ready.append(pid)
+            lane.append(item)
+            self._cond.notify()
+
+    def take(self) -> tuple[int, tuple] | None:
+        """The next PID's next question, or None once closed and nothing is ready."""
+        with self._cond:
+            while not self._ready:
+                if self._closed:
+                    return None
+                self._cond.wait()
+            pid = self._ready.popleft()
+            self._busy.add(pid)
+            return pid, self._lanes[pid].popleft()
+
+    def done(self, pid: int) -> None:
+        with self._cond:
+            self._busy.discard(pid)
+            if self._lanes.get(pid):
+                self._ready.append(pid)
+                self._cond.notify()
+            else:
+                self._lanes.pop(pid, None)
+
+    def close(self) -> None:
+        """Workers drain what is queued, then stop."""
+        with self._cond:
+            self._closed = True
+            self._cond.notify_all()
+
+    def __len__(self) -> int:
+        with self._cond:
+            return sum(len(lane) for lane in self._lanes.values())
+
+
+class _Escalator(threading.Thread):
+    """Take each closed question's action now; write its block as soon as it may go.
 
     The kill a CERTAIN answer authorises goes out the moment the question
     closes. Its `attribution_escalation` block has to follow the incident's
@@ -1210,56 +1276,121 @@ def _escalate_loop() -> None:
     queued on `_work` behind it (it is FIFO, and the incident's detection was
     queued before its question opened), and only the block waits.
 
-    A process this thread has already had killed is not asked about again
-    (`pipeline.TERMINATIONS`, defect 22): behind one writer's burst its later
-    questions used to cost a refused round trip each, in front of the next
-    writer's kill.
+    A process this Monitor has already had killed is not asked about again
+    (`pipeline.TERMINATIONS`, defect 22), and one whose kill went unconfirmed
+    too often for a write is not asked again about that write (R-RACE (b)).
 
-    Actions come before blocks: while another question is queued, its action
-    is taken before any owed block is written, so a kill never waits behind
-    another question's ledger write. A question with nothing queued behind it
-    and no blocks owed is closed by `pipeline.escalate`, action then block, as
-    before. Either way each block follows its own action and its incident's
-    own blocks, in queue order, and a question is `task_done` only once its
-    block is written or queued.
+    Three kinds of thread, so that no kill waits on a ledger write (R-RACE (c),
+    (d)) or on another PID's later questions:
+    - this one (`monitor-escalation-intake`) only reads `_escalations` and
+      routes: a question that authorises a kill to its PID's lane
+      (`_KillLanes`), any other straight to the writer. It does no I/O;
+    - `KILL_WORKERS` kill workers take the action (`pipeline.escalation_action`)
+      and hand the result to the writer;
+    - the writer (`monitor-escalation`) builds the one HTTP client they all
+      share when the watch starts, and writes each block - or queues it on
+      `_work` - in the order the actions finish. A question with no kill to
+      take is closed there by `pipeline.escalate`, which then makes no request.
+    A question is `task_done` only once its block is written or queued. The
+    sentinel None stops it: every question already taken is acted on, every
+    block owed is written, and all of its threads have exited before the
+    sentinel is `task_done`.
     """
-    pipeline.bind_escalation_thread(_probe_for_escalation)
-    client = httpx.Client(timeout=pipeline.DOWNSTREAM_TIMEOUT)
-    owed: deque = deque()  # acted on; block not yet written
-    try:
+
+    def __init__(self, inbox: queue.Queue, workers: int) -> None:
+        super().__init__(name="monitor-escalation-intake", daemon=True)
+        self.inbox = inbox
+        self.client: httpx.Client | None = None
+        self.client_ready = threading.Event()
+        self.lanes = _KillLanes()
+        self.owed: queue.Queue = queue.Queue(maxsize=MAX_OWED_BLOCKS)
+        self.writer = threading.Thread(target=self._write, name="monitor-escalation", daemon=True)
+        self.workers = [
+            threading.Thread(target=self._kill, name=f"monitor-escalation-kill-{n}", daemon=True)
+            for n in range(max(1, int(workers)))
+        ]
+
+    def threads(self) -> list[threading.Thread]:
+        return [self, self.writer, *self.workers]
+
+    def run(self) -> None:
+        self.writer.start()
+        for worker in self.workers:
+            worker.start()
         while True:
-            if owed:
-                try:
-                    item = _escalations.get_nowait()
-                except queue.Empty:
-                    _escalation_record(client, *owed.popleft())
-                    _escalations.task_done()
-                    continue
-            else:
-                item = _escalations.get()
+            item = self.inbox.get()
             if item is None:
-                while owed:
-                    _escalation_record(client, *owed.popleft())
-                    _escalations.task_done()
-                _escalations.task_done()
-                return
-            if not owed and _escalations.empty():
-                try:
-                    _escalate_one(client, item)
-                finally:
-                    _escalations.task_done()
-                continue
-            done = _escalation_act(client, item)
-            if done is None:
-                _escalations.task_done()
+                break
+            self._route(item)
+        # What was put before the sentinel was seen is still handled.
+        while True:
+            try:
+                item = self.inbox.get_nowait()
+            except queue.Empty:
+                break
+            if item is None:
+                self.inbox.task_done()
             else:
-                owed.append(done)
-    finally:
-        client.close()
+                self._route(item)
+        self.lanes.close()
+        for worker in self.workers:
+            worker.join()
+        self.owed.put(None)
+        self.writer.join()
+        self.inbox.task_done()
+
+    def _route(self, item: tuple) -> None:
+        try:
+            _, answer, _ = item
+            if getattr(answer, "kill_authorised", False):
+                self.lanes.put(int(answer.pid), item)
+                return
+        except Exception:  # a malformed item still gets closed, by the writer
+            logger.exception("escalation could not be routed")
+        self.owed.put(("escalate", item))
+
+    def _kill(self) -> None:
+        pipeline.bind_escalation_thread(_probe_for_escalation)
+        self.client_ready.wait()
+        while True:
+            taken = self.lanes.take()
+            if taken is None:
+                return
+            pid, item = taken
+            try:
+                done = _escalation_act(self.client, item)
+            finally:
+                self.lanes.done(pid)
+            if done is None:
+                self.inbox.task_done()
+            else:
+                self.owed.put(("record", done))
+
+    def _write(self) -> None:
+        try:
+            self.client = httpx.Client(timeout=pipeline.DOWNSTREAM_TIMEOUT)
+        finally:
+            self.client_ready.set()
+        try:
+            while True:
+                entry = self.owed.get()
+                if entry is None:
+                    return
+                kind, payload = entry
+                try:
+                    if kind == "escalate":
+                        _escalate_one(self.client, payload)
+                    else:
+                        _escalation_record(self.client, *payload)
+                finally:
+                    self.inbox.task_done()
+        finally:
+            if self.client is not None:
+                self.client.close()
 
 
 def _escalate_one(client: httpx.Client, item: tuple) -> None:
-    """A question with nothing queued behind it: action, then block if it can go now."""
+    """A question with no kill to take: its (empty) action, then its block if it can go now."""
     question, answer, outcome = item
     event = question.context if isinstance(question.context, dict) else {}
     try:
@@ -1359,7 +1490,7 @@ def _ensure_escalator() -> None:
     global _escalator
     with _ESCALATOR_LOCK:
         if _escalator is None or not _escalator.is_alive():
-            _escalator = threading.Thread(target=_escalate_loop, name="monitor-escalation", daemon=True)
+            _escalator = _Escalator(_escalations, KILL_WORKERS)
             _escalator.start()
 
 

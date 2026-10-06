@@ -14,7 +14,7 @@ import logging
 import os
 import threading
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
@@ -314,6 +314,11 @@ def request_termination(
 #: How many confirmed kills the escalation thread remembers, and for how long.
 MAX_TERMINATIONS = int(os.getenv("MONITOR_MAX_TERMINATIONS", "1024"))
 TERMINATION_MEMORY_S = float(os.getenv("MONITOR_TERMINATION_MEMORY_S", "600"))
+#: How many unconfirmed terminates (refused, timed out, unreachable) of one
+#: process cover a write made before them (defect 22, R-RACE (b)): the first
+#: attempt and one retry. A question about such a write is then closed as
+#: `termination_unconfirmed_earlier` instead of paying another full timeout.
+UNCONFIRMED_ATTEMPTS = max(1, int(os.getenv("MONITOR_UNCONFIRMED_ATTEMPTS", "2")))
 
 
 @dataclass(frozen=True)
@@ -375,26 +380,71 @@ class Termination:
 
 
 class TerminationRegistry:
-    """Confirmed kills, bounded in number and age. Thread-safe."""
+    """Confirmed kills, bounded in number and age. Thread-safe.
+
+    It also keeps, apart, the terminates that were asked for and *not*
+    confirmed (`remember_unconfirmed`): the last `UNCONFIRMED_ATTEMPTS` per
+    process, under the same count and age bounds. They are never treated as
+    kills - `find`, `entries` and `len` see confirmed kills only.
+    """
 
     def __init__(
         self,
         max_entries: int = MAX_TERMINATIONS,
         memory_s: float = TERMINATION_MEMORY_S,
         clock: Callable[[], float] = time.monotonic,
+        unconfirmed_attempts: int = UNCONFIRMED_ATTEMPTS,
     ) -> None:
         self.max_entries = int(max_entries)
         self.memory_s = float(memory_s)
         self.clock = clock
+        self.unconfirmed_attempts = max(1, int(unconfirmed_attempts))
         self._items: "OrderedDict[tuple[int, float | None], Termination]" = OrderedDict()
+        self._unconfirmed: "OrderedDict[tuple[int, float | None], deque[Termination]]" = OrderedDict()
         self._lock = threading.Lock()
 
     def _expire(self, now: float) -> None:
         while self._items:
             oldest = next(iter(self._items.values()))
             if len(self._items) <= self.max_entries and now - oldest.remembered_mono <= self.memory_s:
-                return
+                break
             self._items.popitem(last=False)
+        while self._unconfirmed:
+            newest_of_oldest = next(iter(self._unconfirmed.values()))[-1]
+            if (len(self._unconfirmed) <= self.max_entries
+                    and now - newest_of_oldest.remembered_mono <= self.memory_s):
+                break
+            self._unconfirmed.popitem(last=False)
+
+    def remember_unconfirmed(
+        self,
+        pid: int,
+        created_at: float,
+        image: str | None,
+        incident_id: str,
+        dispatched_at: float,
+        dispatched_mono: float | None = None,
+    ) -> Termination:
+        """A terminate of this process that was refused, timed out or unreachable."""
+        now = self.clock()
+        entry = Termination(int(pid), created_at, image, incident_id, dispatched_at, now, dispatched_mono)
+        with self._lock:
+            key = (entry.pid, created_at)
+            attempts = self._unconfirmed.pop(key, None) or deque(maxlen=self.unconfirmed_attempts)
+            attempts.append(entry)
+            self._unconfirmed[key] = attempts
+            self._expire(now)
+        return entry
+
+    def unconfirmed(self, pid: int, created_at: float | None = None) -> list[Termination]:
+        """Remembered unconfirmed terminates of one process (or of every process
+        on `pid` when `created_at` is None), newest first within each process."""
+        with self._lock:
+            self._expire(self.clock())
+            if created_at is not None:
+                return list(reversed(self._unconfirmed.get((int(pid), created_at), ())))
+            return [e for (p, _), attempts in self._unconfirmed.items() if p == int(pid)
+                    for e in reversed(attempts)]
 
     def remember(
         self,
@@ -442,6 +492,7 @@ class TerminationRegistry:
     def clear(self) -> None:
         with self._lock:
             self._items.clear()
+            self._unconfirmed.clear()
 
     def __len__(self) -> int:
         with self._lock:
@@ -450,10 +501,10 @@ class TerminationRegistry:
 
 TERMINATIONS = TerminationRegistry()
 
-# Only the thread bound here - the Monitor's escalation thread
-# (app._escalate_loop) - consults and fills TERMINATIONS. Anything else that
-# calls `escalate` or `escalation_action`, such as the safety-invariant tests,
-# asks the Response service every time, as it always did.
+# Only the threads bound here - the Monitor's escalation kill workers
+# (app._Escalator) - consult and fill TERMINATIONS. Anything else that calls
+# `escalate` or `escalation_action`, such as the safety-invariant tests, asks
+# the Response service every time, as it always did.
 _ESCALATION_THREAD = threading.local()
 
 
@@ -520,6 +571,43 @@ def _writer_started_at(answer: "attribution.Attribution", facts) -> float | None
     return facts.created_at
 
 
+def _unconfirmed_earlier(
+    answer: "attribution.Attribution", facts, read_mono: float | None = None
+) -> list[Termination]:
+    """The unconfirmed terminates that already cover this answer, newest first, or [].
+
+    R-RACE (b): a terminate that times out or finds the Response service
+    unreachable was not remembered, so each later question about the same
+    process paid the full timeout again (3 s each live), one after another.
+
+    Covered means: at least `UNCONFIRMED_ATTEMPTS` terminates of one process
+    were asked for after this answer's write and none was confirmed. The
+    process is the one the probe sees now (same PID *and* start time), or, if
+    the PID is gone, any process on it; and each attempt must be about this
+    write (`Termination.wrote`: same image, started by the write, the write
+    before the request on both clocks). A write made after them, a different
+    live process on the PID, or a probe that failed all ask the Response
+    service as before.
+    """
+    if facts is False:
+        return []
+    if facts is None:
+        attempts = TERMINATIONS.unconfirmed(answer.pid)
+    else:
+        started_at = _writer_started_at(answer, facts)
+        if started_at is None:
+            return []
+        attempts = TERMINATIONS.unconfirmed(answer.pid, started_at)
+    covering: dict[float | None, list[Termination]] = {}
+    for entry in attempts:
+        if entry.wrote(answer, read_mono):
+            covering.setdefault(entry.created_at, []).append(entry)
+    for entries in covering.values():
+        if len(entries) >= TERMINATIONS.unconfirmed_attempts:
+            return entries
+    return []
+
+
 def escalate(
     client: httpx.Client,
     event: dict,
@@ -540,7 +628,7 @@ def escalate(
     The two halves, `escalation_action` and `record_escalation`, are also
     called apart: the Monitor takes the action the moment a question closes,
     and writes the block only once the incident's own blocks are in the chain
-    (app._escalate_loop).
+    (app._Escalator).
     """
     action = escalation_action(client, question, answer)
     return record_escalation(client, event, question, answer, outcome, action)
@@ -566,6 +654,12 @@ def escalation_action(
     and the action carries `pid_reused_before_kill`. A probe that fails, a PID
     that is gone, or a start time that cannot be read is not proof, and the
     request goes out exactly as before.
+
+    Also on the escalation thread, a request that is not confirmed is
+    remembered (never as a kill). Once `UNCONFIRMED_ATTEMPTS` of them about this
+    write by this process have gone unconfirmed, a further question about it is
+    not asked again: the action carries `termination_unconfirmed_earlier`
+    (`_unconfirmed_earlier`). A later write by the process is asked for anew.
     """
     termination = None
     dispatched_at = None
@@ -586,13 +680,24 @@ def escalation_action(
                             "process_image": facts.image,
                         }}
             started_at = _writer_started_at(answer, facts)
+            unconfirmed = _unconfirmed_earlier(answer, facts, getattr(question, "horizon_from", None))
+            if unconfirmed:
+                return {"termination": None, "response_dispatched_at": None,
+                        "termination_unconfirmed_earlier": {**unconfirmed[0].as_record(),
+                                                            "attempts": len(unconfirmed)}}
         dispatched_epoch = time.time()
         dispatched_mono = time.perf_counter()
         dispatched_at = utc_now()
         termination = request_termination(client, question.key, answer)
-        if probe is not None and termination is not None and termination.get("status") == "terminated":
-            TERMINATIONS.remember(answer.pid, started_at, answer.image, question.key, dispatched_epoch,
-                                  dispatched_mono)
+        if probe is not None:
+            if termination is not None and termination.get("status") == "terminated":
+                TERMINATIONS.remember(answer.pid, started_at, answer.image, question.key, dispatched_epoch,
+                                      dispatched_mono)
+            elif started_at is not None:
+                # Refused, timed out or unreachable: never a kill, but remembered so
+                # that the process's later questions do not each pay it again.
+                TERMINATIONS.remember_unconfirmed(answer.pid, started_at, answer.image, question.key,
+                                                  dispatched_epoch, dispatched_mono)
     return {"termination": termination, "response_dispatched_at": dispatched_at}
 
 
@@ -608,6 +713,12 @@ def escalation_result(answer: "attribution.Attribution", action: dict) -> str:
         # started after the write; no kill was asked for, so nothing innocent
         # was killed and the writer was not either.
         return "pid_reused_before_kill"
+    if action.get("termination_unconfirmed_earlier"):
+        # This process's kill was already asked for, after this write, and not
+        # confirmed (refused, timed out or unreachable) as many times as the
+        # retry budget allows; nothing was asked again for this question. Not a
+        # kill: the process may still be running.
+        return "termination_unconfirmed_earlier"
     if action.get("termination") is None:
         # 409 from the guard, or unreachable. The Response service's own block
         # carries the refusal reason when it was reachable.
@@ -671,6 +782,10 @@ def record_escalation(
         # Why the authorised kill was not sent: the write's time against the
         # start time of the process that held the PID at dispatch.
         record["pid_reused_before_kill"] = action["pid_reused_before_kill"]
+    if action.get("termination_unconfirmed_earlier"):
+        # The latest unconfirmed attempt (its incident and time) and how many
+        # there were: where an auditor finds the refusals or the silence.
+        record["termination_unconfirmed_earlier"] = action["termination_unconfirmed_earlier"]
     block = log_to_ledger(client, "attribution_escalation", record)
     return {"record": record, "block": block, "termination": termination, "result": result}
 
