@@ -25,7 +25,7 @@ R14(b)). Report every comparison against its numbers.
 
 | Item | State on this branch |
 |---|---|
-| R16 - a kill waited behind another writer's escalations | Fixed in code (defect 22 and its review follow-ups: a killed or reused PID costs no round trip, ledger writing is off the kill path). **Not proven live.** One limit stays: kills for many *distinct* PIDs are still sent one at a time (`MONITOR_KILL_WORKERS` defaults to 1; 16 workers meets the bound in the unit test but breaks one test that assumes serial order, so it is off). R22's single-burst scenario does not depend on it; a 20-different-PID flood does, so report that case if you run it. |
+| R16 - a kill waited behind another writer's escalations | Fixed in code (defect 22 and its review follow-ups: a killed or reused PID costs no round trip, ledger writing is off the kill path). **Not proven live.** Kills for many *distinct* PIDs now run in a pool (`MONITOR_KILL_WORKERS` defaults to 16; 1 restores one at a time), and 20 different PIDs at 300 ms per terminate are all requested within 1 s in the unit test. Not proven live: report the 20-different-PID flood if you run it. |
 | R14(b) - the demo's PID and event matching | Fixed in code (defect 23). **Not proven live.** |
 | F3 - `--restore` after a mid-rewrite kill | Fixed in code (defect 24). |
 | F6 - one incident per write, not per notification | Fixed where a question is open, i.e. elevated (defect 25). |
