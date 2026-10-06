@@ -1,6 +1,6 @@
 """Replay the 2026-10-05 elevated run's notification shape through handle_event.
 
-usage: python replay_f6.py <monitor_dir> <out.json>
+usage: python scripts/defect25_replay.py <monitor_dir> <out.json>
 
 Shape source: run2's real ledger (C:\\URDS-latest-run\\20261005_203206\\run2\\data\\ledger.db).
 Per suspicious path: the sequence of watchdog notifications that each produced a

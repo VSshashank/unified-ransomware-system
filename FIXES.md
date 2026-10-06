@@ -30,6 +30,12 @@ claims they no longer describe are marked **re-verification pending**.
 | 19 | The dashboard's Field / Value tables raised `ArrowTypeError` every refresh | `69e2c9e` |
 | 20 | Two Security-channel subscriptions per Monitor start | `bb59077` |
 | 21 | The PE parser opened files without `FILE_SHARE_DELETE` | `c96a94f` |
+| 22 | A kill still waited behind another writer's escalations (R16) | `5615dbd` |
+| 23 | The demo recorded the wrong PID and matched the wrong events (R14(b)) | `cace563` |
+| 24 | `--restore` could not return the file the simulator was killed on (F3) | `a30baf5` |
+| 25 | One incident per watchdog notification, not per file (F6) | `8554a70` |
+| 26 | F2b, Response side only: suspend, resume and leases (Monitor side not delivered) | `7566905` |
+| 27 | The dashboard logged a Streamlit deprecation on every refresh | `d4eb382` |
 
 ## The safety invariant
 
@@ -857,23 +863,46 @@ kill should come about 1.6 s after its write, not 6.9 s.
 for a fast encryptor. F2b, suspending the writer before then, is blocked (see
 "F2b: blocked" below).
 
-## F2b: blocked
+## F2b: what is and is not delivered
 
-F2b in the 2026-10-04 fix-and-verify brief asked for suspend-first response:
-suspend a sole writer on a gate weaker than the kill gate, kill it at the
-horizon if it is still the only writer, and resume it otherwise, with every
-suspension a lease the Response service holds and expires. **It was not
-implemented in this session.** While the design was being written, the
-assistant's response was stopped by its own safety system, and that work was
-not resumed. Nothing was added for it: no suspend or resume endpoint, no gate,
-no lease, no ledger block type.
+F2b asks for suspend-first response: suspend a sole writer on a gate weaker than
+the kill gate, kill it at the horizon if it is still the only writer, resume it
+otherwise, with every suspension a lease that expires on its own.
+
+**2026-10-04 session:** not implemented. While the design was being written the
+assistant's response was stopped by its own safety system and the work was not
+resumed.
+
+**2026-10-05 session:** split into two packages.
+- **Response side (E1): delivered**, defect 26 below. The Response service can
+  suspend and resume a process under a lease, resumes everything it holds when a
+  lease expires, when it stops, and (through a separate watchdog process) when it
+  is killed outright, and records every suspension, resume and refusal in the
+  ledger.
+- **Monitor side (E2): not delivered.** Package E2 (the `suspend_authorised`
+  gate, `suspend_policy.py`, the suspend/resume leg of the C-16 scan, and the
+  F2c measurement tool) stopped before writing any file: part of its output was
+  blocked by a safety classifier while it designed the policy, and it declined to
+  continue. It was resumed once and declined again. The maintainer decided to
+  skip it and keep merging the rest. Nothing was written for it, and nothing
+  else was changed to stand in for it.
 
 What follows from that:
-- F2c (files encrypted before suspension, time from a 4663's delivery to the
-  suspend) could not be measured.
-- TC-01 for the fast families is unchanged by this session, except for what
-  F2a gives a fresh writer queued behind a burst.
-- The decision to implement it, here or elsewhere, is the maintainer's.
+- **Nothing on this branch suspends a writer.** The Response routes exist and
+  are tested against real child processes, but no component of the Monitor calls
+  them. The kill path, the kill gate and the horizon are exactly as before.
+- **F2c** (files encrypted before suspension; time from a 4663's delivery to the
+  suspend) cannot be measured, because there is no suspend to measure.
+- **TC-01 for the fast families is unchanged by this session**, except for the
+  help R16's fix gives a fresh writer queued behind a burst.
+- A finding from the aborted attempt, for whoever builds it: the Monitor's first
+  answer in `_correlate` rarely names a PID (the 4663 arrives a median 888-985 ms
+  later), so the early-suspend trigger belongs where a pending question is
+  re-asked (`PendingAttribution.sweep`, the `recheck` branch), not only in
+  `_correlate`. Joining a lease to the kill needs a one-line change in
+  `pipeline.request_termination`.
+- The decision to build the Monitor side, here or elsewhere, is the
+  maintainer's.
 
 ## 17. The audit setup's probe reported a working folder as broken (F4)
 
@@ -1103,6 +1132,956 @@ only).
   `C:\URDS-recheck\v2\base_proofs\s3_pefile_share_delete_base.txt`.
 - `test_pe_features.py` (13) passes unchanged.
 
+## 22. A kill still waited behind another writer's escalations (R16)
+
+Found by the full VM test of 2026-10-05 (R16 in
+`VM_TEST_REPORT_2026-10-05_dc089ff.md`). Defect 16 fixed the queue in front of
+the question (`_work`); this is the queue behind it.
+
+**Measured:**
+- 20 rapid writes by process A, then one write by a fresh process B that
+  stays alive.
+- B's write to B's PID gone: 5.55, 8.73, 3.01, 5.47 and 2.86 s, then 2.39,
+  6.25 and 2.00 s on the re-run. That is 1 of 8 within 2.05 s.
+- B's question closed on time (`horizon_closed_at` about 1.55 s after
+  `observed_at`). Its `/response/terminate` went out 0.9-8.7 s later.
+- In front of it were 4-22 of A's escalations, sent one at a time,
+  0.30-0.38 s apart. Only the first succeeded. Every later one was refused
+  with "PID ... does not exist". The ledger order was `A+ A- A- ... A- B+ B-`.
+
+Where each refused request's time went, measured here before choosing a fix.
+The real Response handler ran in-process against a local ledger stub, with a
+PID that does not exist, timed with `perf_counter` (median of 8 runs):
+
+| | on `dc089ff` | this commit |
+|---|---|---|
+| terminate handler, refusing a dead PID, end to end | **252 ms** | **36 ms** |
+| of which the ledger write (`log_action`) | 200 ms | 3-13 ms |
+| of which `actions.guard` (mostly `_self_and_ancestors`, a psutil walk of the process tree) | 27 ms | 35 ms (unchanged code) |
+| `httpx.Client()` construction alone | 189 ms | 211 ms |
+
+Measured with a throwaway script (a real `/response/terminate` for a dead PID
+against the Response app in-process, `perf_counter`); it is not kept in the repo.
+A Monitor probe of a PID (`attribution.probe_process`) costs about 0.01 ms
+here, live or dead.
+
+**Cause:** there were three, and each one stacked on the others.
+1. `_escalate_loop` is one thread. It asked the Response service to kill A
+   once for every closed `certain` question naming A, and F6 gives A 2-4
+   questions per file. After the first request killed A, every later request
+   still made the full round trip and was refused.
+2. Each refusal cost about 250 ms in the Response service. Its `log_action`
+   called `httpx.post`, which builds a new `httpx.Client` for every block: an
+   SSL context plus certifi's CA bundle. That took 200 ms of each refusal on
+   this VM. The same POST on a reused client takes 5 ms.
+3. When the incident's own blocks were already in the chain, each question's
+   `attribution_escalation` block was written inline (`pipeline.escalate`)
+   before the next question's action was taken. So even a free action still
+   waited behind one ledger write per question queued ahead of it.
+
+`test_escalation_bypasses_backlog.py` stubs the Response call as instant, so
+it could not see any of this.
+
+**What changed:**
+- `services/monitor/pipeline.py`: the Monitor remembers each kill it has
+  already made.
+  - `TerminationRegistry` / `pipeline.TERMINATIONS` holds every kill the
+    Response service confirmed (`status: terminated`). It is keyed by
+    **PID plus the process's start time** and also records the image, the
+    incident and when the request went out. It is bounded:
+    `MONITOR_MAX_TERMINATIONS` (1024) entries, kept for
+    `MONITOR_TERMINATION_MEMORY_S` (600 s, monotonic).
+  - Before the request, `escalation_action` probes the start time of the
+    process it is about to kill (`_writer_started_at`). The value is recorded
+    only if that process could be the writer: started no later than the
+    write, plus the tolerance.
+  - A later answer is closed without a request (`_killed_earlier`) only if
+    both of these hold:
+    - its write was made by the killed process (`Termination.wrote`): same
+      image, the process started by the time of the write, and the write came
+      before the kill was asked for;
+    - the PID is now gone, or it now belongs to a process that started after
+      the write and so cannot have made it.
+  - If the probe fails, or the killed process is somehow still there, the
+    request goes out as before.
+  - Such a question closes with the new result **`terminated_earlier`**
+    (`escalation_result`). Its block names the incident whose kill it was
+    (`terminated_earlier: {incident_id, response_dispatched_at,
+    process_started_at}`), plus `termination: null` and
+    `response_dispatched_at: null`. The answer stays `certain`, so the block
+    names the PID, as C-16 allows.
+  - Only the escalation thread uses the registry
+    (`bind_escalation_thread`, a thread-local probe). `pipeline.escalate`
+    called anywhere else, including directly by the safety-invariant tests,
+    asks the Response service every time, as before. The `escalate()`
+    contract and `escalation_action`'s signature are unchanged.
+- `services/monitor/app.py` `_escalate_loop`: actions come before blocks.
+  - It binds the attributor's probe.
+  - While another question is queued, that question's action is taken before
+    any owed block is written (`_escalation_act`, then `_escalation_record`).
+  - A question with nothing queued behind it and no blocks owed still closes
+    through `pipeline.escalate` (`_escalate_one`).
+  - Each block still follows its own action and its incident's
+    `response_action` block (`_incident_in_chain`, `_work`), in queue order.
+  - A question is `task_done` only once its block is written or queued.
+- `services/response/app.py`: `log_action` uses one shared `httpx.Client`
+  (`_ledger_client`). It is built on a thread when the service starts, so
+  the first kill's block does not pay for it either.
+- (b) of the brief, a pool that dispatches different PIDs concurrently, was
+  **not built**. (a) and the reordering meet the bound. What is still serial
+  is one real kill in flight: about 300 ms in the stub. After the Response
+  fix it is expected to be tens of ms on the VM, but that is not measured yet
+  (see Check on Windows).
+
+**Tests:** `services/monitor/tests/test_escalation_behind_other_writers.py`
+(7).
+- Setup: the escalation thread is fed directly with 22 of A's closed
+  `certain` questions (2-4 per file over 8 files, the F6 shape), then B's.
+  The Response stub takes 300 ms per call and refuses a PID that is not
+  running, as the real one does. Ledger writes take 20 ms. The thread's
+  client is built before anything is timed, as `/monitor/start` does.
+- `test_a_fresh_writers_kill_is_not_queued_behind_a_dead_writers_escalations`:
+  B's request must go out within 500 ms of its question closing, and A gets
+  exactly one request.
+  - **This commit: 0.302 s, 3 runs out of 3** (0.302, 0.302, 0.302). The
+    0.30 s is A's own kill, in flight when B closed.
+  - **On `dc089ff`: 7.09 s with 22 requests to A, fail** (7.49 s on a first
+    run).
+- `test_the_later_questions_about_a_killed_process_say_so_truthfully`: the
+  later questions say `terminated_earlier`, name A and the first incident,
+  and record no dispatch. **On `dc089ff`: fail**, 4 requests for 4 questions.
+- `test_a_stale_answer_about_the_killed_process_does_not_kill_the_pids_new_owner`:
+  the PID is reused, with the same image, before A's second question is
+  dispatched. The new owner must not be killed for A's write. **On
+  `dc089ff`: fail, the new owner was killed.** This is a wrong-PID kill on
+  the base commit, closed here as a side effect.
+- Guards that pass on base by construction and pin what the fix must not
+  break:
+  - `test_a_fresh_pid_is_never_skipped_because_another_pid_was_killed`: same
+    image, different PID;
+  - `test_a_reused_pid_is_still_killed_when_its_own_answer_is_certain`: same
+    PID number, a later start time, a write after the kill;
+  - `test_a_reused_pid_whose_new_owner_also_exited_is_not_called_terminated_earlier`;
+  - `test_direct_escalate_callers_are_unchanged`.
+
+`services/response/tests/test_ledger_client_reused.py` (2). Every
+`httpx.Client` built is counted, with a mock transport as the ledger.
+- 5 ledger writes must build one client.
+- 4 refusals of a dead PID must build at most one, and still write 4 blocks.
+- **Both fail on `dc089ff`**: "5 httpx clients built for 5 ledger writes"
+  and "4 httpx clients built for 4 refusals".
+
+On-base proof (the new tests run against a `git archive` of `dc089ff`):
+```
+FAILED tests/test_escalation_behind_other_writers.py::test_a_fresh_writers_kill_is_not_queued_behind_a_dead_writers_escalations
+FAILED tests/test_escalation_behind_other_writers.py::test_the_later_questions_about_a_killed_process_say_so_truthfully
+FAILED tests/test_escalation_behind_other_writers.py::test_a_stale_answer_about_the_killed_process_does_not_kill_the_pids_new_owner
+3 failed, 4 passed in 14.17s              (monitor)
+FAILED tests/test_ledger_client_reused.py::test_ledger_writes_share_one_http_client
+FAILED tests/test_ledger_client_reused.py::test_refusing_a_dead_pid_builds_no_client_per_request
+2 failed in 1.22s                         (response)
+```
+
+Suites, same venv:
+- monitor: 570 before, 577 after (570 + 7).
+  - The first full run here had 4 failures while other agents loaded the 4
+    vCPUs. Three were latency budgets: `test_detection_latency_under_100ms`,
+    `test_b_the_same_twenty_through_one_lane_still_take_one_grace` and
+    `test_lock_retry_stays_inside_the_detection_budget`.
+  - The fourth was `test_c_response_dispatched_at_is_recorded_when_the_pipeline_asks`,
+    where the wall clock read 1 µs earlier than before, in `pipeline.run`'s
+    path, which this commit does not touch.
+  - All 4 passed when run alone, and the next full run was 577 passed;
+- response: 127 before, 129 after (+2 skipped, unchanged);
+- gateway 91, ledger 99 and dashboard 4, unchanged.
+
+**Check on Windows** (for the addendum):
+- R16: 20 rapid writes by A, then one write by a fresh B. B's write to B's
+  PID gone must be ≤ 2.05 s in **8 of 8** runs.
+- `e2e_check.py` D1 straight after the D3 burst: about 1.6 s, not 4.03 s.
+- In the ledger, the count of `termination_refused_or_unreachable` results
+  on `certain` answers should fall sharply (it was 99). `terminated_earlier`
+  appears in its place, one per extra question about an already-killed PID.
+- The Response service's own `response_action` blocks for refused
+  terminates should mostly disappear, because the requests are no longer
+  sent.
+- Time one real `/response/terminate` that succeeds, on the VM. It is the
+  one cost still serial on the escalation thread.
+
+**Not changed:**
+- The kill gate (`Attribution.kill_authorised`), `Attributor.verify`, the
+  horizon, `COMPETITION_MS`, `WINDOW_MS`, and every test in the
+  safety-invariant table.
+- A request is skipped only when it is known to be about an already-killed
+  process. A PID never killed, a reused PID's own write, and an unprobeable
+  PID all make the request as before.
+- `pipeline.escalate`'s contract and `escalation_action`'s signature
+  (package E2 hooks it).
+- C-16: a `terminated_earlier` block names the PID only because the answer
+  is `certain`.
+- No bound-claim script enumerates escalation results (`claim_matrix.py`,
+  `ledger_coverage.py`, `tamper_sweep.py`, `pipeline_governance.py`), and no
+  report was regenerated.
+- Outside this package, reported rather than changed:
+  - `actions.guard` walks the process tree (`_self_and_ancestors`, about
+    30 ms) before it checks that the PID exists (Response, package E1's
+    file).
+  - A PID reused between a question's close and its first kill request is
+    still killed. Before this commit the stale-answer test showed the same
+    hazard after a kill, and that case is now closed. The narrower window
+    remains: closing it means re-applying `verify`'s start-time rule at
+    dispatch, which is a gate change for the lead to decide.
+
+## 23. The demo recorded the wrong PID and matched the wrong events (R14(b))
+
+Seen in the 2026-10-05 VM run (`VM_TEST_REPORT_2026-10-05_dc089ff.md`, fault 1
+second half). The system's own `certain` answer was right in all four runs; the
+demo's bookkeeping was wrong, in two independent ways.
+
+**What was wrong** (`scripts/attack_chain_demo.py`):
+- `Writer.pid` was `Popen(...).pid`. From a venv `sys.executable` is
+  `.venv\Scripts\python.exe`, a launcher that starts the base interpreter as a
+  child. The system named and killed the process that ran the code; the demo
+  judged it against the launcher's PID. TC-07 failed with "WRONG PROCESS" on a
+  correct attribution.
+- Events, ledger blocks and the probe and control files were found with
+  `file_path.endswith(<file name>)`, in five places. Every run writes
+  `annual_report.docx.locked`, so an earlier run's event for that name in
+  another folder was judged as this run's (the system named 4272; the demo also
+  counted 8240 from the earlier folder).
+
+**Measured:**
+- On the VM, earlier: `Popen(...).pid = 11800`, the child's `os.getpid() =
+  11756`.
+- Here, on base (`dc089ff`), with `C:\urds-venv` as the launcher: the PID the
+  `Writer` reports has a child process of its own, i.e. it is the launcher
+  (`_is_leaf(9688)` is false in the failing run below).
+
+**Cause:** the demo asked the OS who it had started, not the process that did the
+writing; and it identified "this run's file" by a suffix that every run shares.
+
+**What changed** (`scripts/attack_chain_demo.py` only; attribution untouched):
+- The writer prints `WROTE <sha256> <os.getpid()>`. `Writer.pid` is that PID,
+  right for any launcher. It is not solved with `sys._base_executable`, which
+  would fix one launcher and leave the demo trusting the OS's answer.
+  `Writer.process` stays as the handle that watches for the writer's exit
+  (`finish`, `exited_at`). A line that does not carry three fields, the last a
+  number, raises as before.
+- `Writer` takes an optional `interpreter` argv prefix (default
+  `[sys.executable]`) so a test can put a launcher of its own in front.
+- One helper, `is_this_runs_event(event_path, event_hash, expected_path,
+  expected_hash)`, replaces all five `endswith` uses (control, victim detection,
+  pipeline, ledger blocks, closed events for TC-07, and the probe). It matches
+  the **full path**, `normpath(abspath(...))` and `normcase`d as the Monitor
+  and the ledger compare them (so case and separators do not matter on
+  Windows), and, where the event carries a hash and the run knows its own,
+  the **payload hash** too. An event with no hash is judged on its path.
+- The expected path is where the Monitor was told to watch
+  (`--watch-container`) plus the file's place under `--watch-host`. That is the
+  spelling its events carry; the help text says so. For a native run the two
+  arguments name the same folder.
+- `judge_tc07` and `exit_code` are unchanged: the five judgements and both exit
+  codes are the same.
+
+**Tests:** `services/monitor/tests/test_demo_process_bookkeeping.py` (13; one
+more, the case-insensitivity test, runs on Windows only). It is a new file;
+`test_demo_integrity.py` (18) and `test_demo_reports_gate.py` (6) pass
+unchanged.
+- A fake launcher that spawns the interpreter as a child (so `Popen.pid !=
+  getpid()`): `Writer.pid` is the child's, it is a descendant of the handle's
+  PID, and it has no children of its own.
+- The same through the real Windows venv launcher (`sys.executable` as the
+  default), Windows and venv only: the reported PID is the leaf.
+- Run by the base interpreter (no launcher): the reported and handle PIDs
+  agree. Exit is still watched through the handle.
+- `is_this_runs_event`: same name in another folder is not this run's; same
+  path with another hash is not; no hash falls back to the path; spellings
+  (`.`/`..`, `/` against `\`) compare equal; case folds on Windows; a name
+  that only ends the same way does not match.
+- The five judgements and both exit codes, unchanged.
+- The whole `main()` against a fake gateway that serves the files the demo
+  really wrote, the real writer's PID (the fake kills the writer the way the
+  system would), and, listed **before** the real events, the leftovers of
+  earlier runs: the same name in another folder and the same path with another
+  hash, each naming another process, plus a stale suspicious control event and
+  a stale ledger block. It asserts the transcript names the writer's PID once
+  and never the other one, reads `evt-this` and block 91, TC-03 and TC-07 pass,
+  every other check passes, and the demo made no `/response/terminate` call.
+
+**On base (`dc089ff`), 12 of the 13 fail** (the 13th, the unchanged-judgements
+test, is a guard and passes on both):
+```
+E  TypeError: Writer.__init__() got an unexpected keyword argument 'interpreter'   (x4)
+E  AssertionError: the PID is the launcher's: it still has a child
+E    where False = _is_leaf(9688)    # the real venv launcher, default sys.executable
+E  AttributeError: module ... has no attribute 'is_this_runs_event'                (x6)
+E  AssertionError: assert '8240' not in '...'    # the whole demo
+E      WRONG PROCESS: attribution named [8240], which did not write the file
+   15/19 checks passed
+   failed: tc03_no_false_positive, tc07_attributed_pid_is_the_writer,
+           tc07_process_terminated, kill_time_under_2s
+```
+The first, third and last are the real faults reproduced; the `TypeError` and
+`AttributeError` ones fail because the seam they need does not exist on base,
+which is why the real-launcher test and the whole-demo test call neither.
+After: 37 passed (13 new + 24 existing, 18 + 6) in each of 3 runs. No timing in the new
+tests beyond a 0.2 s writer hold and 5 s join bounds; each test reaps its
+writers.
+
+**Check on Windows:** elevated, from `.venv\Scripts\python.exe` and from the
+base interpreter, two runs each, one straight after another:
+`python scripts\attack_chain_demo.py --watch-host <dir> --watch-container <dir>`.
+Pass: TC-07 passes naming the writer's own PID, the transcript shows one PID
+for the writer (the "writer pid" line and the "writer" line agree), the old
+run's `annual_report.docx.locked` event in another folder is not counted, exit
+0. Unelevated it still skips TC-07 and exits 1. Not run here (unelevated
+agent).
+
+**Not changed:**
+- Attribution, the kill gate, the Monitor and Response services.
+- No `/response/terminate` call and no `.kill()`/`.terminate()` in the demo
+  (X1); exit 0 only when every check ran and passed; `--out` and
+  `URDS_WRITE_REPORTS` gating (F7). Their tests pass unchanged.
+- `judge_tc07`'s five judgements and the exit codes.
+
+**Found, outside the fix:** matching on the payload hash means an event whose
+hash is of a half-written file (a `created` notification read before the
+write finished) no longer counts as this run's, where `endswith` took it and
+printed "hash differs from the bytes written". The demo then waits for the
+event that has the right hash. If the Monitor only ever reported such a
+partial hash, step 4 would now say "monitor never reported the file" in place
+of the note. Not seen in the VM runs, but the elevated run is the check.
+
+## 24. `--restore` could not return the file the simulator was killed on (F3)
+
+Left open by the full VM test of 2026-10-05 (F3 in
+`reports/VM_TEST_REPORT_2026-10-05_dc089ff.md`).
+
+**What was wrong:** `scripts/ransomware_simulator.py` said "Originals are kept,
+so `--restore` puts the directory back exactly". That was not true for the one
+file in flight when the process died.
+
+**Measured:** on the VM, `grinder` was killed by the response engine and
+`--restore` returned 9 of 10 files. The one it did not return was
+`quarterly_report_03.jpg`, the file being rewritten at the time. On this branch,
+a test that stops each of the 13 families inside the second decoy's rewrite
+(after half of a `write_bytes`, or just before a rename or delete, or just before
+the manifest update) and then restores found the directory not byte-identical for
+all 13 families, at every step that leaves the file half written or renamed.
+
+**Cause:** `--restore` undid a run by decrypting the files the manifest listed,
+and the manifest listed a file only after its encryption had finished. A process
+killed during `write_bytes` left a partial file that no manifest entry described
+and that `decrypt` cannot undo (a half-written XOR is not a keystream XOR of
+anything). `copycat`, `spoofer`, `locker` and `renamer` had a second form of the
+same fault: killed between the rewrite and the manifest update, the new file
+(`.enc`, `.zip`, `.locked`, a random hex name) was on disk and in no entry, so
+restore left it behind.
+
+**What changed** (`scripts/ransomware_simulator.py` only):
+- Before the first rewrite, every original is copied to a directory **outside the
+  target** (`<save root>/urds-sim-<run id>/`, with a `journal.json` beside the
+  copies). The default save root is `<system temp>/urds-simulator-originals`;
+  `--save-dir` or `URDS_SIMULATOR_SAVE_ROOT` chooses another. A save root that
+  contains the target, or that the target contains, is refused. The copies are
+  made once, up front, so the encryption loop does nothing new inside the watched
+  directory and the pace is not touched.
+- The journal records each file as `pending`, `in_flight` or `done`, with the
+  SHA-256 of its saved copy. A file is marked `in_flight` before its encryptor is
+  called; the previous file is marked `done` in the same atomic write
+  (`os.replace`). The journal exists only once every copy is complete.
+- The manifest in the target gains one key, `saved_dir`. `entries`, `family`,
+  `extra` and the order and number of manifest writes are unchanged, so
+  `simulator_sweep.py`, `test_tc01_simulator.py` and `test_tc13_simulator_families.py`
+  read it as before.
+- `--restore` puts back every `in_flight` or `done` file from its saved copy
+  (checksum-verified) and deletes every name that file could have become:
+  the manifest's `encrypted` name plus `FAMILY_OUTPUTS` for the families that
+  rename or copy (`.locked`, `.enc`, `.zip`, the `renamer` hex name). It then
+  removes `extra` files as before, and finally the saved copies, naming each file
+  from the journal rather than deleting a directory tree.
+- **Fallbacks keep every old reader:** a manifest with no `saved_dir` (legacy
+  `files` manifests, v2 manifests from before this fix) and a run whose saved
+  copy is missing or fails its checksum take the old decrypt path, unchanged.
+- **Guards kept:** only files the script created (the marker check) and the
+  refusal of a non-empty foreign directory are unchanged. Restore also now acts
+  only on bare file names (a tampered journal or manifest naming `../x` is
+  ignored), and only on a journal whose name, shape and recorded target match.
+- Saved copies of a run that was killed and then deleted (a test's temp dir, a
+  sweep's work dir) would pile up in the save root, so each new run first
+  prunes saved directories whose journal names a target that is gone or whose
+  manifest no longer points at them. A run in progress is never pruned (its
+  manifest is written before its saved directory exists), and only
+  `urds-sim-*` directories holding a journal are touched.
+- The module docstring no longer promises more than this.
+
+**Tests:** `services/monitor/tests/test_simulator_interrupt_restore.py` (38),
+plus `simulator_ops_golden.json` beside it. No process is killed and nothing
+sleeps: a `BaseException` is raised from inside patched `Path.write_bytes`
+(after half the bytes), `rename`, `unlink` and the manifest update, and
+`time.sleep` is a no-op. The cases:
+- all 13 families: interrupt at **every** operation of the second decoy's
+  rewrite and at the manifest update after it (grinder: 7 points, staged: 3,
+  notedrop and poisoner include the note and the poison files), `--restore`, and
+  the directory must equal the original decoys exactly (no missing, extra or
+  changed file);
+- `grinder` and `staged` torn mid-write specifically, asserting the interrupt
+  really left the file changed before restoring;
+- restore removes the saved copies and the `notedrop`/`poisoner` extras;
+- the originals are saved outside the target;
+- a foreign file still refuses the run and nothing is saved; restore leaves a
+  bystander file alone; a tampered journal cannot write outside the target;
+- legacy `files` manifest and v2 manifest without `saved_dir` still restore;
+  no manifest is still a no-op;
+- the real command line restores a torn run, and refuses a `--save-dir` inside
+  the target;
+- orphaned saved copies are pruned, a live torn run's are kept, a stranger's
+  folder is untouched;
+- **the operations in the watched directory are unchanged**: for each family
+  (`--files 3`), the ordered list of writes (with sizes), renames, deletes and
+  manifest writes inside the target equals a golden list recorded on the base
+  commit, before any change.
+
+**19 of 38 fail on `dc089ff`** (the 13 interrupt cases, `grinder`/`staged` mid-write,
+the saved-outside-the-target case, the tampered-journal case, the CLI case, the
+pruning case). The other 19 pass on both, by design: the 13 golden pins, the
+foreign-directory refusal, the bystander, the legacy and v2 manifests, the
+no-manifest no-op and the extras case. On base, for example:
+
+    AssertionError: grinder did not restore byte-identical:
+      torn at ['write_bytes', 'quarterly_report_01.xlsx', 34016]: missing=[] extra=[] changed=['quarterly_report_01.xlsx']
+      ... (the same at each of the six writes, and at the manifest update)
+
+All 38 pass now, three runs in a row (11.6, 11.9 and 12.8 s). The simulator's
+existing tests (`test_tc01_simulator.py`, `test_tc13_simulator_families.py`,
+`test_tc13_suppression_e2e.py`, `test_tc17_pasted_header.py`: 67) pass before and
+after, unedited. `scripts/simulator_sweep.py --files 8` drives the real detection
+path in-process against a watchdog on a temp directory and needs no elevation:
+after the change it reports 13/13 detected, 13 within 2.0 s, and `restore ok` for
+all 13 (`URDS_WRITE_REPORTS` unset, nothing written to `reports/`).
+
+**Not changed:**
+- The pace, the families, the target, and every byte and every operation the
+  simulator performs inside the watched directory. The only additions are outside
+  it: the saved copies (once, before the first rewrite) and one journal write per
+  file.
+- `simulator_sweep.py` (needed no change).
+- `scripts/phase5_baseline.py` and `scripts/artefact_manifest.py` hash this
+  script; `reports/artefact_manifest.json` must be regenerated at integration.
+- What this does not cover: a power loss or a kill of the OS between the write
+  and its flush. The copies are written and closed, not `fsync`ed.
+- A run that is killed and never restored leaves its copies in the save root
+  until the next run prunes them, or until `--restore` is run.
+
+**Check on Windows:** run `grinder` and `staged` against the live Monitor with
+the response engine on, so each is killed mid-run, then
+`ransomware_simulator.py --target-dir <dir> --restore`: all 10 files
+byte-identical against `pre_attack_manifest`, no `.enc`/`.locked`/`.zip` or hex
+file left, and the `urds-sim-*` folder gone from
+`%TEMP%\urds-simulator-originals`. Then `simulator_sweep.py` elevated: 13/13
+detected, the same `files_encrypted` per family as the 2026-10-05 recording.
+
+## 25. One incident per watchdog notification, not per file (F6)
+
+Found by the full VM test of 2026-10-05 (F6 in
+`VM_TEST_REPORT_2026-10-05_dc089ff.md`). Open since the 2026-10-04 run.
+
+**Measured:** in the elevated run 2 ledger
+(`C:\URDS-latest-run\20261005_203206\run2\data\ledger.db`), read read-only:
+- 530 `file_event` blocks for 275 suspicious files. Per file: 40 files had 1
+  block, 222 had 2, 6 had 3, 7 had 4. (The report's own analysis counted
+  522 for 273 files, median 2, max 4, 6.06 blocks per file.)
+- The commonest sequences per file were `created, modified` (161 files) and
+  `modified, modified` (51).
+- Gap from one notification to the next `modified` on the same path, from the
+  escalation blocks' `observed_at`: median 11.3 ms, p90 21.8 ms. 233 of 243
+  were within 50 ms and 239 within 100 ms. The rest were 240 ms (an invariant
+  check, a second writer) and about 60 s (a later run on the same folder).
+- In 15 files with more than one notification, the content hash changed
+  between notifications.
+- Every notification had its own question, `file_event`, two
+  `response_action` blocks (the Monitor's and the Response service's) and
+  `attribution_escalation`. A `certain` one also had its own terminate
+  request: 99 were refused because the PID was already dead.
+
+**Cause:** `_correlate` opened a new incident for every suspicious
+notification: `incident_id_for(event_id)`, a new question, a new detection on
+`_work`. Nothing asked whether an incident for that file was already open.
+Windows reports one write as 1-3 notifications, so one write became 2-4
+incidents. R16 (defect 22) is the escalation queue that those extra
+incidents fill.
+
+**What changed** (`services/monitor/app.py`, plus one field in `pipeline.py`):
+- **The join rule.** A suspicious notification joins the open incident for
+  its file (`_join_open_incident`, called at the top of `_correlate`) when all
+  of these hold:
+  - it is `modified`, not a rename;
+  - its content hash equals the hash the incident's first notification read,
+    so it reports the same write again;
+  - an incident for the same path (normcase'd, as attribution compares paths)
+    has its question **open**;
+  - that incident was opened after the last `created`, `deleted` or `renamed`
+    notification for the path. `handle_event` gives each such notification a
+    sequence number on the watchdog thread, so the order is the
+    notification order;
+  - the incident's first read was at most `MONITOR_COALESCE_MS` ago. The
+    default is 100 ms, which covers 239 of the 243 measured follow-ups.
+
+  Otherwise the notification opens its own incident, exactly as before.
+- **A joined notification** is still recorded on `/monitor/events`, in order.
+  It carries the incident's `incident_id` and `coalesced_into`. It opens no
+  question and queues no detection, so it gets no `file_event`, no
+  `response_action`, no trigger and no escalation of its own. The first event
+  lists the joined IDs in `coalesced_event_ids`. When the question closes,
+  every joined event gets the closing answer, so none is left reading
+  "pending".
+- **The question grows to cover the joined write.** Joining moves the
+  question's read time and horizon to the joined notification's read
+  (`horizon_from`, `read_at`, `settle_at`, `settle_mono`). The match window
+  keeps its start. So:
+  - the competition window is the union of both notifications' windows;
+  - the question closes one full horizon after the *later* read;
+  - a record for the joined write, including a second writer's, that arrives
+    late but inside its horizon is still counted;
+  - CERTAIN still means exactly one writer across the whole span.
+
+  The cost: a kill can come up to `MONITOR_COALESCE_MS` later. In the measured
+  shape that is about 11 ms.
+- **Write order against the sweep.** The horizon is written before the read
+  time. `Attributor.recheck` reads the read time before the horizon, so a
+  sweep running at the same moment can see a longer horizon with the old
+  window, but never the wider window with the old horizon.
+  - A question cannot close at its horizon while it can still be joined: 100
+    ms is far less than the 1.55 s span.
+  - A question that closes early as `ambiguous` at the same instant still
+    ends with no kill, whatever the joined write adds.
+- **When a question closes**, the pending thread's callback is now
+  `_question_closed`. It marks the incident closed, so nothing more joins it,
+  hands the answer to the joined events, and then calls `_on_question_closed`
+  unchanged. Open incidents are indexed by path, for joining, and by
+  question, for closing. Both indexes are bounded by `ATTRIBUTION_MAX_ANCHORS`,
+  and so is the per-path sequence table (4x).
+- **`pipeline.record_escalation`** adds one field: `coalesced_event_ids`, the
+  notifications the incident covered. This is why `horizon_closed_at` can be
+  up to `MONITOR_COALESCE_MS` later than `observed_at` plus the horizon.
+- **Terminate requests.** With one question per incident there is one
+  escalation, and so at most one terminate request per incident. A later
+  incident naming a PID that is already handled is package A's mechanism
+  (defect 22). It is not built here.
+- **E2's hook.** `first, _ = attributor.verify(first)` and the lines around it
+  are unchanged. The join returns before `attributor.resolve`, so a joined
+  notification will not reach E2's `on_first_answer` hook either. That
+  matches "at most one suspend per PID per incident".
+  `escalation_action`'s signature is unchanged.
+
+**The two `response_action` blocks per incident: both kept.** They record
+different things:
+- **The Response service's block** (`/response/trigger`, `action: "trigger"`)
+  is the actor's record. It holds what was asked (`action_required`), whom it
+  targeted (`process_id`, only when a kill was asked for, per C-16), on what
+  evidence (`attribution_confidence`, `attribution_reason`,
+  `attribution_candidates`, `process_image`), and what it did
+  (`actions_taken`).
+- **The Monitor's block** (`pipeline.run`) is the detector's record of that
+  outcome, joined to the file. It is the only response-hop block with
+  `file_path` and `file_hash`, and it holds the full governance record
+  (`validation_state`, `policy_version`, `admissibility`).
+- Removing the Monitor's block would remove what `ledger_coverage.py`
+  (`ADJUDICATION_BLOCK_TYPES`, record completeness), TC-23
+  (`test_tc23_chained_record.py` asserts `["file_event", "response_action"]`)
+  and `pipeline_governance.py` (`ledger_response_action` hop) count. Removing
+  the Response service's block would remove the actor's own C-16-checked
+  record. Either removal would move a bound claim or edit a test.
+- Coalescing removes the duplicate *pairs*: in the replay, `response_action`
+  blocks went from 1,112 to 652.
+
+**Tests:** `services/monitor/tests/test_one_incident_per_file.py` (13). The
+horizon clock is injected (`Clock`), so no test waits for a horizon. The
+longest sleep is 0.3 s.
+- Fix tests (fail on base):
+  - `test_created_then_two_modified_are_one_incident`: one question, one
+    `file_event`, one trigger, one terminate and one escalation for
+    `created, modified, modified`. All three events are on `/monitor/events`
+    with the same incident, and the escalation lists the two joined IDs.
+  - `test_the_joined_notifications_carry_the_closing_answer`.
+  - `test_an_older_incident_still_answers_its_joined_notifications`: a newer
+    incident on the same path (other bytes) does not orphan the older one's
+    joined events.
+  - `test_the_lanes_join_in_order_too`: the watchdog path, with correlation
+    on the lanes.
+  - `test_a_joined_notifications_write_is_waited_for_over_its_own_horizon`:
+    nothing closes between the first read's horizon and the joined read's.
+  - `test_a_second_writer_is_seen_and_lowers_confidence[identical_bytes]`:
+    another PID writes identical bytes after the first read. The incident
+    names both, is not CERTAIN, and nobody is killed.
+- Guard tests (pass on base and now, for what must not change):
+  - `test_a_second_writer_is_seen_and_lowers_confidence[other_bytes]`;
+  - `test_different_bytes_are_never_folded`;
+  - `test_a_created_notification_never_joins`;
+  - `test_a_new_file_after_a_deletion_is_never_folded`;
+  - `test_a_rename_is_handled_as_before`;
+  - `test_a_notification_past_the_coalescing_window_opens_its_own_incident`;
+  - `test_a_notification_after_the_question_closed_opens_its_own_incident`.
+- **On base `dc089ff`: 6 failed, 7 passed.** Run on a clean `git archive
+  dc089ff` export with this test file copied in:
+
+  ```
+  FAILED test_created_then_two_modified_are_one_incident
+      AssertionError: 3 attribution questions opened for one write
+  FAILED test_the_joined_notifications_carry_the_closing_answer
+      KeyError: 'coalesced_event_ids'
+  FAILED test_an_older_incident_still_answers_its_joined_notifications
+      KeyError: 'coalesced_into'
+  FAILED test_the_lanes_join_in_order_too
+      assert 3 == 1   (opened())
+  FAILED test_a_joined_notifications_write_is_waited_for_over_its_own_horizon
+      AssertionError: {'closed': {'verified': 1}, ...}   (the first question closed alone)
+  FAILED test_a_second_writer_is_seen_and_lowers_confidence[identical_bytes]
+      KeyError: 'coalesced_into'
+  ```
+- **This commit:** 13 passed, three runs in a row (3.3 s, 3.6 s, 3.8 s).
+- **Monitor suite:** 570 passed on base, 583 passed now (570 + 13). No
+  existing test edited.
+- **Bound claims.** `ledger_coverage.py`, `pipeline_governance.py`,
+  `claim_matrix.py` and `tamper_sweep.py` were run (with `URDS_WRITE_REPORTS`
+  unset) on the base export and on this commit. Their output is identical
+  apart from timestamps: 100.0% coverage, 36/36 complete, 0 unsupported PIDs,
+  all governance gates PASS, 0 claims failing verification. None of these
+  scripts can coalesce: each sends one notification per distinct path with no
+  attribution source, so no question opens.
+- **An existing test that shaped the rule.** The first version joined on path
+  alone, and `test_correlation_lanes.py::test_c_a_files_events_reach_the_pipeline_queue_in_order`
+  failed: four rewrites of one file, each must reach `_work`. That is why
+  different bytes are never folded. The test passes unchanged.
+
+**Replay** (`scripts/defect25_replay.py`):
+- What it replays: the run 2 ledger's per-file notification sequences (types,
+  gaps, content changes, the PIDs each answer listed), through the real
+  `handle_event`, correlation lanes and `_correlate`.
+- Stubs: a fake kernel-grade source (1,500 ms horizon, records 300 ms late),
+  ML, the ledger, and a Response stub that writes its own `response_action`
+  blocks and refuses a PID it already killed.
+- Fidelity: the base replay reproduces the run's distribution exactly (40 /
+  222 / 6 / 7).
+
+| | base `dc089ff` | this commit (2 runs) |
+|---|---|---|
+| suspicious notifications on `/monitor/events` | 530 | 530, 530 |
+| joined to an open incident | 0 | 227, 228 |
+| incidents per suspicious file, mean (median, max) | 1.93 (2, 4) | 1.10 (1, 2), 1.10 (1, 2) |
+| files with 1 / 2 / 3 / 4 incidents | 40 / 222 / 6 / 7 | 247 / 28 / 0 / 0, 248 / 27 / 0 / 0 |
+| `file_event` blocks | 530 | 303, 302 |
+| ledger blocks per suspicious file | 7.90 | 4.58, 4.57 |
+| terminate requests (refused) | 52 (4) | 48 (0), 48 (0) |
+
+Notes on the table:
+- "Ledger blocks per suspicious file" counts every block that names the file
+  or one of its incidents, including the stub Response service's blocks. It
+  is not the report's 6.06 metric, which was computed differently on the real
+  chain. Compare the two columns, not either one with 6.06.
+- The files still at 2 incidents are those whose run had `created, created`,
+  `renamed, renamed`, changed bytes, or a gap over 100 ms. All are kept apart
+  on purpose.
+
+**Live, unelevated (secondary):** the real watchdog on a temp dir, 20 new
+48 KB files:
+- base: 37 suspicious notifications, 17 files with 2 incidents;
+- this commit: 39 notifications, 19 files with 2 incidents, 0 joined.
+
+Unchanged, as designed: with no attribution source no question opens, so
+there is nothing to join. **Coalescing only acts where a question is open,
+that is elevated with the 4663 source.** The unelevated chain still has about
+2 incidents per new file.
+
+**Check on Windows:** the elevated full run (run 2's shape). Then
+`ledger_coverage.py --ledger-db <run>\data\ledger.db`:
+- 0 unsupported;
+- `file_event` blocks per suspicious file about 1.1, not 1.91;
+- incidents per file median 1;
+- `attribution_escalation` blocks with a non-empty `coalesced_event_ids` on
+  most files;
+- `termination_refused_or_unreachable` falls together with defect 22;
+- detection 130/130 (`simulator_sweep.py`).
+
+Then check one `created, modified` file on `/monitor/events`: two events, the
+second with `coalesced_into` and the closing answer.
+
+**Not changed:**
+- the kill gate (`kill_authorised`), `HORIZON_MS`, `COMPETITION_MS`,
+  `WINDOW_MS`, the eviction watermark, and every test in the safety-invariant
+  table;
+- classification and detection: no verdict path was touched, so detection
+  stays 130/130;
+- the rename lookup (both names);
+- `_escalate_loop`, `request_termination`, `escalation_action`,
+  `escalation_result` (package A);
+- both `response_action` blocks;
+- unelevated behaviour;
+- the chain does not hold a joined notification's hash as its own block.
+  Joining requires the same hash, so the opener's `file_event` already holds
+  it.
+
+## 26. The Response service could not suspend anything (F2b, Response side only)
+
+Found by the VM test of 2026-10-05 ("F2b" in its open faults). Package E1 of
+the 2026-10-05 fix session. **Only this half was delivered.** The Monitor side
+(package E2: the `suspend_authorised` gate, the policy that calls this API, the
+C-16 scan for suspend/resume blocks) was not built - see "F2b: what is and is
+not delivered", above. Until it is, nothing calls these routes except an
+operator through the gateway.
+
+**What was wrong:** `POST /response/suspend` returned 404. The Response
+service had no suspend, no resume, no lease and no ledger block for either. The
+2026-10-04 session left F2b blocked ("F2b: blocked", above), so nothing on
+this branch could freeze a writer before the kill gate opened at the horizon.
+
+**Measured** (this VM, unelevated, `dc089ff` and this commit):
+- On `dc089ff`: `/response/suspend`, `/response/resume` and `/response/leases`
+  are 404 at the Response service and at the gateway.
+- `psutil` suspend nests here, as `5cacb70` recorded. A heartbeat child
+  suspended twice and resumed once stayed frozen; a second resume woke it; an
+  extra resume on a running process did nothing.
+- `psutil.Process.status()` reports `running` for a suspended process on
+  Windows. The tests judge "frozen" by whether a heartbeat file grows instead.
+- Killing the venv launcher kills the interpreter it started (`Popen.pid` is
+  not the process that runs the code, as in defect 23).
+
+**Cause:** not implemented.
+
+**What changed:**
+- **`services/response/leases.py`** (new): the lease table.
+  - One lease per PID. A second suspend of a held PID suspends nothing and
+    returns the same lease with `already_held: true`, never a second suspend.
+  - `lease_seconds` is capped at `RESPONSE_LEASE_MAX_SECONDS` (default 10).
+  - Expiry runs on an injectable monotonic clock, not the slewed wall clock;
+    `expires_at` is reported in UTC.
+  - A lease ends in one of four states, and each leaves the process running
+    or gone, never frozen:
+    - `resumed`: by `/resume`, by the reaper when it expires (thread, every
+      0.1 s), or at shutdown (FastAPI lifespan, and `atexit` as a backstop);
+    - `terminated`: by `/terminate`, without resuming;
+    - `gone`: the process exited while held.
+  - A resume of a PID the table does not hold touches nothing.
+  - One failed resume does not stop the rest; the failed lease stays held,
+    so the reaper and the watchdog try again.
+- **`services/response/lease_watchdog.py`** (new): the backstop for a Response
+  process that dies without running its shutdown.
+  - A child process, started at service startup so the first suspend does
+    not wait for it.
+  - It is told about a lease before the suspend, and when the lease ends,
+    one JSON line each on its stdin.
+  - It resumes what is still held on stdin EOF, when the service's PID
+    disappears, or 2 s (`RESPONSE_WATCHDOG_GRACE_SECONDS`) after a lease's
+    own expiry. Before resuming, it checks the PID's start time.
+  - It is started through a short-lived intermediate process, so it is not
+    a descendant of the service. A process-tree kill of the service then
+    does not reach it.
+  - While the watchdog is configured but not running, suspends are refused
+    (`WATCHDOG_UNAVAILABLE`). `RESPONSE_LEASE_WATCHDOG=0` turns it off, with
+    a warning at startup.
+- **`services/response/actions.py`**: `vet_suspend`, `suspend_process`,
+  `resume_process`, `SuspendRefused`. Every refusal has a code. In order:
+  - `PID_NAMESPACE_ISOLATED`: Response is not in the host's PID namespace
+    (`/.dockerenv` or `/run/.containerenv`; `RESPONSE_PID_NAMESPACE=host` or
+    `=container` overrides).
+  - The kill gate's own `guard()`, unchanged, which includes
+    `_guard_image_path`. Its messages map to `RESERVED_PID`,
+    `RESPONSE_OR_ANCESTOR`, `PID_GONE`, `NOT_INSPECTABLE` and
+    `SYSTEM_PROCESS`; anything unmatched is `GUARD_REFUSED`.
+  - `LEASE_WATCHDOG`: the watchdog itself.
+  - `MONITOR_OR_ANCESTOR`: the Monitor (`URDS_MONITOR_PID`, comma-separated)
+    or any of its ancestors.
+  - `PID_REUSED`: the live process was created more than 50 ms after
+    `started_at`, or runs an image other than `image`.
+  - `IDENTITY_UNPROVEN`: neither `image` nor `started_at` was given, or
+    neither could be read. This fails closed.
+  - `NOT_PERMITTED`: the suspend call itself was refused.
+- **`services/response/app.py`**:
+  - `POST /response/suspend`, `POST /response/resume` and
+    `GET /response/leases`, as in the contract.
+  - `/terminate` accepts `lease_id`. After a successful kill, it closes any
+    lease held for that PID as `terminated` and returns `lease_id`,
+    `lease_released` and, if the named lease was not the one closed, a
+    `lease_note`. A refused kill leaves the lease alone, so it still
+    expires.
+  - The suspend route itself refuses `attribution_confidence: unknown`
+    (`NOT_ATTRIBUTED`).
+  - Ledger blocks:
+    - `process_suspended` for a suspension and for every refusal
+      (`outcome: suspended | refused`, `suspended`, `code`);
+    - `process_resumed` whenever a lease ends other than by a kill
+      (`outcome: resumed | process_gone`, `reason`,
+      `requested_by: caller | lease_expiry | shutdown | atexit`).
+    - Both carry the PID with the gate that allowed it:
+      `attribution_confidence`, `attribution_source`, `attribution_reason`,
+      `gate: "suspend_authorised"` (C-16). The three attribution fields are
+      required on the request (400 without them).
+    - Blocks join by `lease_id` and `incident_id`. The terminate block carries
+      `lease_id` and `lease_released`.
+- **`services/response/Dockerfile`**: copies `leases.py` and
+  `lease_watchdog.py`. Without them, the image would fail at import.
+- **`services/gateway/routers/response.py`**: proxies the three new routes.
+  They are admin-only, like every response action. `TerminateWithLeaseRequest`
+  subclasses the shared `TerminateRequest` (`models.py` is unchanged), and
+  forwards `lease_id` only when one is given.
+- **`docs/openapi/gateway.yaml`**: the three paths, the five schemas, every
+  409 code, and the optional `lease_id`/`lease_released` on terminate.
+  **`docs/api_spec.md`**: section 4, the contract and how it is implemented.
+
+**Tests:** `services/response/tests/suspend/` (49) and
+`services/gateway/tests/test_response_suspend_proxy.py` (12).
+- `test_lease_table.py` (19): fakes that nest like `NtSuspendProcess`, and an
+  injected clock. Covers: second suspend is a no-op; cap; no early expiry;
+  expiry resumes; idempotent resume; never resumes a stranger; shutdown
+  resumes all; one failed resume does not stop the rest; terminate closes
+  without resuming; a dead holder is closed before a new lease; the watchdog
+  hears before the suspend; no watchdog, no suspend; the reaper thread.
+- `test_suspend_real.py` (24): real heartbeat children through the real app.
+  Covers:
+  - suspended then resumed, with both blocks carrying the gate;
+  - second suspend is a no-op, and one resume unfreezes (so it was suspended
+    once);
+  - an expired lease resumes;
+  - leaving the TestClient (lifespan shutdown) resumes two held children;
+  - terminate with a lease releases it, and a late terminate says the lease
+    was over;
+  - refused: wrong `started_at`, wrong image, no identity, a System32 image
+    (faked as in TC-26), this process and its ancestors, the Monitor, an
+    ancestor of the Monitor (a grandchild plays the Monitor), a PID that does
+    not exist, `unknown` attribution, a missing gate field (400), the
+    container namespace, the watchdog. Each refusal is recorded.
+- `test_lease_watchdog.py` (6), using `_holder.py`, a stand-in service that
+  takes a real lease with the real watchdog and never reaps:
+  - hard-killed: the child resumes;
+  - process-tree-killed: the child resumes, and the watchdog is not in the
+    tree;
+  - alive but stuck: the watchdog resumes it after lease plus grace;
+  - a recycled PID is left alone;
+  - the real app starts its watchdog and refuses to suspend it;
+  - an unstartable watchdog refuses the suspend.
+- No-leftover safety: each child is resumed eight times and then killed in
+  the fixture's `finally`, at `pytest_sessionfinish` and at `atexit`
+  (`tests/suspend/conftest.py`). No test sleeps more than 1 s at a time.
+  After each run, a process scan found 0 children or watchdogs left.
+- Run 3 times: 49/49 each time (about 15 s).
+- **On `dc089ff`: 30 failed and `test_lease_table.py` failed to collect**
+  (`No module named 'leases'`). Most failures are `404 Not Found` (14) and
+  `assert 404 == 409` (10). Gateway: **11 of 12 fail on `dc089ff`** (404).
+  The one that passes checks that terminate without a lease forwards the same
+  body as before. The failing names are the whole of `tests/suspend/` (30 failures, 1 collection error)
+  and 11 of 12 in `services/gateway/tests/test_response_suspend_proxy.py`.
+- Suites: response 127 + 2 skipped -> **176 + 2 skipped**; gateway 91 ->
+  **103**. The openapi parity tests pass. `claim_matrix.py`: 0 failed.
+
+**Check on Windows** (done here unelevated against a real uvicorn Response
+on port 18604, with the venv launcher; the log is not kept in the repo):
+- A real `python.exe` heartbeat child was suspended: 0 heartbeat bytes and
+  0.0 ms CPU over 0.5 s. A second suspend returned `already_held` with the
+  same lease. Resume brought the heartbeat back within 0.03 s. A second
+  resume returned `resumed: false`.
+- A 1.0 s lease expired and the process resumed on its own (state `resumed`).
+- A wrong `started_at` was refused with `PID_REUSED`; the child kept running.
+- The service was stopped mid-lease (30 s lease) four ways, and each time the
+  heartbeat came back within 0.016-0.219 s:
+
+  | How it was stopped | What resumed the process |
+  |---|---|
+  | `TerminateProcess` on the serving interpreter | the watchdog |
+  | killing the venv launcher (x3) | the watchdog |
+  | `taskkill /T /F` on the launcher (x3) | the watchdog |
+  | CTRL_BREAK, a graceful stop | the lifespan |
+- **Before the watchdog was detached,** `taskkill /T /F` took the watchdog
+  down with the service, and the child stayed frozen until the test's cleanup
+  resumed it (`e1_tree_kill_before_detach.txt`).
+- With a ledger that answers (`e1_latency.txt`): the suspend round trip had a
+  median of 274 ms (252-351) and resume 208 ms, over 10 each. The suspension
+  itself is sub-millisecond and happens before the ledger write. Almost all
+  of the round trip is `log_action` (see "Found outside this package").
+- Still for the VM: the same check elevated, with E2's Monitor calling it.
+  `Get-Process -Id <pid>` CPU staying flat while suspended is the
+  operator-visible version of the heartbeat check.
+
+**Not changed:**
+- `guard()`, `_guard_image_path`, `terminate_process`, `PROTECTED_NAMES` and
+  `PROTECTED_IMAGE_ROOTS`.
+- `/terminate`'s kill behaviour. It only accepts and releases a `lease_id`,
+  and adds `lease_id`/`lease_released` to its block and its response.
+- `/trigger`, `/isolate`, recovery, `models.py`, the Monitor (E2),
+  `scripts/ledger_coverage.py` (E2) and README (text below, for the lead).
+- No existing test was edited.
+
+**Limits, named rather than left to be found:**
+- **Docker.** See the README text below. The refusal is explicit and recorded;
+  the service does not try.
+- **`URDS_MONITOR_PID` unset.** The Response service cannot tell which process
+  is the Monitor, and only the Monitor's own gate keeps it from naming
+  itself. Whoever starts the services should set it.
+- **What the watchdog cannot survive:** being killed itself; a whole-session
+  or job kill that includes it; or a host crash, after which nothing is
+  frozen anyway.
+- **POSIX.** `terminate_process` sends SIGTERM first. A stopped process does
+  not act on it, so a suspended process is killed by the SIGKILL after
+  `TERMINATE_GRACE_SECONDS` (1 s). Windows `TerminateProcess` is immediate.
+  Not changed, because terminate's behaviour is fixed.
+
+**Contract notes for E2 and the lead:**
+- `started_at` is the process's creation time (`psutil create_time()`),
+  as epoch seconds or ISO-8601. Sending the write time instead is also safe,
+  because both checks are "created no later than".
+- The 409 body is the project's error envelope with `code` and `message` also
+  at the top level. Through the gateway, it arrives as `DOWNSTREAM_ERROR`
+  with that body in `details`.
+- Refusals are recorded as `process_suspended` with `outcome: refused`, so
+  E2's C-16 scan sees them as gated PID blocks.
+- `/resume` of an unknown lease returns 200 `resumed: false`, `state: unknown`.
+
+**Found outside this package:**
+- **`log_action` in `services/response/app.py` builds a new `httpx` client
+  per ledger write.** That cost a median of 201 ms here, against 11.8 ms on a
+  shared client (`e1_httpx_cost.py`): defect 13's cause, in the Response
+  service. Every `/terminate` pays it before it returns. It is a plausible
+  part of R16's 0.30-0.38 s spacing between terminates. Not changed here,
+  because terminate's timing is package A's.
+- The Response service's `RequestValidationError` handler cannot serialise a
+  validator's `ValueError` (`exc.errors()` carries the exception), which would
+  turn a 400 into a 500. `ResumeRequest` checks "lease or PID" in the route
+  instead.
+
+## 27. The dashboard logged Streamlit's `use_container_width` deprecation on every refresh
+
+Found in the 2026-10-05 VM run: the open dashboard's log held 69,510 lines in 35
+minutes, almost all this warning.
+
+**Measured:** eight `st.dataframe` / `st.plotly_chart` calls in
+`services/dashboard/app.py` passed `use_container_width=True`. Streamlit 1.51.0
+logs "Please replace `use_container_width` with `width`" for each one it draws,
+on every refresh. With the adjudicated event (which draws every table) one
+refresh logged **8** of them.
+
+**Checked, not assumed:** the pinned `streamlit==1.51.0` accepts
+`width="stretch"` on both calls (`inspect.signature` shows `width: Width =
+'stretch'`; the deprecation text in `elements/arrow.py` names it as the
+replacement for `use_container_width=True`).
+
+**What changed:** the eight `use_container_width=True` became `width="stretch"`.
+Same layout, no deprecation. Nothing else in `app.py` moved; `field_table()`
+(defect 19) is untouched.
+
+**Tests:** `services/dashboard/tests/test_no_deprecation_warnings.py`, +3; the
+dashboard suite goes from 4 to 7 passed, run 3 times.
+- A handler on Streamlit's non-propagating `streamlit.deprecation_util` logger
+  counts the warnings in one refresh, and the source is checked for the old
+  name. **Both fail on `dc089ff`** ("8 deprecation warnings in one refresh").
+- A spy on `DeltaGenerator._enqueue` asserts every drawn table and chart still
+  has a `stretch` width (>= 8 of them). This one passes on base too: it guards
+  the swap, it does not prove the fix.
+- The four existing `test_render.py` tests pass unchanged.
+
+**Check on Windows:** with the dashboard open for a few refreshes, its log has
+no "use_container_width" line.
+
+**Not changed:** the Streamlit pin; the refresh interval; any panel.
+
 ## Suites
 
 Baseline at `7dcee2a` and after this branch, same venv (Python 3.12.10,
@@ -1147,6 +2126,26 @@ that the **untouched base commit's own** latency benchmarks failed. Measured on
 
 Timing-bound tests on this branch were therefore compared against the base
 commit on the same host at the same time, not against yesterday's numbers.
+
+### Suites, 2026-10-05 fix session
+
+Base `dc089ff` and the merged branch, same venv (Python 3.12.10, Windows 11,
+4 vCPU), `URDS_WRITE_REPORTS` unset:
+
+| Suite | Base (`dc089ff`) | This branch | New tests |
+|---|---|---|---|
+| gateway | 91 passed | 103 passed | +12 (26) |
+| ledger | 99 passed | 99 passed | - |
+| monitor | 570 passed | 641 passed | +13 (23), +38 (24), +7 (22), +13 (25) |
+| response | 127 passed, 2 skipped | 178 passed, 2 skipped | +2 (22), +49 (26) |
+| dashboard | 4 passed | 7 passed | +3 (27) |
+| ml-engine | not run: nothing in this session touches it | | |
+| claim matrix (`--tests`) | 0 failed | 0 failed, C-16: 48 events, 0 unsupported | - |
+
+The timing-sensitive new files were run 3 times on the merged branch with the
+same result. While seven agents ran suites at once on the 4 vCPUs, a few
+latency-budget tests failed and passed when run alone (defect 22 lists them);
+the counts above are from quiet runs after the agents finished.
 
 ## Re-test on the Windows VM, 2026-10-04
 

@@ -148,6 +148,22 @@ Services find each other by URL, so any one of them can be run outside Compose (
 
 This is how the Response service gets run on Windows for real VSS snapshots while the rest of the stack stays in Compose.
 
+**Suspend-first response and Docker.** `POST /response/suspend` freezes a
+process under a lease that ends on its own. It is resumed when the lease
+expires, when Response stops, or by a watchdog process if Response is killed
+outright. In Docker Compose the Response container has its own PID
+namespace: the host PID the Monitor names does not exist inside it, or names
+a different process. So Response **refuses every suspend there** with
+`409 PID_NAMESPACE_ISOLATED`, and records the refusal in the ledger as a
+`process_suspended` block with `outcome: refused`. It does not try. To
+suspend host processes, run Response natively on the host, as on the
+Windows VM. A container started with `pid: host` can declare it with
+`RESPONSE_PID_NAMESPACE=host`. When the Monitor runs as a separate process,
+set `URDS_MONITOR_PID` to its PID so Response refuses to suspend the Monitor
+or its ancestors.
+
+The Monitor-side policy that would call `/response/suspend` is not built yet (FIXES.md, "F2b: what is and is not delivered"); today only an operator, through the gateway, suspends anything.
+
 The gateway needs no internal service logic changes as long as the contracts in `docs/openapi/gateway.yaml` hold.
 
 ## Running the Tests
