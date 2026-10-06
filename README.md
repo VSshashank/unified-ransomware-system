@@ -20,6 +20,8 @@ Two things are deliberately *not* real, and both say so at runtime rather than f
 - **VSS snapshots** need Windows *and an elevated process*. Verified on Windows 11 build 26200: a real shadow copy of `C:\` in 2.8s against the 30s target. On Linux/macOS `VSSManager` reports `supported: false` with the reason, and recovery falls back to a directory-backed snapshot root so the path stays exercisable.
 - **Network isolation** builds real `iptables`/`pfctl`/`netsh` rules but only applies them when `RESPONSE_ISOLATION_ENABLED=true`. Otherwise it returns `enforced: false` along with the rules it would have applied.
 
+**Killing a process needs Administrator rights and Windows file auditing.** The Monitor can only name the process that wrote a file from the Windows Security log (event 4663), which it can read only when it runs elevated, and only for folders that have an audit rule. Set that up once per watched folder with `powershell -ExecutionPolicy Bypass -File scripts/setup_attribution_audit.ps1 -WatchPath <dir>` (Administrator; `-Verify` checks it, `-Revert` undoes it), then start the Monitor from an elevated shell and check `GET /monitor/attribution`. Without that, the Monitor still detects encryption and still records and responds, but attribution is `unknown` and, by design, it never kills a process it cannot identify. See `docs/PROCESS_ATTRIBUTION.md`.
+
 Trained model artifacts (`models/`) and datasets (`data/`) are gitignored. Rebuild them with `python src/train_behavioral_model.py` and, once a dataset is fetched via `src/fetch_ember_subset.py`, `python src/train_ember_model.py`.
 
 ## Quick Start
