@@ -59,7 +59,7 @@ Expected counts on this branch (measured on the author's VM, unelevated; run the
 | gateway | 108 passed |
 | ledger | 99 passed |
 | monitor | 660 passed |
-| response | 206 passed, 2 skipped (Windows-only skips will **run** when elevated: report the count) |
+| response | 206 passed, 2 skipped (the 2 skips are permanent on Windows: `SIGTERM cannot be ignored`; measured the same elevated and unelevated) |
 | dashboard | 7 passed |
 | ml-engine | as in the base prompt (nothing here touches it) |
 | `claim_matrix.py --tests` | 0 failed; C-16: 48 events examined, 0 unsupported |
