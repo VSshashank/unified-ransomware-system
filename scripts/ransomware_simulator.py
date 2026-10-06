@@ -19,7 +19,11 @@ What makes this safe, and why each guard is here:
     written before the first rewrite and every target is checked against it.
   * It refuses to run outside a directory it was told to use, and refuses
     outright if that directory already holds files it did not create.
-  * Originals are kept, so `--restore` puts the directory back exactly.
+  * Before any file is rewritten, a copy of every original is saved OUTSIDE the
+    target directory (see "Saved originals" below), and each file is journalled
+    as in flight before it is touched. `--restore` puts every file back from
+    those copies - including the one that was half-rewritten when the process
+    was killed, which no decryption can undo - and then removes the copies.
   * The "encryption" is a keystream XOR. It is not cryptography and is not
     meant to be - the point is high-entropy output, and a reversible
     transformation is a feature here, not a weakness.
@@ -75,7 +79,9 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
 import time
+import uuid
 from pathlib import Path
 
 MANIFEST_NAME = ".simulator_manifest.json"
@@ -251,6 +257,10 @@ def decrypt_headerspoof(data: bytes, seed: bytes) -> bytes:
     return _xor(data[len(ZIP_MAGIC):], seed)
 
 
+def _renamer_name(name: str, seed: bytes) -> str:
+    return hashlib.sha256(name.encode() + seed).hexdigest()[:16]
+
+
 def encrypt_renamer(path: Path, seed: bytes) -> Path:
     """Rewrite in place, then rename to random hex with no extension.
 
@@ -260,7 +270,7 @@ def encrypt_renamer(path: Path, seed: bytes) -> Path:
     measurement history behind it.
     """
     path.write_bytes(_xor(path.read_bytes(), seed))
-    return _rename(path, path.with_name(hashlib.sha256(path.name.encode() + seed).hexdigest()[:16]))
+    return _rename(path, path.with_name(_renamer_name(path.name, seed)))
 
 
 RANSOM_NOTE_NAME = "README_RESTORE_FILES.txt"
@@ -494,6 +504,223 @@ FAMILY_DEFAULT_DELAY_MS = {"slowburn": 800}
 FAMILY_SETUP = {"poisoner": _poison_files}
 
 
+# What each family can leave on disk besides the original name, derived from the
+# original's name alone. `--restore` removes these when it puts a file back, which
+# is what makes a run killed *between* the rewrite and the manifest update (or in
+# the middle of writing the new file) restorable: the manifest never heard about
+# that file, but every possible output is a name this script would have made.
+FAMILY_OUTPUTS = {
+    "locker": lambda name, seed: [name + ".locked"],
+    "copycat": lambda name, seed: [name + ".enc"],
+    "spoofer": lambda name, seed: [name + ".zip"],
+    "renamer": lambda name, seed: [_renamer_name(name, seed)],
+}
+
+
+def possible_outputs(family: str, name: str, seed: bytes) -> list[str]:
+    produce = FAMILY_OUTPUTS.get(family)
+    return [out for out in (produce(name, seed) if produce else []) if out != name]
+
+
+# ------------------------------------------------------------- saved originals
+#
+# `--restore` used to undo a run by decrypting what the manifest listed, and the
+# manifest listed a file only after its encryption finished. A process killed in
+# the middle of a rewrite therefore left a partial file that nothing described and
+# nothing could decrypt (the 2026-10-05 VM run restored `grinder` 9 of 10). The
+# only way to return the in-flight file exactly is to have its bytes from before.
+#
+# They are saved outside the target because the target is the directory the
+# Monitor watches: a copy inside it would add events to every measurement this
+# script exists to produce. The default is a directory under the system temp
+# directory, not under any watched root; `--save-dir` or URDS_SIMULATOR_SAVE_ROOT
+# chooses another. The target's manifest records where, and the journal beside
+# the copies records each file as `pending`, `in_flight` or `done`.
+SAVE_ROOT_ENV = "URDS_SIMULATOR_SAVE_ROOT"
+SAVE_DIR_PREFIX = "urds-sim-"
+JOURNAL_NAME = "journal.json"
+
+
+def _same_path(a: Path, b: Path) -> bool:
+    return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
+def _is_inside(path: Path, parent: Path) -> bool:
+    path = os.path.normcase(os.path.abspath(path))
+    parent = os.path.normcase(os.path.abspath(parent))
+    return path == parent or path.startswith(parent.rstrip("\\/") + os.sep)
+
+
+def _bare_name(name: object) -> bool:
+    """A journal or manifest is data from disk: only plain file names are acted on."""
+    return (
+        isinstance(name, str)
+        and name not in ("", ".", "..", MANIFEST_NAME)
+        and Path(name).name == name
+        and "/" not in name
+        and "\\" not in name
+    )
+
+
+class SavedOriginals:
+    """Copies of the decoys, kept outside the target, plus the in-flight journal."""
+
+    def __init__(self, directory: Path, target: Path, family: str):
+        self.directory = directory
+        self.target = target
+        self.family = family
+        self.originals: dict[str, dict] = {}
+
+    @property
+    def journal_path(self) -> Path:
+        return self.directory / JOURNAL_NAME
+
+    def _write_journal(self) -> None:
+        document = {
+            "version": 1,
+            "target": str(self.target),
+            "family": self.family,
+            "originals": self.originals,
+        }
+        temporary = self.directory / (JOURNAL_NAME + ".tmp")
+        with open(temporary, "w", encoding="utf-8") as handle:
+            json.dump(document, handle)
+        # Replaced atomically: a kill during the write leaves the previous journal.
+        _retrying(lambda: os.replace(temporary, self.journal_path))
+
+    def save_all(self, decoys: list[Path]) -> None:
+        self.directory.mkdir(parents=True, exist_ok=False)
+        for index, decoy in enumerate(decoys):
+            data = decoy.read_bytes()
+            saved = f"{index:03d}.bin"
+            with open(self.directory / saved, "wb") as handle:
+                handle.write(data)
+            self.originals[decoy.name] = {
+                "saved": saved,
+                "sha256": hashlib.sha256(data).hexdigest(),
+                "state": "pending",
+            }
+        # The journal exists only once every copy is complete: a kill while
+        # saving leaves no journal, and nothing has been rewritten yet.
+        self._write_journal()
+
+    def begin(self, name: str) -> None:
+        """Mark `name` in flight, and whatever was in flight before it done."""
+        for other in self.originals.values():
+            if other["state"] == "in_flight":
+                other["state"] = "done"
+        self.originals[name]["state"] = "in_flight"
+        self._write_journal()
+
+    def finish(self) -> None:
+        for other in self.originals.values():
+            if other["state"] == "in_flight":
+                other["state"] = "done"
+        self._write_journal()
+
+
+def _save_root(arg: str | None) -> Path:
+    chosen = arg or os.environ.get(SAVE_ROOT_ENV)
+    return Path(chosen) if chosen else Path(tempfile.gettempdir()) / "urds-simulator-originals"
+
+
+def _load_journal(saved_dir: Path, target: Path) -> dict | None:
+    """The journal, only if it is ours: right name, right shape, and for this target."""
+    if not saved_dir.name.startswith(SAVE_DIR_PREFIX):
+        return None
+    try:
+        journal = json.loads((saved_dir / JOURNAL_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(journal, dict) or not isinstance(journal.get("originals"), dict):
+        return None
+    if not _same_path(Path(str(journal.get("target", ""))), target):
+        return None
+    return journal
+
+
+def _discard_saved(saved_dir: Path, journal: dict) -> None:
+    """Remove exactly the files the journal names, then the directory if it is empty."""
+    for info in journal["originals"].values():
+        saved = info.get("saved") if isinstance(info, dict) else None
+        if _bare_name(saved):
+            (saved_dir / saved).unlink(missing_ok=True)
+    for leftover in (JOURNAL_NAME, JOURNAL_NAME + ".tmp"):
+        (saved_dir / leftover).unlink(missing_ok=True)
+    try:
+        saved_dir.rmdir()
+    except OSError:
+        pass
+
+
+def prune_orphans(save_root: Path) -> int:
+    """Discard saved originals whose run can no longer be restored.
+
+    A run that is killed and then simply deleted (a test's temp directory, a
+    sweep's work dir) would otherwise leave its copies in the save root forever.
+    A saved directory is an orphan when its journal names a target that is gone,
+    or whose manifest no longer points at it. A run in progress is never one: its
+    manifest is written before its saved directory exists. Only directories named
+    like ours that hold a journal for a target are touched.
+    """
+    removed = 0
+    try:
+        candidates = [p for p in save_root.iterdir() if p.is_dir() and p.name.startswith(SAVE_DIR_PREFIX)]
+    except OSError:
+        return 0
+    for saved_dir in candidates:
+        try:
+            journal = json.loads((saved_dir / JOURNAL_NAME).read_text(encoding="utf-8"))
+            target = Path(str(journal["target"]))
+            if not isinstance(journal.get("originals"), dict):
+                continue
+            try:
+                manifest = json.loads((target / MANIFEST_NAME).read_text(encoding="utf-8"))
+                live = _same_path(Path(str(manifest.get("saved_dir", ""))), saved_dir)
+            except (OSError, ValueError):
+                live = False
+            if not live:
+                _discard_saved(saved_dir, journal)
+                removed += 1
+        except (OSError, ValueError, KeyError):
+            continue
+    return removed
+
+
+def _restore_from_saved(
+    target: Path, seed: bytes, family: str, saved_dir: Path, journal: dict, produced: dict[str, str]
+) -> set[str]:
+    """Put back every file the journal says was started, from its saved copy.
+
+    `produced` maps an original's name to the encrypted name the manifest
+    recorded for it, if any. Returns the originals that were restored; one whose
+    saved copy is missing or fails its checksum is left for the decrypt path.
+    """
+    restored: set[str] = set()
+    for name, info in journal["originals"].items():
+        if not _bare_name(name) or not isinstance(info, dict) or info.get("state") not in ("in_flight", "done"):
+            continue  # `pending` was never touched; anything else is not ours to act on
+        saved = info.get("saved")
+        if not _bare_name(saved):
+            continue
+        try:
+            data = (saved_dir / saved).read_bytes()
+        except OSError:
+            print(f"saved copy of {name} is missing; falling back to decrypting it")
+            continue
+        if hashlib.sha256(data).hexdigest() != info.get("sha256"):
+            print(f"saved copy of {name} fails its checksum; falling back to decrypting it")
+            continue
+        (target / name).write_bytes(data)
+        # Every name this file could have become: the one the manifest recorded,
+        # and each one the family could have been midway to making.
+        for output in [produced.get(name), *possible_outputs(family, name, seed)]:
+            if output and output != name and _bare_name(output):
+                (target / output).unlink(missing_ok=True)
+        restored.add(name)
+    return restored
+
+
 def _legacy_encrypted_name(name: str, family: str) -> str:
     """Where a pre-manifest-v2 run left the encrypted file.
 
@@ -528,8 +755,25 @@ def restore(target: Path, seed: bytes) -> int:
             for name in manifest.get("files", [])
         ]
 
-    restored = 0
+    # A run made since the originals were saved: put every file it started back
+    # from its saved copy. That is the only way to return the file that was in
+    # flight when the process died. Runs without one (the legacy and v2
+    # manifests) fall through to the decrypt path below, unchanged.
+    handled: set[str] = set()
+    saved_dir = journal = None
+    if manifest.get("saved_dir"):
+        saved_dir = Path(manifest["saved_dir"])
+        journal = _load_journal(saved_dir, target)
+        if journal is None:
+            print(f"no saved originals at {saved_dir}; restoring finished files by decrypting them")
+        else:
+            produced = {e["original"]: e["encrypted"] for e in entries if "original" in e and "encrypted" in e}
+            handled = _restore_from_saved(target, seed, family, saved_dir, journal, produced)
+
+    restored = len(handled)
     for entry in entries:
+        if entry["original"] in handled:
+            continue
         encrypted = target / entry["encrypted"]
         if not encrypted.exists():
             continue
@@ -540,8 +784,11 @@ def restore(target: Path, seed: bytes) -> int:
 
     for extra in manifest.get("extra", []):
         leftover = target / extra
-        if leftover.exists():
+        if _bare_name(extra) and leftover.exists():
             leftover.unlink()
+
+    if journal is not None:
+        _discard_saved(saved_dir, journal)
 
     print(f"restored {restored} file(s) in {target}")
     return restored
@@ -564,6 +811,12 @@ def main() -> int:
         choices=sorted(FAMILIES),
         default="locker",
         help="Which behaviour to imitate; see the module docstring for all thirteen.",
+    )
+    parser.add_argument(
+        "--save-dir",
+        default=None,
+        help="Where the originals are saved before they are rewritten. Must be outside "
+        f"--target-dir. Defaults to ${SAVE_ROOT_ENV}, else a folder under the system temp directory.",
     )
     args = parser.parse_args()
 
@@ -594,6 +847,13 @@ def main() -> int:
         else FAMILY_DEFAULT_DELAY_MS.get(args.family, 120)
     )
 
+    save_root = _save_root(args.save_dir)
+    if _is_inside(save_root, target) or _is_inside(target, save_root):
+        print(f"refusing to run: the saved originals ({save_root}) and the target ({target}) must not contain one another.")
+        return 2
+    prune_orphans(save_root)
+    saved_dir = save_root / f"{SAVE_DIR_PREFIX}{uuid.uuid4().hex[:12]}"
+
     decoys = build_decoys(target, args.files)
     manifest_path = target / MANIFEST_NAME
 
@@ -603,8 +863,21 @@ def main() -> int:
     # does not determine - and a run interrupted halfway must still be
     # restorable, which is the whole reason the manifest exists.
     entries: list[dict] = []
-    manifest = {"family": args.family, "entries": entries, "extra": list(extra)}
+    manifest = {
+        "family": args.family,
+        "entries": entries,
+        "extra": list(extra),
+        "saved_dir": str(saved_dir),
+    }
     manifest_path.write_text(json.dumps(manifest))
+
+    # Every original is saved, outside the target, before the first rewrite. The
+    # manifest already names the directory, so a kill at any point from here on
+    # leaves a run `--restore` can find. Done up front rather than file by file so
+    # the loop below (and its pace) does nothing it did not do before except one
+    # journal write per file, also outside the target.
+    saved = SavedOriginals(saved_dir, target, args.family)
+    saved.save_all(decoys)
 
     print(f"created {len(decoys)} decoy document(s) in {target}", flush=True)
     time.sleep(0.5)  # let the watcher enumerate them before anything changes
@@ -623,6 +896,7 @@ def main() -> int:
     encrypted = 0
     for decoy in decoys:
         original_name = decoy.name
+        saved.begin(original_name)  # in flight from here until the next file begins
         result = encrypt(decoy, seed)
         entries.append({"original": original_name, "encrypted": result.name})
         manifest_path.write_text(json.dumps(manifest))
@@ -637,6 +911,7 @@ def main() -> int:
         if delay_ms:
             time.sleep(delay_ms / 1000)
 
+    saved.finish()
     print(f"finished: {encrypted} file(s) encrypted (nothing terminated this process)", flush=True)
     return 0
 
