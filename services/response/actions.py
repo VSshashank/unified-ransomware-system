@@ -16,8 +16,11 @@ VSSManager takes on a host that cannot do shadow copies.
 """
 
 import logging
+import ntpath
 import os
 import platform
+import posixpath
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -188,6 +191,235 @@ def terminate_process(pid: int, force: bool = True) -> dict:
         "termination_time_ms": elapsed_ms,
         "timestamp": utc_now(),
     }
+
+
+# ------------------------------------------------------------- suspend / resume
+#
+# Suspension is reversible, which is the whole reason it may act on weaker
+# evidence than a kill (the Monitor's `suspend_authorised` gate allows a
+# pending answer; `kill_authorised` never does). It is reversible only if it
+# lands on the right process and is certain to be undone, so it faces every
+# refusal the kill does - the same `guard()`, which includes
+# `_guard_image_path` - and three more:
+#
+#   * the Monitor and its ancestors (`URDS_MONITOR_PID`): freezing the
+#     detector freezes the response, including the resume;
+#   * a PID whose live process is not the one attribution named - the request
+#     carries `image` and `started_at`, and one of them must be checkable;
+#   * a PID namespace that is not the host's (Compose): the number would name
+#     a different process, or none, inside the container.
+#
+# Each refusal has a code, is returned as a 409 and is recorded in the ledger.
+# Nothing here keeps state: the lease table (leases.py) decides *whether* to
+# suspend (once per PID); this decides whether it is *allowed*, and does it.
+
+
+class SuspendRefused(RuntimeError):
+    """A suspend this service will not perform, with a code for the record."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+#: A reused PID's process is always created after the process that held the
+#: number before it. Monitor and Response read the same kernel creation time,
+#: so this only has to absorb float formatting; it matches the Monitor's own
+#: clock tolerance.
+STARTED_AT_TOLERANCE_SECONDS = float(os.getenv("RESPONSE_STARTED_AT_TOLERANCE_MS", "50")) / 1000.0
+
+#: Guard messages, mapped to refusal codes. `guard()` is the kill gate's and is
+#: not changed to carry codes; its messages are matched instead, and anything
+#: unmatched still refuses (`GUARD_REFUSED`).
+_GUARD_CODES = (
+    ("reserved", "RESERVED_PID"),
+    ("itself or one of its ancestors", "RESPONSE_OR_ANCESTOR"),
+    ("does not exist", "PID_GONE"),
+    ("not inspectable", "NOT_INSPECTABLE"),
+    ("protected system process", "SYSTEM_PROCESS"),
+    ("protected system location", "SYSTEM_PROCESS"),
+)
+
+
+def pid_namespace_isolated() -> str | None:
+    """Why PIDs from the host cannot be acted on here, or None if they can.
+
+    In Compose, Response runs in its own PID namespace: the host PID the
+    Monitor names either does not exist in the container or is some other
+    process in it. `RESPONSE_PID_NAMESPACE=host` declares a container started
+    with `pid: host`; `=container` forces the refusal (and makes it testable).
+    """
+    declared = os.getenv("RESPONSE_PID_NAMESPACE", "").strip().lower()
+    if declared == "host":
+        return None
+    if declared == "container":
+        return "RESPONSE_PID_NAMESPACE=container"
+    if os.name == "nt":
+        return None
+    for marker in ("/.dockerenv", "/run/.containerenv"):
+        if os.path.exists(marker):
+            return f"running in a container ({marker} exists) without RESPONSE_PID_NAMESPACE=host"
+    return None
+
+
+def monitor_pids() -> set[int]:
+    """The Monitor's PID(s), from `URDS_MONITOR_PID` (comma-separated)."""
+    out: set[int] = set()
+    for part in os.getenv("URDS_MONITOR_PID", "").replace(";", ",").split(","):
+        part = part.strip()
+        if part.isdigit():
+            out.add(int(part))
+    return out
+
+
+def _with_ancestors(pids: set[int]) -> set[int]:
+    out = set(pids)
+    for pid in pids:
+        try:
+            out.update(parent.pid for parent in psutil.Process(pid).parents())
+        except psutil.Error:
+            pass
+    return out
+
+
+def _image_key(image: str) -> str:
+    text = image.strip()
+    if text.startswith("\\\\?\\"):
+        text = text[4:]
+    if "\\" in text or re.match(r"^[A-Za-z]:", text):
+        return ntpath.normcase(ntpath.normpath(text))
+    return posixpath.normpath(text)
+
+
+def parse_started_at(value) -> float | None:
+    """Epoch seconds, or an ISO-8601 instant (`Z` or an offset). None if absent."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        raise ValueError("started_at must be epoch seconds or an ISO-8601 instant")
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    try:
+        return float(text)
+    except ValueError:
+        pass
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
+def vet_suspend(pid: int, image: str | None = None, started_at=None,
+                extra_protected: set[int] | frozenset = frozenset()) -> psutil.Process:
+    """Every refusal, in order. Returns the process to suspend; raises SuspendRefused."""
+    isolated = pid_namespace_isolated()
+    if isolated:
+        raise SuspendRefused(
+            "PID_NAMESPACE_ISOLATED",
+            f"PID {pid} cannot be suspended from here: this service does not share the host's "
+            f"PID namespace ({isolated}), so the number would name a different process or none",
+        )
+
+    try:
+        guard(pid)
+    except TerminationError as exc:
+        text = str(exc)
+        code = next((c for needle, c in _GUARD_CODES if needle in text), "GUARD_REFUSED")
+        raise SuspendRefused(code, text.replace("refusing to terminate", "refusing to suspend")) from exc
+
+    if pid in extra_protected:
+        raise SuspendRefused(
+            "LEASE_WATCHDOG", f"PID {pid} is this service's lease watchdog; refusing to suspend"
+        )
+
+    monitors = monitor_pids()
+    if monitors and pid in _with_ancestors(monitors):
+        raise SuspendRefused(
+            "MONITOR_OR_ANCESTOR",
+            f"PID {pid} is the Monitor (URDS_MONITOR_PID={sorted(monitors)}) or one of its "
+            "ancestors; refusing to suspend",
+        )
+
+    process = psutil.Process(pid)
+    _check_identity(pid, process, image, started_at)
+    return process
+
+
+def _check_identity(pid: int, process: psutil.Process, image: str | None, started_at) -> None:
+    """Is the live process the one attribution named? Fail closed if unprovable."""
+    try:
+        claimed_start = parse_started_at(started_at)
+    except ValueError as exc:
+        raise SuspendRefused("IDENTITY_UNPROVEN", f"started_at {started_at!r} is not a time: {exc}") from exc
+
+    if claimed_start is None and not image:
+        raise SuspendRefused(
+            "IDENTITY_UNPROVEN",
+            f"neither image nor started_at was given for PID {pid}, so the live process cannot be "
+            "shown to be the one attribution named; refusing to suspend",
+        )
+
+    checked = []
+    if claimed_start is not None:
+        try:
+            created = float(process.create_time())
+        except psutil.NoSuchProcess as exc:
+            raise SuspendRefused("PID_GONE", f"PID {pid} does not exist") from exc
+        except (psutil.AccessDenied, OSError):
+            created = None
+        if created is not None:
+            if created > claimed_start + STARTED_AT_TOLERANCE_SECONDS:
+                raise SuspendRefused(
+                    "PID_REUSED",
+                    f"PID {pid} now belongs to a process created {created - claimed_start:.3f}s after "
+                    f"started_at ({claimed_start:.3f}): the PID was reused; refusing to suspend",
+                )
+            checked.append("start time")
+
+    if image:
+        try:
+            live = process.exe() or None
+        except psutil.NoSuchProcess as exc:
+            raise SuspendRefused("PID_GONE", f"PID {pid} does not exist") from exc
+        except (psutil.AccessDenied, OSError):
+            live = None
+        if live is not None:
+            if _image_key(live) != _image_key(image):
+                raise SuspendRefused(
+                    "PID_REUSED",
+                    f"PID {pid} is now {live}, while attribution named {image}: the PID was reused; "
+                    "refusing to suspend",
+                )
+            checked.append("image")
+
+    if not checked:
+        raise SuspendRefused(
+            "IDENTITY_UNPROVEN",
+            f"neither the image nor the start time of PID {pid} could be read to check it against "
+            "the request; refusing to suspend",
+        )
+
+
+def suspend_process(process: psutil.Process) -> None:
+    """Freeze it. Called once per lease, never once per file: suspension nests."""
+    try:
+        process.suspend()
+    except psutil.NoSuchProcess as exc:
+        raise SuspendRefused("PID_GONE", f"PID {process.pid} exited before it could be suspended") from exc
+    except psutil.AccessDenied as exc:
+        raise SuspendRefused("NOT_PERMITTED", f"not permitted to suspend PID {process.pid}") from exc
+
+
+def resume_process(process: psutil.Process) -> bool:
+    """Undo one suspension. False if the process is gone (or the PID reused)."""
+    try:
+        process.resume()
+    except psutil.NoSuchProcess:
+        return False
+    return True
 
 
 # -------------------------------------------------------------------- isolation

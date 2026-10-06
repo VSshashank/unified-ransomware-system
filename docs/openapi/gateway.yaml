@@ -310,6 +310,114 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "429":
           $ref: "#/components/responses/TooManyRequests"
+  /response/suspend:
+    post:
+      summary: Suspend a process under a lease
+      description: >-
+        Requires role: admin. Suspend-first response (defect 26, F2b): the
+        process is frozen, not killed, and held under a lease that ends on
+        its own. A lease ends by `/response/resume`, by expiring (the Response
+        service resumes the process itself), by `/response/terminate` with its
+        `lease_id`, or when the Response service stops; an out-of-process
+        watchdog resumes it if the service dies outright. One lease per PID:
+        a second suspend of a held PID suspends nothing and returns the
+        existing lease with `already_held: true`, because suspension nests on
+        Windows and a second suspend would need a second resume. Every
+        outcome, refusals included, is recorded as a `process_suspended`
+        ledger block carrying the PID together with the gate that allowed it
+        (`attribution_confidence`, `attribution_source`, `attribution_reason`,
+        `gate: suspend_authorised`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SuspendRequest"
+      responses:
+        "200":
+          description: The process is suspended under the lease returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuspendResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: >-
+            The suspend was refused, and the refusal recorded. `code` is one
+            of RESERVED_PID, RESPONSE_OR_ANCESTOR, SYSTEM_PROCESS (a protected
+            name or an image under a system directory), PID_GONE,
+            NOT_INSPECTABLE, MONITOR_OR_ANCESTOR (`URDS_MONITOR_PID`),
+            LEASE_WATCHDOG, PID_REUSED (the live process was created after
+            `started_at`, or runs another image), IDENTITY_UNPROVEN (neither
+            `image` nor `started_at` could be checked), NOT_ATTRIBUTED
+            (`attribution_confidence` is unknown), PID_NAMESPACE_ISOLATED (the
+            Response service runs in a container's PID namespace, as in
+            Compose, and cannot act on a host PID), WATCHDOG_UNAVAILABLE,
+            NOT_PERMITTED. The Response service returns the standard error
+            envelope with `code` and `message` also at the top level; through
+            the gateway it arrives wrapped as DOWNSTREAM_ERROR with that body
+            in `details`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /response/resume:
+    post:
+      summary: End a lease and resume the process
+      description: >-
+        Requires role: admin. Idempotent: resuming a lease that has already
+        ended, or a PID with no lease, returns 200 with `resumed: false` and
+        touches nothing. It never resumes a process the Response service did
+        not suspend. A resume that happens is recorded as a `process_resumed`
+        ledger block with the reason, joined to the suspend by `lease_id` and
+        `incident_id`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResumeRequest"
+      responses:
+        "200":
+          description: Whether the process was resumed by this call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /response/leases:
+    get:
+      summary: Leases held, then recently ended
+      description: "Requires role: admin."
+      responses:
+        "200":
+          description: Held leases first, then up to 1,024 recently ended ones.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lease"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
   /response/isolate:
     post:
       summary: Isolate host/network
@@ -800,6 +908,13 @@ components:
         force:
           type: boolean
           example: true
+        lease_id:
+          type: string
+          description: >-
+            The lease the process is held under, if it was suspended first
+            (defect 26). A successful kill closes that lease as terminated,
+            without resuming. Optional; without it, any lease held for the
+            PID is closed anyway.
     TerminateResponse:
       type: object
       required: [status, process_id, timestamp, exit_code]
@@ -814,6 +929,130 @@ components:
           format: date-time
         exit_code:
           type: integer
+        lease_id:
+          type: string
+          nullable: true
+          description: The lease the kill closed, or the one the request named.
+        lease_released:
+          type: boolean
+          description: True when a held lease for this PID was closed by the kill.
+    SuspendRequest:
+      type: object
+      required: [process_id, incident_id, lease_seconds, reason, attribution_confidence, attribution_source, attribution_reason]
+      properties:
+        process_id:
+          type: integer
+          example: 4512
+        incident_id:
+          type: string
+          example: inc_998877
+        lease_seconds:
+          type: number
+          description: >-
+            How long to hold it: about the attribution horizon (1.5 s) plus a
+            margin. Capped at RESPONSE_LEASE_MAX_SECONDS (default 10).
+          example: 3.0
+        reason:
+          type: string
+          example: sole writer of report.docx
+        attribution_confidence:
+          type: string
+          description: The gate that allowed the suspend; recorded on every block naming the PID.
+          example: probable
+        attribution_source:
+          type: string
+          example: windows-security-4663
+        attribution_reason:
+          type: string
+          example: one writer so far (pending)
+        image:
+          type: string
+          description: The image attribution named. Must match the live process if readable.
+          example: C:\work\locker.exe
+        started_at:
+          description: >-
+            The process's creation time, epoch seconds or ISO-8601. A live
+            process created after it holds a reused PID. At least one of
+            `image` and `started_at` must be checkable, or the suspend is
+            refused.
+          oneOf:
+            - type: number
+            - type: string
+          example: 1790000000.25
+    SuspendResponse:
+      type: object
+      required: [lease_id, process_id, suspended, expires_at, already_held]
+      properties:
+        lease_id:
+          type: string
+          example: lease_3f2a9c01d4e5b6a7
+        process_id:
+          type: integer
+        suspended:
+          type: boolean
+          example: true
+        expires_at:
+          type: string
+          format: date-time
+        already_held:
+          type: boolean
+          description: True when the PID was already held; nothing was suspended again.
+        incident_id:
+          type: string
+          description: The incident the lease was taken for (the first one, if already held).
+        lease_seconds:
+          type: number
+          description: The lease granted, after the cap.
+    ResumeRequest:
+      type: object
+      required: [incident_id, reason]
+      description: One of `lease_id` or `process_id` is required.
+      properties:
+        lease_id:
+          type: string
+        process_id:
+          type: integer
+        incident_id:
+          type: string
+        reason:
+          type: string
+          example: a second writer appeared
+    ResumeResponse:
+      type: object
+      required: [lease_id, resumed, reason]
+      properties:
+        lease_id:
+          type: string
+          nullable: true
+        resumed:
+          type: boolean
+        reason:
+          type: string
+        process_id:
+          type: integer
+          nullable: true
+        state:
+          type: string
+          enum: [held, resumed, terminated, gone, unknown]
+        detail:
+          type: string
+          description: Why nothing was resumed, when `resumed` is false.
+    Lease:
+      type: object
+      required: [lease_id, process_id, incident_id, expires_at, state]
+      properties:
+        lease_id:
+          type: string
+        process_id:
+          type: integer
+        incident_id:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        state:
+          type: string
+          enum: [held, resumed, terminated, gone]
     IsolateRequest:
       type: object
       required: [isolation_level, duration_seconds, allow_localhost]

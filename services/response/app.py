@@ -1,6 +1,9 @@
 """URDS Response service (port 8004).
 
-    POST /response/terminate  kill a process by PID
+    POST /response/terminate  kill a process by PID (releases its lease, if any)
+    POST /response/suspend    freeze a process under a lease (defect 26, F2b)
+    POST /response/resume     end a lease and resume the process
+    GET  /response/leases     held leases, then recently ended ones
     POST /response/isolate    apply (or plan) network isolation
     POST /response/trigger    orchestrate the reaction to one incident
     POST /response/recover    restore files from a snapshot  (SI, recovery/)
@@ -10,6 +13,7 @@ Terminate/isolate/trigger are AS's; everything under `recovery/` is SI's and is
 mounted here unchanged.
 """
 
+import atexit
 import logging
 import os
 import threading
@@ -21,10 +25,20 @@ import httpx
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from actions import TerminationError, isolate_host, terminate_process
+import leases as lease_module
+from actions import (
+    SuspendRefused,
+    TerminationError,
+    isolate_host,
+    resume_process,
+    suspend_process,
+    terminate_process,
+    vet_suspend,
+)
+from lease_watchdog import Watchdog
 
 # SI: recovery module. Owns /response/recover and the VSS snapshot schedule.
 from recovery.recovery import router as recovery_router
@@ -38,6 +52,38 @@ LEDGER_TIMEOUT = float(os.getenv("LEDGER_TIMEOUT", "3.0"))
 
 _vss_manager = VSSManager()
 
+#: The out-of-process backstop that resumes held leases if this process dies
+#: without running its shutdown. On by default; `RESPONSE_LEASE_WATCHDOG=0`
+#: turns it off, and then a hard crash mid-lease can leave a process frozen
+#: (logged at startup). While it is on but not running, suspends are refused.
+WATCHDOG_ENABLED = os.getenv("RESPONSE_LEASE_WATCHDOG", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def build_lease_table(**overrides) -> lease_module.LeaseTable:
+    options = {
+        "resume": resume_process,
+        "watchdog": Watchdog() if WATCHDOG_ENABLED else None,
+        "on_end": lambda lease: record_lease_end(lease),
+    }
+    options.update(overrides)
+    return lease_module.LeaseTable(**options)
+
+
+#: Every suspension this service holds. Replaced wholesale in tests.
+LEASES = build_lease_table()
+
+
+def _resume_everything_at_exit() -> None:
+    """`atexit` backstop for a shutdown that skipped the lifespan hook."""
+    try:
+        LEASES.resume_all(reason="response_exit", by="atexit")
+        LEASES.stop()
+    except Exception:  # interpreter teardown; nothing left to report to
+        pass
+
+
+atexit.register(_resume_everything_at_exit)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -49,8 +95,17 @@ async def lifespan(app: FastAPI):
     # block does not pay for it (see `_ledger_client`). On its own thread, so
     # startup does not wait for it either.
     threading.Thread(target=_ledger_client, name="response-ledger-client", daemon=True).start()
-    yield
-    _vss_manager.stop_scheduler()
+    table = LEASES
+    table.start()
+    if table.watchdog is None:
+        logger.warning("lease watchdog disabled: a hard crash while a lease is held can leave that process suspended")
+    try:
+        yield
+    finally:
+        # Nothing stays frozen because this service stopped.
+        table.resume_all(reason="response_shutdown", by="shutdown")
+        table.stop()
+        _vss_manager.stop_scheduler()
 
 
 app = FastAPI(title="URDS Response", version="1.0.0", lifespan=lifespan)
@@ -70,6 +125,38 @@ class TerminateRequest(BaseModel):
     # process without attribution (scripts/ledger_coverage.py).
     attribution_confidence: str | None = None
     attribution_source: str | None = None
+    # The lease the process is held under, when it was suspended first. The
+    # kill closes that lease (it ends "terminated", not resumed). Absent, any
+    # lease held for this PID is closed anyway: the process is gone.
+    lease_id: str | None = None
+
+
+class SuspendRequest(BaseModel):
+    process_id: int
+    incident_id: str = Field(min_length=1)
+    # About the attribution horizon plus a margin; capped at
+    # RESPONSE_LEASE_MAX_SECONDS. The lease ends - and the process resumes -
+    # when it runs out, whatever happened to the caller.
+    lease_seconds: float = Field(gt=0)
+    reason: str
+    # The gate that allowed it (the Monitor's `suspend_authorised`). Required:
+    # every block naming the PID carries them (C-16).
+    attribution_confidence: str = Field(min_length=1)
+    attribution_source: str = Field(min_length=1)
+    attribution_reason: str = Field(min_length=1)
+    # The identity attribution named. At least one must be checkable against
+    # the live process, or the suspend is refused.
+    image: str | None = None
+    # The process's creation time (epoch seconds or ISO-8601). A live process
+    # created after it is a reused PID.
+    started_at: float | str | None = None
+
+
+class ResumeRequest(BaseModel):
+    lease_id: str | None = None
+    process_id: int | None = None
+    incident_id: str
+    reason: str
 
 
 class IsolateRequest(BaseModel):
@@ -177,6 +264,8 @@ def terminate(payload: TerminateRequest) -> JSONResponse:
     try:
         result = terminate_process(payload.process_id, force=payload.force)
     except TerminationError as exc:
+        # A refused kill leaves any lease alone: the process is still held and
+        # still resumes when the lease runs out.
         log_action(
             "response_action",
             {
@@ -185,6 +274,7 @@ def terminate(payload: TerminateRequest) -> JSONResponse:
                 "process_id": payload.process_id,
                 "attribution_confidence": payload.attribution_confidence,
                 "attribution_source": payload.attribution_source,
+                "lease_id": payload.lease_id,
                 "reason": payload.reason,
                 "outcome": "refused",
                 "detail": str(exc),
@@ -198,6 +288,20 @@ def terminate(payload: TerminateRequest) -> JSONResponse:
             ),
         )
 
+    # The process is gone: close whatever lease held it, without resuming.
+    ended = LEASES.end_for_terminate(payload.process_id)
+    lease_note = None
+    if payload.lease_id and (ended is None or ended.lease_id != payload.lease_id):
+        known = LEASES.get(payload.lease_id)
+        if known is None:
+            lease_note = f"lease {payload.lease_id} is unknown to this service; no lease was released"
+        elif known.process_id != payload.process_id:
+            lease_note = (f"lease {payload.lease_id} is for pid {known.process_id}, not {payload.process_id}; "
+                          "it was left as it is")
+        else:
+            lease_note = (f"lease {payload.lease_id} had already ended {known.state} "
+                          f"({known.ended_by}: {known.ended_reason})")
+
     log_action(
         "response_action",
         {
@@ -206,6 +310,8 @@ def terminate(payload: TerminateRequest) -> JSONResponse:
             "process_id": payload.process_id,
             "attribution_confidence": payload.attribution_confidence,
             "attribution_source": payload.attribution_source,
+            "lease_id": ended.lease_id if ended else payload.lease_id,
+            "lease_released": ended is not None,
             "process_name": result["process_name"],
             "reason": payload.reason,
             "outcome": "terminated",
@@ -214,7 +320,175 @@ def terminate(payload: TerminateRequest) -> JSONResponse:
             "timestamp": result["timestamp"],
         },
     )
-    return JSONResponse(content={**result, "incident_id": payload.incident_id})
+    body = {
+        **result,
+        "incident_id": payload.incident_id,
+        "lease_id": ended.lease_id if ended else payload.lease_id,
+        "lease_released": ended is not None,
+    }
+    if lease_note:
+        body["lease_note"] = lease_note
+    return JSONResponse(content=body)
+
+
+# ------------------------------------------------------------- suspend / resume
+
+
+def _suspended_block(payload: SuspendRequest, **fields) -> dict:
+    """A `process_suspended` block. It names the PID, so it carries the gate (C-16)."""
+    return {
+        "action": "suspend",
+        "incident_id": payload.incident_id,
+        "process_id": payload.process_id,
+        "process_image": payload.image,
+        "attribution_confidence": payload.attribution_confidence,
+        "attribution_source": payload.attribution_source,
+        "attribution_reason": payload.attribution_reason,
+        "gate": "suspend_authorised",
+        "reason": payload.reason,
+        "lease_seconds_requested": payload.lease_seconds,
+        **fields,
+        "timestamp": utc_now(),
+    }
+
+
+def _resumed_block(lease, *, reason: str, requested_by: str, requested_incident_id: str | None = None) -> dict:
+    """A `process_resumed` block, joined to the suspend and the terminate by lease and incident."""
+    resumed = lease.state == lease_module.RESUMED
+    return {
+        "action": "resume",
+        "lease_id": lease.lease_id,
+        "incident_id": lease.incident_id,
+        "requested_incident_id": requested_incident_id,
+        "process_id": lease.process_id,
+        "process_image": lease.image,
+        **lease.gate_fields(),
+        "resumed": resumed,
+        "outcome": "resumed" if resumed else "process_gone",
+        "requested_by": requested_by,
+        "reason": reason,
+        "held_ms": lease.held_ms,
+        "timestamp": utc_now(),
+    }
+
+
+def record_lease_end(lease) -> None:
+    """A lease ended without a caller asking: expiry, shutdown, or the process vanished."""
+    if lease.state not in (lease_module.RESUMED, lease_module.GONE):
+        return
+    log_action(
+        "process_resumed",
+        _resumed_block(lease, reason=lease.ended_reason or "", requested_by=lease.ended_by or "unknown"),
+    )
+
+
+def _refusal(payload: SuspendRequest, code: str, message: str) -> JSONResponse:
+    log_action(
+        "process_suspended",
+        _suspended_block(payload, outcome="refused", suspended=False, lease_id=None, code=code, detail=message),
+    )
+    envelope = build_error(code, message, {"process_id": payload.process_id})
+    # The project's error envelope, with the contract's flat {code, message}
+    # beside it, so a caller can read either.
+    return JSONResponse(status_code=409, content={"code": code, "message": message, **envelope})
+
+
+@app.post("/response/suspend")
+def suspend(payload: SuspendRequest) -> JSONResponse:
+    if payload.attribution_confidence.strip().lower() == "unknown":
+        return _refusal(
+            payload, "NOT_ATTRIBUTED",
+            f"attribution is 'unknown': nothing named PID {payload.process_id}; refusing to suspend",
+        )
+    table = LEASES
+    try:
+        lease, already = table.acquire(
+            payload.process_id,
+            incident_id=payload.incident_id,
+            lease_seconds=payload.lease_seconds,
+            reason=payload.reason,
+            attribution_confidence=payload.attribution_confidence,
+            attribution_source=payload.attribution_source,
+            attribution_reason=payload.attribution_reason,
+            vet=lambda: vet_suspend(payload.process_id, payload.image, payload.started_at,
+                                    extra_protected=table.protected_pids()),
+            suspend=suspend_process,
+        )
+    except (SuspendRefused, lease_module.LeaseError) as exc:
+        return _refusal(payload, exc.code, str(exc))
+
+    if not already:
+        # A second suspend of a held PID suspends nothing and records nothing.
+        log_action(
+            "process_suspended",
+            _suspended_block(
+                payload,
+                outcome="suspended",
+                suspended=True,
+                lease_id=lease.lease_id,
+                process_image=lease.image or payload.image,
+                process_started_at=lease.started_at,
+                lease_seconds=lease.lease_seconds,
+                expires_at=lease.expires_at,
+            ),
+        )
+    return JSONResponse(
+        content={
+            "lease_id": lease.lease_id,
+            "process_id": lease.process_id,
+            "suspended": True,
+            "expires_at": lease.expires_at,
+            "already_held": already,
+            "incident_id": lease.incident_id,
+            "lease_seconds": lease.lease_seconds,
+        }
+    )
+
+
+@app.post("/response/resume")
+def resume(payload: ResumeRequest) -> JSONResponse:
+    if not payload.lease_id and payload.process_id is None:
+        return JSONResponse(
+            status_code=400,
+            content=build_error("BAD_REQUEST", "one of lease_id or process_id is required"),
+        )
+    try:
+        lease, resumed, ended_now = LEASES.release(
+            lease_id=payload.lease_id, process_id=payload.process_id, reason=payload.reason, by="caller"
+        )
+    except Exception as exc:  # the resume itself failed; the lease stays held and still expires
+        return JSONResponse(
+            status_code=409,
+            content=build_error(
+                "RESUME_FAILED", str(exc), {"lease_id": payload.lease_id, "process_id": payload.process_id}
+            ),
+        )
+
+    if ended_now:
+        log_action(
+            "process_resumed",
+            _resumed_block(lease, reason=payload.reason, requested_by="caller",
+                           requested_incident_id=payload.incident_id),
+        )
+
+    body = {
+        "lease_id": lease.lease_id if lease else payload.lease_id,
+        "resumed": resumed,
+        "reason": payload.reason,
+        "process_id": lease.process_id if lease else payload.process_id,
+        "state": lease.state if lease else "unknown",
+    }
+    if not resumed:
+        if lease is None:
+            body["detail"] = "no lease is held for this process or lease id; nothing was resumed"
+        else:
+            body["detail"] = f"the lease ended {lease.state} ({lease.ended_by}: {lease.ended_reason})"
+    return JSONResponse(content=body)
+
+
+@app.get("/response/leases")
+def list_leases() -> JSONResponse:
+    return JSONResponse(content=LEASES.list())
 
 
 @app.post("/response/isolate")
