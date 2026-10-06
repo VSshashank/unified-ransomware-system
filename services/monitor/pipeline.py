@@ -376,6 +376,12 @@ def record_escalation(
         "audit_record": answer.audit_record(),
         "response_dispatched_at": dispatched_at,
         "termination": termination,
+        # The further notifications for this file that joined the incident
+        # while its question was open (app._join_open_incident, F6). Their
+        # writes are inside this answer's window and horizon - which is why
+        # `horizon_closed_at` can sit up to MONITOR_COALESCE_MS later than
+        # `observed_at` plus the horizon - and they have no blocks of their own.
+        "coalesced_event_ids": list(event.get("coalesced_event_ids") or []),
         "timestamp": utc_now(),
     }
     block = log_to_ledger(client, "attribution_escalation", record)
