@@ -2048,6 +2048,25 @@ second with `coalesced_into` and the closing answer.
   Joining requires the same hash, so the opener's `file_event` already holds
   it.
 
+**Live result (VM, 2026-10-06, elevated, `docs/VM_RETEST_RESULTS_2026-10-06.md`).**
+Incidents per suspicious file: mean 1.08, median 1, max 2 (was median 2, max 4);
+`file_event` blocks per file 1.08 (was 1.91); `termination_refused_or_unreachable`
+99 -> 0; 0 unsupported PIDs. **The original target of fewer than 3 ledger blocks
+per file is not met: 4.7 to 5.4 (was 6.06).** It is restated, not hit by logging
+less: the blocks that remain are the incident's own `file_event`, the two
+`response_action` blocks and the `attribution_escalation` block, and each of them
+records something different.
+
+**Decision (owner, 2026-10-06): a coalesced notification is recorded by id, not by
+a block of its own.** 304 of 666 suspicious events in that run were joined to an
+open incident; each is named in `coalesced_event_ids` of its incident's
+`attribution_escalation` block and carries `coalesced_into` on `/monitor/events`.
+Nothing is missing (362 with their own block + 304 named = 666). The live checks
+`e2e_check.py` and `full_e2e.py` ("every suspicious event reached the ledger") used
+to require a block per event and now accept an id in `coalesced_event_ids` (and
+fail if an event is in neither). That is a change to the live harness, not to a
+repository test.
+
 ## 26. The Response service could not suspend anything (F2b, Response side only)
 
 Found by the VM test of 2026-10-05 ("F2b" in its open faults). Package E1 of
