@@ -204,6 +204,30 @@ KILL_WORKERS = max(1, int(os.getenv("MONITOR_KILL_WORKERS", "16")))
 # Escalation blocks owed (action taken, block not yet written) before a kill
 # worker waits for the ledger writer: only reached if the ledger is down.
 MAX_OWED_BLOCKS = max(1, int(os.getenv("MONITOR_MAX_OWED_BLOCKS", "4096")))
+# The pipeline worker (`_drain`) writes ~3 blocks per suspicious event in a row -
+# `file_event`, the Response service's own `response_action`, its own
+# `response_action` - and an escalation block behind them, each waiting out a
+# disk commit before the next event's ML call can start. On a slow disk a 20-file
+# burst fell 4-8 s behind. With this on, the last of them (the Monitor's
+# `response_action`, and an escalation block that had to wait behind it) is
+# handed to `_run_tail`, a second thread, so the worker moves on to the next
+# event while it commits and the ledger can carry both in one commit. The order
+# inside one incident is unchanged - file_event, the Response service's block,
+# this one, then the escalation's - and only different incidents interleave, as
+# concurrent incidents already did. `_work` still reports an item done only
+# once its blocks are in the chain. MONITOR_DEFER_TAIL_BLOCKS=0 writes them
+# inline, as before.
+DEFER_TAIL_BLOCKS = os.getenv("MONITOR_DEFER_TAIL_BLOCKS", "1").strip().lower() not in ("0", "false", "no", "off")
+MAX_TAIL_ITEMS = max(1, int(os.getenv("MONITOR_MAX_TAIL_ITEMS", "4096")))
+# Blocks handed off by `_drain` (DEFER_TAIL_BLOCKS above); one thread, FIFO. Started
+# on first use, so a caller that drives `_drain` itself needs no setup.
+_tail: queue.Queue = queue.Queue(maxsize=MAX_TAIL_ITEMS)
+_tail_thread: threading.Thread | None = None
+_TAIL_LOCK = threading.Lock()
+# The queue the item `_drain` is working on came from, for `_run_detection`: its
+# tail block is settled on that queue, and a call made outside `_drain` has none
+# to settle, so it writes everything inline.
+_DRAIN = threading.local()
 
 # One incident per file, not per notification - F6, FIXES.md defect 25.
 # Windows reports one write as one to three notifications (`created`, then one
@@ -956,30 +980,55 @@ def _drain() -> None:
     client = httpx.Client(timeout=pipeline.DOWNSTREAM_TIMEOUT)
     try:
         while True:
-            item = _work.get()
+            source = _work
+            item = source.get()
             if item is None:
                 return
             kind, payload = item[0], item[1:]
+            handed = False
             try:
                 if kind == "baseline":
                     _run_baseline(client, *payload)
                 elif kind == "governance":
                     _run_governance(client, *payload)
                 elif kind == "escalation":
-                    _run_escalation_record(client, *payload)
+                    if DEFER_TAIL_BLOCKS:
+                        # Behind the incident's own tail block, which was handed
+                        # to the same FIFO when its detection ran.
+                        handed = _hand_to_tail(source, "escalation", payload)
+                    else:
+                        _run_escalation_record(client, *payload)
                 else:
-                    _run_detection(client, *payload)
+                    _DRAIN.source = source
+                    try:
+                        handed = bool(_run_detection(client, *payload))
+                    finally:
+                        _DRAIN.source = None
             except Exception:  # a bad event must not kill the worker
                 logger.exception("%s work failed for %s", kind, payload[0].get("file_path"))
             finally:
-                _work.task_done()
+                if not handed:
+                    source.task_done()
     finally:
         client.close()
 
 
-def _run_detection(client: httpx.Client, event: dict, features: dict, verdict: dict) -> None:
+def _run_detection(client: httpx.Client, event: dict, features: dict, verdict: dict) -> bool:
+    """One detection's ML -> ledger -> response. True if its last block went to the tail.
+
+    When it did, the tail thread - not `_drain` - reports the item done on the
+    queue it came from, and marks the incident in the chain, once that block is
+    written.
+    """
+    source = getattr(_DRAIN, "source", None)
+    deferred: list | None = [] if (DEFER_TAIL_BLOCKS and source is not None) else None
+    handed = False
     try:
-        outcome = pipeline.run(event, features, verdict, client=client)
+        outcome = pipeline.run(event, features, verdict, client=client, defer=deferred)
+        # Handed over before anything else can fail: a block that is deferred and
+        # then not queued would be lost.
+        if deferred:
+            handed = _hand_to_tail(source, "blocks", (event, deferred))
         with _LOCK:
             event["pipeline"] = {"stages": outcome["stages"]}
             if outcome["ledger_block"]:
@@ -994,8 +1043,58 @@ def _run_detection(client: httpx.Client, event: dict, features: dict, verdict: d
     finally:
         # The incident's own blocks are in the chain, or as far in as they are
         # going to get: an escalation closing from now on writes its block at
-        # once rather than queueing it behind this one (`_Escalator`).
-        _mark_in_chain(event.get("event_id"))
+        # once rather than queueing it behind this one (`_Escalator`). With a
+        # block handed to the tail, that is when the tail has written it.
+        if not handed:
+            _mark_in_chain(event.get("event_id"))
+    return handed
+
+
+def _hand_to_tail(source: queue.Queue, kind: str, payload: tuple) -> bool:
+    """Queue `payload` for `_LedgerTail`, starting it if it is not running."""
+    _ensure_tail()
+    _tail.put((source, kind, payload))
+    return True
+
+
+def _ensure_tail() -> None:
+    global _tail_thread
+    with _TAIL_LOCK:
+        if _tail_thread is None or not _tail_thread.is_alive():
+            _tail_thread = threading.Thread(target=_run_tail, name="monitor-ledger-tail", daemon=True)
+            _tail_thread.start()
+
+
+def _run_tail() -> None:
+    """Write what `_drain` handed off, in the order it was handed, and settle each item.
+
+    The settling is the point: `_work.join()` (the tests, and anything that
+    waits for "every block written") returns only when this has run for every
+    item handed over, and the incident is marked in the chain only now, so an
+    escalation block can never overtake the block it follows.
+    """
+    client = httpx.Client(timeout=pipeline.DOWNSTREAM_TIMEOUT)
+    try:
+        while True:
+            source, kind, payload = _tail.get()
+            event = payload[0] if kind == "blocks" else None
+            try:
+                if kind == "blocks":
+                    for event_type, event_data in payload[1]:
+                        pipeline.log_to_ledger(client, event_type, event_data)
+                else:
+                    _run_escalation_record(client, *payload)
+            except Exception:  # a bad block must not kill the writer
+                logger.exception("tail %s failed", kind)
+            finally:
+                try:
+                    if event is not None:
+                        _mark_in_chain(event.get("event_id"))
+                finally:
+                    source.task_done()
+                    _tail.task_done()
+    finally:
+        client.close()
 
 
 # ------------------------------------------------------- open attribution questions

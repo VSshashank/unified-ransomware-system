@@ -852,11 +852,23 @@ def record_escalation(
     return {"record": record, "block": block, "termination": termination, "result": result}
 
 
-def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None = None) -> PipelineResult:
+def run(
+    event: dict,
+    features: dict,
+    verdict: dict,
+    client: httpx.Client | None = None,
+    defer: list | None = None,
+) -> PipelineResult:
     """ML -> ledger -> response for one detected event.
 
     Returns what each hop did so `/monitor/events` can show the chain and the
     integration test can assert on it.
+
+    `defer` is the caller's list for the block that comes last and that nothing
+    else in this function reads: with one given, the trailing `response_action`
+    block is appended to it as `(event_type, event_data)` instead of being
+    written, and the caller writes it, in order, off this thread
+    (`app._run_tail`). Without one, it is written here, as it always was.
     """
     owns_client = client is None
     client = client or httpx.Client(timeout=DOWNSTREAM_TIMEOUT)
@@ -977,8 +989,7 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
             if response:
                 result["response"] = response
                 result["stages"].append("response_triggered")
-                log_to_ledger(
-                    client,
+                tail_block = (
                     "response_action",
                     {
                         "file_path": event.get("file_path"),
@@ -997,6 +1008,10 @@ def run(event: dict, features: dict, verdict: dict, client: httpx.Client | None 
                         "timestamp": utc_now(),
                     },
                 )
+                if defer is not None:
+                    defer.append(tail_block)
+                else:
+                    log_to_ledger(client, *tail_block)
         return result
     finally:
         if owns_client:
