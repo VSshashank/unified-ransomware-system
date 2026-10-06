@@ -32,7 +32,9 @@ one and `actions.py` keeps every guard in one place.
 from __future__ import annotations
 
 import logging
+import math
 import os
+import queue
 import threading
 import time
 from collections import OrderedDict
@@ -66,6 +68,29 @@ def iso_utc(epoch: float) -> str:
     return datetime.fromtimestamp(epoch, tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+#: What a block records when the request carried no gate. The Response service
+#: does not evaluate a gate of its own and must not write one it did not
+#: evaluate (review finding R8c: it used to stamp "suspend_authorised" on every
+#: block, a gate that was never built).
+NO_GATE_REASON = "no gate supplied (operator request)"
+
+
+def gate_record(gate: str | None) -> dict:
+    """How a block records the gate: the caller's claim, never Response's verdict."""
+    if gate:
+        reason = (f"claimed by the caller ({gate!r}); the Response service cannot "
+                  "verify it and did not evaluate any gate")
+    else:
+        reason = NO_GATE_REASON
+    return {
+        # The attribution fields beside this are the caller's too.
+        "attribution_supplied_by": "caller",
+        "gate": gate or None,
+        "gate_verified": False,
+        "gate_reason": reason,
+    }
+
+
 class LeaseError(RuntimeError):
     """A lease could not be granted, with a code for the refusal."""
 
@@ -92,6 +117,8 @@ class Lease:
     deadline: float
     granted_mono: float
     state: str = HELD
+    #: The gate the caller says allowed this suspension, verbatim, or None.
+    gate: str | None = None
     ended_by: str | None = None
     ended_reason: str | None = None
     ended_at: str | None = None
@@ -113,12 +140,13 @@ class Lease:
         }
 
     def gate_fields(self) -> dict:
-        """What allowed this suspension; every block naming the PID carries it (C-16)."""
+        """What the caller said allowed this suspension. Every block naming the
+        PID carries it, recorded as the caller's claim (`gate_verified: false`)."""
         return {
             "attribution_confidence": self.attribution_confidence,
             "attribution_source": self.attribution_source,
             "attribution_reason": self.attribution_reason,
-            "gate": "suspend_authorised",
+            **gate_record(self.gate),
         }
 
 
@@ -147,6 +175,13 @@ class LeaseTable:
         self._history: OrderedDict[str, Lease] = OrderedDict()
         self._reaper: threading.Thread | None = None
         self._stop = threading.Event()
+        #: Set from shutdown on: no new suspensions, because nothing would end them.
+        self._closed = False
+        #: Ended leases waiting to be recorded. `on_end` (a ledger write, up to
+        #: LEDGER_TIMEOUT each) runs on its own thread once the table is
+        #: started, so expiry never waits behind it (review finding R-RACE 5).
+        self._notes: queue.Queue = queue.Queue()
+        self._recorder: threading.Thread | None = None
 
     # ---------------------------------------------------------------- granting
 
@@ -162,6 +197,7 @@ class LeaseTable:
         attribution_confidence: str | None = None,
         attribution_source: str | None = None,
         attribution_reason: str | None = None,
+        gate: str | None = None,
     ) -> tuple[Lease, bool]:
         """Suspend `process_id` under a new lease, or return the one it is under.
 
@@ -169,23 +205,60 @@ class LeaseTable:
         refuse); `suspend(handle)` freezes it. The watchdog is told about the
         lease *before* the suspend, so there is no moment at which this process
         could die holding a suspension nobody else knows about.
+
+        Refused (LeaseError): a lease that is not a finite positive number of
+        seconds (`INVALID_LEASE`); any suspend once shutdown has begun
+        (`SHUTTING_DOWN`); a held PID whose state cannot be proven
+        (`LEASE_STATE_UNCERTAIN`); a watchdog that will not start.
         """
         pid = int(process_id)
+        try:
+            requested = float(lease_seconds)
+        except (TypeError, ValueError):
+            requested = float("nan")
+        if not math.isfinite(requested) or requested <= 0:
+            raise LeaseError("INVALID_LEASE", f"lease_seconds must be a finite number above 0, not {lease_seconds!r}")
+        if self._closed:
+            raise LeaseError("SHUTTING_DOWN", "the Response service is shutting down; refusing to suspend "
+                             "anything nothing would resume")
+        # A watchdog respawn can take seconds. It happens here, outside the
+        # table lock, so no expiry, resume or terminate waits for it.
+        if self.watchdog is not None:
+            self.watchdog.start()
         ended: list[Lease] = []
         try:
             with self._lock:
+                if self._closed:
+                    raise LeaseError("SHUTTING_DOWN", "the Response service is shutting down; refusing to "
+                                     "suspend anything nothing would resume")
                 existing = self._held.get(pid)
+                if existing is not None and self._still_alive(existing):
+                    return existing, True
+
+                handle = vet()
                 if existing is not None:
-                    if self._still_alive(existing):
+                    # The held handle says its process is gone. Before believing
+                    # it, look at the live process: if it is the one we hold
+                    # (same start time), it is still suspended under this lease,
+                    # and suspending it again would nest a second suspend that
+                    # one resume does not undo (review finding R7b).
+                    _, live_start = _identity(handle)
+                    if live_start is None or existing.started_at is None:
+                        raise LeaseError(
+                            "LEASE_STATE_UNCERTAIN",
+                            f"pid {pid} is held under {existing.lease_id}, the held handle reports it gone, "
+                            "and the start time needed to tell whether it is the same process cannot be "
+                            "read; refusing rather than risk suspending it twice",
+                        )
+                    if abs(live_start - existing.started_at) < 1e-6:
+                        existing.handle = handle
                         return existing, True
-                    # Killed by someone else while held; the number may since
-                    # belong to another process. Close it out and start fresh.
+                    # A different process holds the number now. Close the old
+                    # lease out (nothing to resume) and start fresh.
                     self._end(existing, GONE, by="acquire",
                               reason="the process exited while the lease was held")
                     ended.append(existing)
 
-                handle = vet()
-                requested = float(lease_seconds)
                 seconds = min(requested, self.max_seconds)
                 now_mono = self._clock()
                 now_wall = self._wall()
@@ -206,6 +279,7 @@ class LeaseTable:
                     expires_at=iso_utc(now_wall + seconds),
                     deadline=now_mono + seconds,
                     granted_mono=now_mono,
+                    gate=gate or None,
                     handle=handle,
                 )
 
@@ -334,6 +408,10 @@ class LeaseTable:
 
     def start(self, interval: float = REAP_INTERVAL_SECONDS) -> None:
         """Start the reaper, and the watchdog so the first suspend does not wait for it."""
+        self._closed = False
+        if self._recorder is None or not self._recorder.is_alive():
+            self._recorder = threading.Thread(target=self._record_loop, name="lease-recorder", daemon=True)
+            self._recorder.start()
         if self.watchdog is not None:
             try:
                 self.watchdog.start()
@@ -348,13 +426,52 @@ class LeaseTable:
                                         name="lease-reaper", daemon=True)
         self._reaper.start()
 
+    def shutdown(self, reason: str, by: str) -> list[Lease]:
+        """Refuse new suspensions, resume every held one, then stop.
+
+        Closed first, under the lock, so a suspend racing the shutdown either
+        lands before it (and is resumed here) or is refused.
+        """
+        with self._lock:
+            self._closed = True
+        ended = self.resume_all(reason=reason, by=by)
+        self.stop()
+        return ended
+
     def stop(self) -> None:
+        with self._lock:
+            self._closed = True
         self._stop.set()
         reaper, self._reaper = self._reaper, None
         if reaper is not None:
             reaper.join(timeout=2)
+        recorder, self._recorder = self._recorder, None
+        if recorder is not None:
+            # Drain: every ended lease is recorded before the service exits.
+            # Bounded by the ledger client's own timeout per block.
+            self._notes.put(None)
+            recorder.join(timeout=30)
         if self.watchdog is not None:
             self.watchdog.close()
+
+    def drain(self, timeout: float = 5.0) -> bool:
+        """Wait until every ended lease queued so far has been recorded."""
+        recorder = self._recorder
+        if recorder is None or not recorder.is_alive():
+            return True
+        marker = threading.Event()
+        self._notes.put(marker)
+        return marker.wait(timeout)
+
+    def _record_loop(self) -> None:
+        while True:
+            item = self._notes.get()
+            if item is None:
+                return
+            if isinstance(item, threading.Event):
+                item.set()
+                continue
+            self._call_on_end(item)
 
     def _reap_loop(self, interval: float) -> None:
         while not self._stop.wait(interval):
@@ -411,11 +528,18 @@ class LeaseTable:
     def _notify(self, leases: list[Lease]) -> None:
         if not leases or self.on_end is None:
             return
+        recorder = self._recorder
         for lease in leases:
-            try:
-                self.on_end(lease)
-            except Exception:
-                logger.exception("recording the end of lease %s failed", lease.lease_id)
+            if recorder is not None and recorder.is_alive():
+                self._notes.put(lease)  # recorded on the recorder thread, not the reaper's
+            else:
+                self._call_on_end(lease)
+
+    def _call_on_end(self, lease: Lease) -> None:
+        try:
+            self.on_end(lease)
+        except Exception:
+            logger.exception("recording the end of lease %s failed", lease.lease_id)
 
 
 def _identity(handle: Any) -> tuple[str | None, float | None]:

@@ -89,7 +89,15 @@ def of_type(blocks, event_type):
     return [data for kind, data in blocks if kind == event_type]
 
 
-GATE = ("attribution_confidence", "attribution_source", "attribution_reason", "gate")
+GATE = ("attribution_confidence", "attribution_source", "attribution_reason")
+
+
+def assert_caller_claim(block):
+    """Review follow-up R8c: the gate is the caller's claim, never Response's verdict."""
+    assert block["attribution_supplied_by"] == "caller"
+    assert block["gate"] is None
+    assert block["gate_verified"] is False
+    assert block["gate_reason"] == "no gate supplied (operator request)"
 
 
 # ---------------------------------------------------------------- the happy path
@@ -123,7 +131,7 @@ def test_suspend_freezes_and_resume_unfreezes_a_real_process(client, child, bloc
         assert block["process_id"] == child.pid
         assert block["lease_id"] == body["lease_id"]
         assert block["incident_id"] == "inc-s1"
-        assert block["gate"] == "suspend_authorised"
+        assert_caller_claim(block)
         assert block["attribution_confidence"] == "probable"
         assert block["attribution_source"] == "windows-security-4663"
         assert block["attribution_reason"] == "one writer so far (pending)"
@@ -184,11 +192,12 @@ def test_an_expired_lease_resumes_the_process(client, child, table, clock, block
     clock.now += 1.5
     table.reap()
     assert child.is_running()
+    assert table.drain()  # blocks are written off the reaper's thread
     (block,) = of_type(blocks, "process_resumed")
     assert block["lease_id"] == lease_id
     assert block["reason"] == "lease_expired"
     assert block["requested_by"] == "lease_expiry"
-    assert block["gate"] == "suspend_authorised"
+    assert_caller_claim(block)
     assert client.get("/response/leases").json()[0]["state"] == "resumed"
 
 
@@ -275,6 +284,7 @@ def assert_refusal_recorded(blocks, child, code):
     assert block["code"] == code
     assert block["process_id"] == child.pid
     assert all(block[key] for key in GATE)
+    assert_caller_claim(block)
 
 
 def test_a_reused_pid_wrong_started_at_is_refused(client, child, blocks):

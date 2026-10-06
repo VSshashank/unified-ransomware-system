@@ -15,6 +15,7 @@ mounted here unchanged.
 
 import atexit
 import logging
+import math
 import os
 import threading
 from contextlib import asynccontextmanager
@@ -76,8 +77,7 @@ LEASES = build_lease_table()
 def _resume_everything_at_exit() -> None:
     """`atexit` backstop for a shutdown that skipped the lifespan hook."""
     try:
-        LEASES.resume_all(reason="response_exit", by="atexit")
-        LEASES.stop()
+        LEASES.shutdown(reason="response_exit", by="atexit")
     except Exception:  # interpreter teardown; nothing left to report to
         pass
 
@@ -102,9 +102,9 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        # Nothing stays frozen because this service stopped.
-        table.resume_all(reason="response_shutdown", by="shutdown")
-        table.stop()
+        # Nothing stays frozen because this service stopped, and nothing new
+        # is suspended once it has begun to stop.
+        table.shutdown(reason="response_shutdown", by="shutdown")
         _vss_manager.stop_scheduler()
 
 
@@ -137,13 +137,21 @@ class SuspendRequest(BaseModel):
     # About the attribution horizon plus a margin; capped at
     # RESPONSE_LEASE_MAX_SECONDS. The lease ends - and the process resumes -
     # when it runs out, whatever happened to the caller.
-    lease_seconds: float = Field(gt=0)
+    # Finite: NaN and Infinity are a 400, not a 500 (review finding R8).
+    lease_seconds: float = Field(gt=0, allow_inf_nan=False)
     reason: str
-    # The gate that allowed it (the Monitor's `suspend_authorised`). Required:
-    # every block naming the PID carries them (C-16).
+    # What the caller says the attribution was. Required, and recorded on
+    # every block naming the PID - as the caller's claim, which this service
+    # cannot check (`attribution_supplied_by: "caller"`).
     attribution_confidence: str = Field(min_length=1)
     attribution_source: str = Field(min_length=1)
     attribution_reason: str = Field(min_length=1)
+    # The gate the caller says allowed the suspend (e.g. "suspend_authorised"
+    # from a Monitor that evaluates one). Optional. Recorded verbatim with
+    # `gate_verified: false`; absent, the block says `gate: null` and why. This
+    # service evaluates no gate of its own and never writes one (review
+    # finding R8c).
+    gate: str | None = None
     # The identity attribution named. At least one must be checkable against
     # the live process, or the suspend is refused.
     image: str | None = None
@@ -207,8 +215,27 @@ def build_error(code: str, message: str, details: dict | None = None) -> dict:
 async def validation_exception_handler(request, exc: RequestValidationError) -> JSONResponse:
     return JSONResponse(
         status_code=400,
-        content=build_error("BAD_REQUEST", "Request validation failed", {"errors": exc.errors()}),
+        content=build_error("BAD_REQUEST", "Request validation failed", {"errors": _json_safe(exc.errors())}),
     )
+
+
+def _json_safe(value):
+    """A validation error, made serialisable.
+
+    `exc.errors()` echoes the input and can carry the exception itself: a NaN
+    `lease_seconds` came back as a float JSON cannot hold, and the handler
+    turned a 400 into a 500 (review finding R8). Non-finite floats and
+    anything not JSON-native become strings.
+    """
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, float):
+        return value if math.isfinite(value) else repr(value)
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    return str(value)
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -335,7 +362,9 @@ def terminate(payload: TerminateRequest) -> JSONResponse:
 
 
 def _suspended_block(payload: SuspendRequest, **fields) -> dict:
-    """A `process_suspended` block. It names the PID, so it carries the gate (C-16)."""
+    """A `process_suspended` block. It names the PID, so it carries what the
+    caller said allowed it - as the caller's claim, never as a verdict of this
+    service's (`gate_verified: false`)."""
     return {
         "action": "suspend",
         "incident_id": payload.incident_id,
@@ -344,7 +373,7 @@ def _suspended_block(payload: SuspendRequest, **fields) -> dict:
         "attribution_confidence": payload.attribution_confidence,
         "attribution_source": payload.attribution_source,
         "attribution_reason": payload.attribution_reason,
-        "gate": "suspend_authorised",
+        **lease_module.gate_record(payload.gate),
         "reason": payload.reason,
         "lease_seconds_requested": payload.lease_seconds,
         **fields,
@@ -410,6 +439,7 @@ def suspend(payload: SuspendRequest) -> JSONResponse:
             attribution_confidence=payload.attribution_confidence,
             attribution_source=payload.attribution_source,
             attribution_reason=payload.attribution_reason,
+            gate=payload.gate,
             vet=lambda: vet_suspend(payload.process_id, payload.image, payload.started_at,
                                     extra_protected=table.protected_pids()),
             suspend=suspend_process,

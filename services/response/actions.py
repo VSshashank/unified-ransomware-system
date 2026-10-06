@@ -196,8 +196,10 @@ def terminate_process(pid: int, force: bool = True) -> dict:
 # ------------------------------------------------------------- suspend / resume
 #
 # Suspension is reversible, which is the whole reason it may act on weaker
-# evidence than a kill (the Monitor's `suspend_authorised` gate allows a
-# pending answer; `kill_authorised` never does). It is reversible only if it
+# evidence than a kill (the planned Monitor-side `suspend_authorised` gate
+# would allow a pending answer; `kill_authorised` never does - that gate is
+# not built, and this service evaluates none, see leases.gate_record). It is
+# reversible only if it
 # lands on the right process and is certain to be undone, so it faces every
 # refusal the kill does - the same `guard()`, which includes
 # `_guard_image_path` - and three more:
@@ -262,13 +264,30 @@ def pid_namespace_isolated() -> str | None:
     return None
 
 
+class MonitorPidInvalid(ValueError):
+    """`URDS_MONITOR_PID` is set but is not a list of PIDs."""
+
+
 def monitor_pids() -> set[int]:
-    """The Monitor's PID(s), from `URDS_MONITOR_PID` (comma-separated)."""
+    """The Monitor's PID(s), from `URDS_MONITOR_PID`.
+
+    Spaces, commas and semicolons all separate. Anything else in it - a word,
+    a sign, a zero - raises MonitorPidInvalid rather than being skipped: a
+    value that silently parses to fewer PIDs than were meant leaves the
+    Monitor unprotected while looking configured (review finding R3c, where
+    "<pid> 4" protected nothing). Unset or blank is an empty set.
+    """
+    raw = os.getenv("URDS_MONITOR_PID", "")
     out: set[int] = set()
-    for part in os.getenv("URDS_MONITOR_PID", "").replace(";", ",").split(","):
-        part = part.strip()
-        if part.isdigit():
-            out.add(int(part))
+    for token in re.split(r"[\s,;]+", raw.strip()):
+        if not token:
+            continue
+        if not re.fullmatch(r"[0-9]+", token) or int(token) <= 0:
+            raise MonitorPidInvalid(
+                f"URDS_MONITOR_PID={raw!r}: {token!r} is not a PID (expected positive integers "
+                "separated by spaces, commas or semicolons)"
+            )
+        out.add(int(token))
     return out
 
 
@@ -324,6 +343,15 @@ def vet_suspend(pid: int, image: str | None = None, started_at=None,
         )
 
     try:
+        monitors = monitor_pids()
+    except MonitorPidInvalid as exc:
+        raise SuspendRefused(
+            "MONITOR_PID_INVALID",
+            f"{exc}. Which process is the Monitor cannot be told, so nothing is suspended until "
+            "it is fixed",
+        ) from exc
+
+    try:
         guard(pid)
     except TerminationError as exc:
         text = str(exc)
@@ -335,7 +363,6 @@ def vet_suspend(pid: int, image: str | None = None, started_at=None,
             "LEASE_WATCHDOG", f"PID {pid} is this service's lease watchdog; refusing to suspend"
         )
 
-    monitors = monitor_pids()
     if monitors and pid in _with_ancestors(monitors):
         raise SuspendRefused(
             "MONITOR_OR_ANCESTOR",

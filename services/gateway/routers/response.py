@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, Request
+import math
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -34,13 +36,17 @@ class SuspendRequest(BaseModel):
 
     process_id: int
     incident_id: str = Field(min_length=1)
-    lease_seconds: float = Field(gt=0)
+    # Range-checked in the route, not here: a NaN in a validation error is
+    # echoed back and cannot be serialised (a 500 instead of a 400).
+    lease_seconds: float
     reason: str
     attribution_confidence: str = Field(min_length=1)
     attribution_source: str = Field(min_length=1)
     attribution_reason: str = Field(min_length=1)
     image: str | None = None
     started_at: float | str | None = None
+    # The caller's gate claim, forwarded as given; Response records it unverified.
+    gate: str | None = None
 
 
 class ResumeRequest(BaseModel):
@@ -60,7 +66,17 @@ async def terminate(payload: TerminateWithLeaseRequest, request: Request) -> JSO
 
 @router.post("/suspend")
 async def suspend(payload: SuspendRequest, request: Request) -> JSONResponse:
-    return await proxy_request(request, "POST", RESPONSE_URL, "/response/suspend", payload.model_dump())
+    if not math.isfinite(payload.lease_seconds) or payload.lease_seconds <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "BAD_REQUEST",
+                    "message": "lease_seconds must be a finite number greater than 0",
+                    "details": {"lease_seconds": repr(payload.lease_seconds)}},
+        )
+    body = payload.model_dump()
+    if body.get("gate") is None:
+        body.pop("gate", None)  # forwarded only when given, so older bodies reach Response unchanged
+    return await proxy_request(request, "POST", RESPONSE_URL, "/response/suspend", body)
 
 
 @router.post("/resume")
