@@ -342,6 +342,22 @@ error, a 409 (`PID_REUSED`, `SYSTEM_PROCESS`, `PID_NAMESPACE_ISOLATED`,
 `MONITOR_OR_ANCESTOR`, ...) or an unreachable service means: log it, do nothing
 else, carry on. Detection and the normal kill path never depend on it.
 
+**A kill never waits for a freeze.** The kill decision is `answer.kill_authorised`
+and nothing else; the hold only says whether there is a lease to name on it. If
+the question closes while the suspend request is still in flight, a kill-authorised
+close sends its terminate at once, without a lease (a suspend that lands afterwards
+hits a dead PID and is refused, or is closed by the terminate), and a close that is
+not a kill does not wait either: the thread making the request resumes the process
+(by lease, or by PID if the reply was lost) when its reply arrives. No freeze is
+started once the question's horizon has passed. A hold whose lease has run out
+(its length plus a margin, on a monotonic clock) is ended, not kept: a resume that
+failed or timed out - a slow ledger makes the Response service's reply late - no
+longer leaves freeze-first off for that PID for ever; the 30 s cooldown runs from
+the end of the lease. `/monitor/stop` pauses freeze-first before it releases
+anything (the sweeper's re-ask included) and `/monitor/start` lifts it; the
+lifespan shutdown releases even when the app exits through an exception; and the
+HTTP client is only warmed when freeze-first is on.
+
 **Switch and settings.** `MONITOR_SUSPEND_FIRST` (default on; `0`, `false`,
 `off`, `no` turn it off, and the Monitor then behaves exactly as it did before
 it existed: no request, no new field on any event, block or terminate request).
@@ -357,13 +373,26 @@ long). `/monitor/attribution` reports `suspend_first`.
 `attribution_reason`, and `gate: "suspend_authorised"` with `gate_verified:
 false`: the Response service cannot verify a gate and evaluates none). The
 Monitor's `attribution_escalation` block gains `lease_id` and a `suspension`
-object (`outcome`: `terminated`, `resumed`, `refused`, `unreachable`,
-`uncertain`, ...; `suspended_at`, `expires_at`, `reason`) and names no process.
+object and **names no process**: it is an allow-list of non-identifying fields
+(`suspend_policy.LEDGER_FIELDS`) - `lease_id` (an id the Response service made
+up), `gate`, `outcome` (`terminated`, `resumed`, `resume_deferred`, `refused`,
+`skipped`, `unreachable`, `uncertain`, `resume_failed`, `lease_expired`, ...),
+`suspended_at`, `expires_at`, `resumed_at`, `lease_seconds`, `already_held`,
+`code` (a refusal code such as `PID_REUSED`), `action`, `reason` (the Monitor's
+own fixed wording, never the attribution's text), and the ids of the incidents
+that shared the lease. The free text - the Response service's refusal message,
+a transport error, the attribution's own reason, any of which can name a PID and
+an image - stays on the in-memory event (`/monitor/events`) as `detail`, and any
+string that has a path separator or the word PID is withheld even from an allowed
+field. The C-16 scan checks the nested object too (below).
 **C-16** (`scripts/ledger_coverage.py`) has one narrow exception: a
 `process_suspended` / `process_resumed` block may name a PID only together with
 `gate == "suspend_authorised"`, and the scan fails a block that names one
 without it. Every other block keeps the old rule. So a hand-driven operator
-suspend that passes no `gate` is flagged by `--ledger-db`, by design.
+suspend that passes no `gate` is flagged by `--ledger-db`, by design. The scan
+also fails an `attribution_escalation` block whose `suspension` has a key outside
+that allow-list, or a string value (or a top-level `lease_id`) with a path
+separator or the word PID; `PID_REUSED` is a code, not the word.
 
 **Docker.** In Compose the Response service has its own PID namespace and
 cannot suspend a host PID; it refuses with `PID_NAMESPACE_ISOLATED` and records

@@ -146,8 +146,19 @@ class Rig:
         return event
 
 
+#: What the environment said when this module was imported. A run with
+#: `MONITOR_SUSPEND_FIRST=0` must really exercise the off path: the tests that need
+#: freeze-first ON are skipped under it instead of silently switching it back on, and
+#: the ones that take `rig_honouring_env` leave the variable as it is.
+EXTERNAL_SWITCH = os.environ.get("MONITOR_SUSPEND_FIRST")
+EXTERNAL_OFF = EXTERNAL_SWITCH is not None and EXTERNAL_SWITCH.strip().lower() in {"0", "false", "off", "no"}
+
+
 def build(monkeypatch, tmp_path, make_child, suspend_policy, *, probe=None, maxlen=None,
-          source_cls=KernelSource) -> Rig:
+          source_cls=KernelSource, honour_env=False) -> Rig:
+    if not honour_env and EXTERNAL_OFF:
+        pytest.skip("MONITOR_SUSPEND_FIRST is off in this run's environment: this test needs freeze-first ON; "
+                    "the off path is what the run exercises")
     clock = Clock()
     log = WriteLog(clock=clock, **({"maxlen": maxlen} if maxlen else {}))
     source = source_cls(log)
@@ -163,7 +174,8 @@ def build(monkeypatch, tmp_path, make_child, suspend_policy, *, probe=None, maxl
     monkeypatch.setattr(monitor_app, "PIPELINE_ENABLED", True)
     monkeypatch.setattr(monitor_app, "BASELINE_LOGGING_ENABLED", False)
     monkeypatch.setattr(monitor_app, "_watch_path", str(watch))
-    monkeypatch.delenv("MONITOR_SUSPEND_FIRST", raising=False)
+    if not honour_env:
+        monkeypatch.delenv("MONITOR_SUSPEND_FIRST", raising=False)
     monitor_app.EVENTS.clear()
     monitor_app._SEEN_FILES.clear()
     monitor_app.ENTROPY_HISTORY.clear()
@@ -219,6 +231,12 @@ def make_rig(monkeypatch, tmp_path, make_child, suspend_policy):
 @pytest.fixture
 def rig(make_rig):
     return make_rig()
+
+
+@pytest.fixture
+def rig_honouring_env(make_rig):
+    """A rig that leaves `MONITOR_SUSPEND_FIRST` as the environment has it."""
+    return make_rig(honour_env=True)
 
 
 def assert_spared(rig: Rig, *children: Child, suspended: bool = False) -> None:
@@ -588,9 +606,11 @@ def test_the_sweeper_is_not_held_up_by_a_slow_response(rig):
     assert victim.is_frozen()
 
 
-def test_a_close_that_comes_while_the_suspend_is_in_flight_waits_for_it(rig, suspend_policy):
+def test_a_close_that_comes_while_the_suspend_is_in_flight_is_resumed_when_the_reply_arrives(rig, suspend_policy):
     """The lease is registered before the request goes out, so a question closing meanwhile
-    cannot miss it and leave the process frozen."""
+    cannot miss it and leave the process frozen. It does not WAIT for the request either (a
+    kill must not): the thread making the request resumes when its reply arrives. (Until the
+    2026-10-06 review this test asserted that the close waited and resumed itself.)"""
     victim = rig.child()
     path = rig.write("race.docx", victim)
     rig.stub.suspend_delay = 0.3
@@ -605,7 +625,8 @@ def test_a_close_that_comes_while_the_suspend_is_in_flight_waits_for_it(rig, sus
     closing = attribution.Attribution(pid=victim.pid, image=victim.image, confidence=attribution.PROBABLE,
                                       reason="two writers", candidates=(victim.pid, 1))
     lease = suspend_policy.on_close(question, closing)  # called at once, mid-request
-    assert lease is not None and lease["action"] == "resume" and lease["outcome"] == "resumed"
+    assert lease is not None and lease["action"] == "resume" and lease["outcome"] == "resume_deferred"
+    assert wait_for(lambda: rig.stub.of("/response/resume"), timeout=8.0), "never resumed"
     assert victim.is_running(), "the close missed the lease and left the process frozen"
 
 
@@ -713,7 +734,8 @@ def run_sole_writer(rig):
 
 
 @pytest.mark.parametrize("value", ["0", "false", "off", "no"])
-def test_switched_off_the_monitor_behaves_exactly_as_before(rig, monkeypatch, value):
+def test_switched_off_the_monitor_behaves_exactly_as_before(rig_honouring_env, monkeypatch, value):
+    rig = rig_honouring_env
     monkeypatch.setenv("MONITOR_SUSPEND_FIRST", value)
     victim, event = run_sole_writer(rig)
 
@@ -727,6 +749,20 @@ def test_switched_off_the_monitor_behaves_exactly_as_before(rig, monkeypatch, va
     assert "lease_id" not in block and "suspension" not in block
     assert block["result"] == "terminated"
     assert not victim.alive()
+
+
+def test_the_environment_alone_decides_whether_a_sole_writer_is_frozen(rig_honouring_env, suspend_policy):
+    """Whatever this run's `MONITOR_SUSPEND_FIRST` is (unset, 1 or 0), nothing else changes it:
+    run the whole suite with it at 0 and this is the test that checks the off path end to end."""
+    rig = rig_honouring_env
+    victim, event = run_sole_writer(rig)
+    (terminate,) = rig.stub.of("/response/terminate")
+    assert terminate["process_id"] == victim.pid
+    if suspend_policy.enabled():
+        assert len(rig.stub.of("/response/suspend")) == 1 and "lease_id" in terminate
+    else:
+        assert rig.stub.of("/response/suspend") == [] and "lease_id" not in terminate
+        assert "suspension" not in event
 
 
 def test_the_switch_defaults_to_on(suspend_policy, monkeypatch):
