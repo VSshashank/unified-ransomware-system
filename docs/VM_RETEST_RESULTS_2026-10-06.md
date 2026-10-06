@@ -240,3 +240,26 @@ Monitor's `file_event` block for the same incident (the order check fails). The 
 prompt, the audit trail is late and out of order. Not fixed: it needs faster or batched
 ledger writes. The honest statement of R22 is: passes at about 4 ms per file flush, misses
 the 2.05 s target by 0.1-0.5 s at 10-16 ms.
+
+## 11. After the A/B: what was built for the slow-disk burst, and what is not yet proven
+
+Written before any VM run of this. Two changes (FIXES.md 28) and one tool fix (FIXES.md 29).
+
+- **Ledger group commit** (`LEDGER_MAX_BATCH`, default 64): appends that overlap share a commit.
+  Each caller still returns only when its block is durable; the chain, ids and order are
+  unchanged. On the VM disk in a slow stretch, 80 appends: one writer unchanged; three writers
+  3.4 -> 2.0 s; eight 2.8 -> 0.75 s.
+- **Monitor tail** (`MONITOR_DEFER_TAIL_BLOCKS`, default on): the Monitor's last block per
+  incident goes to a second thread so the pipeline worker moves on to the next event. Order
+  inside one incident is unchanged (file_event, the response block, then the escalation);
+  different incidents interleave. On a local stack with a fast disk and a 20-file burst the
+  ledger caught up 2.0 s after the last write against 2.3 s without (20 repetitions each,
+  interleaved) - about 12 percent. That is all that is measured. The local stack has no audit
+  channel, so no escalation blocks were involved.
+- **Simulator `--restore`** now survives a manifest the kill tore (the spoofer failure).
+
+What this does not show: that R22 now passes on a slow disk. The gain is a fraction of the
+serial path (about three commits per event become about two, overlapped, and concurrent writers
+share commits), so it may close the 0.1-0.5 s misses or may not. The elevated check is
+`r22_ab2.ps1`: default, tail off, both off, default again, with a disk probe before and after
+each. Until it has run, R22 stays "passes only on a fast disk".

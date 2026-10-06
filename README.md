@@ -166,6 +166,8 @@ or its ancestors.
 
 The Monitor side (freeze-first: suspend a sole writer as soon as a kernel-grade answer names it, then kill it at the horizon if the kill gate is satisfied then, or resume it) is built, on by default and switchable with `MONITOR_SUSPEND_FIRST=0` (FIXES.md, defect 26, "The Monitor side"; `docs/PROCESS_ATTRIBUTION.md`). It is **not proven on the VM**, and it only helps against an attacker still running when the first audit record arrives; an operator can also still suspend through the gateway.
 
+Two switches govern how the Monitor's blocks reach the ledger on a slow disk: `LEDGER_MAX_BATCH` (default 64; 1 commits each block alone) and `MONITOR_DEFER_TAIL_BLOCKS` (default on; 0 writes the last block of each incident inline). Neither changes what is in the chain or the order inside one incident (FIXES.md, defect 28).
+
 The gateway needs no internal service logic changes as long as the contracts in `docs/openapi/gateway.yaml` hold.
 
 ## Running the Tests

@@ -2762,6 +2762,53 @@ no "use_container_width" line.
 
 **Not changed:** the Streamlit pin; the refresh interval; any panel.
 
+## 28. A burst's ledger blocks fell seconds behind its events (R22), and the order was wrong
+
+**Seen:** the 2026-10-06 burst A/B (docs/VM_RETEST_RESULTS_2026-10-06.md, section 10). In
+slow disk stretches the Monitor's blocks for a 20-file burst landed 4-8 s after the events,
+a fresh writer's kill missed its 2.05 s target by 0.1-0.5 s, and a `terminate` block could
+reach the chain before the `file_event` block it answers. The same failure with this round's
+earlier changes off, so it was the disk and the write path, not those changes.
+
+**Cause:** the pipeline worker wrote about three blocks per suspicious event in a row (the
+`file_event`, the Response service's `response_action`, its own `response_action`), and an
+escalation block that had to wait behind the incident's blocks also ran there. Each block is a
+commit with `synchronous=FULL` and a rollback journal - several disk flushes - and each
+committed alone before the next event's ML call could start.
+
+**Fix, two parts, each switchable:**
+- `services/ledger/hash_chain.py`: group commit. Appends that arrive while a commit is in flight
+  ride in the next one. Each caller still returns only after its own block is durable; ids,
+  hashes, chain links and arrival order are unchanged; a batch that fails to commit is rolled
+  back whole. `LEDGER_MAX_BATCH` (default 64; 1 = never share).
+- `services/monitor/app.py`: the Monitor's last block per incident (its `response_action`, and an
+  escalation block waiting behind it) goes to a second FIFO thread (`_run_tail`) so the worker
+  moves on while it commits. Order inside one incident is unchanged; only different incidents
+  interleave, as concurrent incidents already did. `_work.join()` still means "every block is in
+  the chain". `MONITOR_DEFER_TAIL_BLOCKS=0` writes inline as before. The kill path and
+  `Attribution.kill_authorised` are not touched.
+
+**Tests:** `services/ledger/tests/test_group_commit.py` (7), `services/monitor/tests/test_ledger_tail.py`
+(6, one fails if the settle moves back to the worker). The existing Monitor and ledger suites
+pass unedited.
+
+**Measured, and not:** ledger alone, 80 appends on the VM disk in a slow stretch: 1 writer
+unchanged, 3 writers 3.4 -> 2.0 s, 8 writers 2.8 -> 0.75 s. Whole Monitor on a local stack, fast
+disk, 20-file burst, ledger catch-up after the last write: 2.0 s with the tail against 2.3 s
+without (20 repetitions each, interleaved). **Not measured:** the effect on the slow-disk burst
+failures themselves, and the elevated R22; `r22_ab2.ps1` in the run folder is the check.
+
+## 29. The simulator's `--restore` died on a manifest the kill had torn
+
+The simulator rewrites `.simulator_manifest.json` in place after every file, so a kill inside
+one of those writes left it empty or truncated (the 2026-10-06 spoofer restore: JSON error, exit
+1, directory left encrypted). The writes into the watched folder are unchanged - a golden test
+pins them and the Monitor measures them. `--restore` now rebuilds a torn manifest from the
+journal beside the saved originals (replaced atomically, names the target and family), puts every
+started file back from its copy and removes each name the family could have produced; with no
+journal it says so and exits 1. `services/monitor/tests/test_simulator_torn_manifest.py` (42);
+they fail on the old script.
+
 ## Suites
 
 Baseline at `7dcee2a` and after this branch, same venv (Python 3.12.10,
