@@ -22,6 +22,7 @@ from typing import Callable
 import httpx
 
 import attribution
+import suspend_policy
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +260,7 @@ def request_termination(
     client: httpx.Client,
     incident_id: str,
     answer: "attribution.Attribution",
+    lease_id: str | None = None,
 ) -> dict | None:
     """Ask the Response service to kill the process an escalation named.
 
@@ -270,25 +272,29 @@ def request_termination(
     answer came back - and the only thing this adds is the kill. The Response
     service writes its own `response_action` block for it, with the same
     incident ID.
+
+    `lease_id` is the freeze-first lease the process is held under
+    (`suspend_policy`), when it was suspended first: the kill names it, so the
+    Response service ends it "terminated" rather than resuming a dead process.
+    Absent - nothing was suspended, or freeze-first is off - the request is
+    exactly what it always was, key for key.
     """
     if not answer.kill_authorised:
         return None
-    return _post(
-        client,
-        RESPONSE_URL,
-        "/response/terminate",
-        {
-            "process_id": answer.pid,
-            "incident_id": incident_id,
-            "reason": f"attribution escalated to certain after the delivery horizon: {answer.reason}",
-            "force": True,
-            # What authorised it, so the Response service's own block says so.
-            # A kill asked for with neither is an operator's, and the C-16 scan
-            # reports its block as naming a process without attribution.
-            "attribution_confidence": answer.confidence,
-            "attribution_source": answer.source,
-        },
-    )
+    payload = {
+        "process_id": answer.pid,
+        "incident_id": incident_id,
+        "reason": f"attribution escalated to certain after the delivery horizon: {answer.reason}",
+        "force": True,
+        # What authorised it, so the Response service's own block says so.
+        # A kill asked for with neither is an operator's, and the C-16 scan
+        # reports its block as naming a process without attribution.
+        "attribution_confidence": answer.confidence,
+        "attribution_source": answer.source,
+    }
+    if lease_id:
+        payload["lease_id"] = lease_id
+    return _post(client, RESPONSE_URL, "/response/terminate", payload)
 
 
 # ------------------------------------------------- kills this Monitor already made
@@ -641,6 +647,15 @@ def escalation_action(
 ) -> dict:
     """The action a closed question authorises, taken now: a kill, or nothing.
 
+    Freeze-first first (`suspend_policy.on_close`): if this question's writer
+    was suspended, the lease is converted to the kill the unchanged gate
+    authorises or the process is resumed. It never decides the kill - the
+    action below does, from `answer.kill_authorised` alone - and with nothing
+    suspended, or freeze-first off, it returns None and this is exactly the
+    function it was. The action carries what happened to the lease as `lease`.
+
+    The rest of this docstring is about the kill itself.
+
     On the escalation thread, a kill this Monitor has already made for the same
     process is not asked for again (`_killed_earlier`); the action then carries
     `terminated_earlier`, the earlier kill's incident and time.
@@ -661,6 +676,39 @@ def escalation_action(
     not asked again: the action carries `termination_unconfirmed_earlier`
     (`_unconfirmed_earlier`). A later write by the process is asked for anew.
     """
+    lease = suspend_policy.on_close(question, answer)
+    lease_id = lease.get("lease_id") if lease and lease.get("action") == "terminate" else None
+    action = _take_action(client, question, answer, lease_id)
+    if lease is not None:
+        action["lease"] = _lease_after(lease, action)
+    return action
+
+
+def _lease_after(lease: dict, action: dict) -> dict:
+    """The lease's record once the kill it was converted to has been tried."""
+    if lease.get("action") != "terminate":
+        return lease
+    termination = action.get("termination")
+    if termination is not None and termination.get("status") == "terminated":
+        return {**lease, "outcome": "terminated",
+                "reason": "killed at the horizon: the kill gate was satisfied; the kill carried the lease"}
+    if action.get("response_dispatched_at") is None:
+        # The kill was not sent (terminated earlier, PID reused, retry budget
+        # spent). A frozen process cannot have lost its PID, so this is a
+        # process that is already gone; the lease ends on its own expiry.
+        return {**lease, "outcome": "terminate_not_sent",
+                "reason": "the kill was authorised and not sent (see the action); the lease ends on its expiry"}
+    return {**lease, "outcome": "terminate_not_confirmed",
+            "reason": "the kill was authorised and not confirmed; the lease ends on its own expiry"}
+
+
+def _take_action(
+    client: httpx.Client,
+    question: "attribution.Question",
+    answer: "attribution.Attribution",
+    lease_id: str | None,
+) -> dict:
+    """`escalation_action`'s kill, with the lease it is to release, if any."""
     termination = None
     dispatched_at = None
     if answer.kill_authorised:
@@ -688,7 +736,7 @@ def escalation_action(
         dispatched_epoch = time.time()
         dispatched_mono = time.perf_counter()
         dispatched_at = utc_now()
-        termination = request_termination(client, question.key, answer)
+        termination = request_termination(client, question.key, answer, lease_id=lease_id)
         if probe is not None:
             if termination is not None and termination.get("status") == "terminated":
                 TERMINATIONS.remember(answer.pid, started_at, answer.image, question.key, dispatched_epoch,
@@ -786,6 +834,14 @@ def record_escalation(
         # The latest unconfirmed attempt (its incident and time) and how many
         # there were: where an auditor finds the refusals or the silence.
         record["termination_unconfirmed_earlier"] = action["termination_unconfirmed_earlier"]
+    if action.get("lease"):
+        # Freeze-first: the lease this incident's writer was held under, when
+        # it was suspended at all - when, how it ended (terminated, resumed,
+        # refused...) and why. No process id: the Response service's own
+        # `process_suspended` / `process_resumed` blocks name it, with the gate
+        # (C-16, scripts/ledger_coverage.py). Absent when nothing was asked.
+        record["lease_id"] = action["lease"].get("lease_id")
+        record["suspension"] = action["lease"]
     block = log_to_ledger(client, "attribution_escalation", record)
     return {"record": record, "block": block, "termination": termination, "result": result}
 

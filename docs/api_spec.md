@@ -41,10 +41,15 @@ same contract with full schemas and stays authoritative.
 
 The design: the Monitor suspends a sole writer early, on a `suspend_authorised`
 gate of its own, then either kills it at the horizon (`kill_authorised`,
-unchanged) or resumes it. **That Monitor side was not built** (FIXES.md,
-defect 26); today only an operator calls these routes, through the gateway.
-The Response service holds every suspension as a **lease** that ends on its
-own. It evaluates **no gate** itself.
+unchanged) or resumes it. **The Monitor side now exists** (FIXES.md, defect 26,
+"The Monitor side"; `services/monitor/suspend_policy.py`, switch
+`MONITOR_SUSPEND_FIRST`): it calls `/response/suspend` with `gate:
+"suspend_authorised"` and a lease of about the horizon plus a margin (2.05 s),
+`/response/resume` when the kill gate is not met, and `/response/terminate`
+with the `lease_id` when it is. It is unproven on the VM. An operator can still
+call these routes, through the gateway. The Response service holds every
+suspension as a **lease** that ends on its own. It evaluates **no gate**
+itself.
 
 ```
 POST /response/suspend   {process_id, incident_id, lease_seconds, reason,
@@ -109,6 +114,15 @@ How the Response service implements it (`services/response/leases.py`,
   itself on every block - a gate nobody had evaluated (review finding R8c).
   A `response_action` terminate block carries `lease_id` and
   `lease_released`.
+- **The Monitor's use of it.** It sends `process_id`, `incident_id`,
+  `lease_seconds`, `reason`, `attribution_confidence` (`probable` for a pending
+  answer), `attribution_source`, `attribution_reason`, `gate:
+  "suspend_authorised"`, `image` and `started_at` (the creation time of the
+  process it just identified). It reads `lease_id` and `already_held` from the
+  200 and treats a 409, an error or a timeout as "nothing else changes". A
+  lease with `already_held: true` is not the Monitor's to resume. The C-16 scan
+  accepts a `process_suspended` / `process_resumed` block naming a PID only
+  with `gate == "suspend_authorised"`.
 - **Docker.** In Compose, Response runs in its own PID namespace and cannot
   suspend a host PID. It refuses with `PID_NAMESPACE_ISOLATED` and records the
   refusal; `RESPONSE_PID_NAMESPACE=host` declares a container started with

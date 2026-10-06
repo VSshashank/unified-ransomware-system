@@ -67,7 +67,18 @@ def payload(tag: str, size: int = 120_000) -> bytes:
     return hashlib.shake_256(tag.encode()).digest(size)
 
 
-def unsupported_pid(event_data: dict) -> str | None:
+#: The two blocks the Response service writes for a freeze-first suspension.
+#: They name the process they froze or released, on an answer that is - by
+#: design - not CERTAIN yet (the Monitor's `suspend_authorised` gate allows a
+#: pending one, because a suspension can be undone).
+SUSPEND_BLOCKS = frozenset({"process_suspended", "process_resumed"})
+#: The one gate whose claim excuses that: the Monitor's own (`Attribution.
+#: suspend_authorised`, services/monitor/suspend_policy.py). Recorded by the
+#: Response service as the caller's claim (`gate_verified: false`).
+SUSPEND_GATE = "suspend_authorised"
+
+
+def unsupported_pid(event_data: dict, event_type: str | None = None) -> str | None:
     """Why this ledger event names a process the evidence does not support.
 
     None when it is fine. The rule is the pipeline's own: an event may name a
@@ -75,6 +86,16 @@ def unsupported_pid(event_data: dict) -> str | None:
     offence - "no process was identified" is the honest answer and has to stay
     expressible, or the pressure to invent one comes straight back. A number
     with anything short of CERTAIN beside it, or with nothing beside it, is.
+
+    One exception, and a narrow one (freeze-first, FIXES.md defect 26):
+    `process_suspended` and `process_resumed` blocks MAY name a PID, but only
+    together with the gate that allowed it - `gate` present and equal to
+    "suspend_authorised". Without it they are an offence like any other block
+    naming a process short of CERTAIN; with it the confidence is not what is
+    checked, because the gate is what authorised acting on less. The PID must
+    still be a positive integer, and every other event type keeps the rule
+    above unchanged. `event_type` is optional: a caller that does not give one
+    gets the old rule for everything.
 
     `attribution_candidates` is not read: it lists every PID whose audited
     write fell in the window, which is the evidence, not a claim that any one
@@ -88,6 +109,12 @@ def unsupported_pid(event_data: dict) -> str | None:
     confidence = event_data.get("attribution_confidence")
     if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
         return f"process_id {pid!r} is not a positive integer"
+    if event_type in SUSPEND_BLOCKS:
+        gate = event_data.get("gate")
+        if gate != SUSPEND_GATE:
+            return (f"process_id {pid} is named by a {event_type} block with gate {gate!r}; "
+                    f"a suspend block may name a process only with gate {SUSPEND_GATE!r}")
+        return None
     if confidence != "certain":
         return (f"process_id {pid} is named with attribution_confidence "
                 f"{confidence!r}; only 'certain' supports naming one")
@@ -102,7 +129,7 @@ def scan_writes(writes: list[dict]) -> dict:
         data = write.get("event_data") or {}
         if data.get("process_id") is not None:
             named += 1
-        why = unsupported_pid(data)
+        why = unsupported_pid(data, write.get("event_type"))
         if why is None:
             continue
         offences.append({

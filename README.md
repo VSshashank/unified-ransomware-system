@@ -164,7 +164,7 @@ Windows VM. A container started with `pid: host` can declare it with
 set `URDS_MONITOR_PID` to its PID so Response refuses to suspend the Monitor
 or its ancestors.
 
-The Monitor-side policy that would call `/response/suspend` is not built yet (FIXES.md, "F2b: what is and is not delivered"); today only an operator, through the gateway, suspends anything.
+The Monitor side (freeze-first: suspend a sole writer as soon as a kernel-grade answer names it, then kill it at the horizon if the kill gate is satisfied then, or resume it) is built, on by default and switchable with `MONITOR_SUSPEND_FIRST=0` (FIXES.md, defect 26, "The Monitor side"; `docs/PROCESS_ATTRIBUTION.md`). It is **not proven on the VM**, and it only helps against an attacker still running when the first audit record arrives; an operator can also still suspend through the gateway.
 
 The gateway needs no internal service logic changes as long as the contracts in `docs/openapi/gateway.yaml` hold.
 

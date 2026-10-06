@@ -47,15 +47,18 @@ implemented here and should not be.
 | | Source | Sees in-place encryption? | Install | Latency |
 |---|---|---|---|---|
 | 1 | ETW `Microsoft-Windows-Kernel-File` | yes — every write | admin + an ETW consumer | sub-ms |
-| **2** | **Security channel, Event ID 4663** | **yes** | **admin only, no install** | **116–1,228 ms** after the write, median 888 ms (VM, 2026-10-04) |
+| **2** | **Security channel, Event ID 4663** | **yes** | **admin only, no install** | **25–1,269 ms** after the write, **median 888–985 ms** (VM, two runs: 116–1,228 ms, median 888 ms on 2026-10-04; 25–1,269 ms, median 985 ms on 2026-10-05) |
 | 3 | Sysmon Event 11 / 23 | **no** — create and delete only | Sysmon service | ms |
 
 **Route 2 is implemented.** The latency in the table is measured, and it is not
 the "tens of ms" this table first said: the Windows test VM's full test of
 2026-10-04 matched 4663 records a median 888 ms after the write (116–1,228 ms),
-and an earlier 35-write measurement gave 390–1,032 ms
-(`reports/VM_TEST_REPORT_2026-10-04.md`, F2; `FIXES.md` defect 1). That is
-why nothing is `certain` until a 1.5 s delivery horizon has closed (§4).
+the 2026-10-05 run matched the 44 terminations' records a median 985 ms after it
+(25–1,269 ms, `reports/VM_TEST_REPORT_2026-10-05_dc089ff.md`), and an earlier
+35-write measurement gave 390–1,032 ms (`reports/VM_TEST_REPORT_2026-10-04.md`,
+F2; `FIXES.md` defect 1). That is why nothing is `certain` until a 1.5 s
+delivery horizon has closed (§4), and why a record for the *first* write is
+usually still in flight when the Monitor first looks.
 `pywin32` was already available, and it needs no third-party software on the
 host. Route 1 is higher fidelity and is the natural upgrade —
 `AttributionSource` exists so that it is a one-class change rather than a
@@ -276,6 +279,112 @@ When the question closes, the kill goes out at once. Only the
 `attribution_escalation` block waits, if it has to, behind the incident's own
 `response_action` block.
 
+### Freeze-first: suspending a sole writer before the horizon
+
+The kill cannot come before the horizon (above), and for a fast encryptor the
+horizon is too late. What *can* come earlier is something that can be taken
+back. As soon as a kernel-grade answer names **exactly one writer so far**, the
+Monitor asks the Response service to **suspend** that process under a lease;
+the question stays open as before. At the horizon the **unchanged kill gate**
+decides:
+
+| At the horizon | What happens to the frozen process |
+|---|---|
+| `kill_authorised` is true | killed: `POST /response/terminate` carries the `lease_id`, so the lease is released with the kill |
+| anything else: a second writer, the writer exited, identity no longer provable, no record | **resumed** (idempotent), and the escalation block says why |
+| a second writer's record arrives during the lease | the question closes early as ambiguous: resumed at once, never killed |
+
+Code: `Attribution.suspend_authorised` and `Attributor.assess_suspend`
+(`services/monitor/attribution.py`), `services/monitor/suspend_policy.py`, and
+two hooks - `on_first_answer` where an answer first names a writer (the first
+look in `app._correlate`, and the pending sweeper's re-ask, which is the usual
+case on the VM because the 4663 arrives after the first look) and `on_close` at
+the top of `pipeline.escalation_action`. It is a Monitor-side feature of defect
+26 (`FIXES.md`).
+
+**The gate, `suspend_authorised`.** Weaker than `kill_authorised` for exactly one
+reason: a suspension can be undone. It is *not* weaker in any other way. It
+requires **all** of:
+
+- a live, kernel-grade source;
+- a PID;
+- exactly one writer of this path inside `ATTRIBUTION_COMPETITION_MS` so far,
+  and no record evicted from the write log inside that window;
+- the identity check `Attributor.verify` makes (image and creation time);
+- a PID that is not the Monitor, its ancestors, an excluded PID or a reserved
+  one, and not running from a system directory (`%SystemRoot%`, `C:\Windows`,
+  `/usr/sbin`, `/sbin`, `/usr/lib/systemd`: the Response service's own list);
+- a path inside the watched root.
+
+A **pending** answer passes this gate and **never** the kill gate;
+`kill_authorised` and its semantics, the competition window and the horizon are
+unchanged. Each condition is a field on the answer, so each is tested alone
+(`tests/test_suspend_gate.py`). The cases that must never produce a kill - two
+writers in the window, two writers across a rename, a stale record, an exited
+PID, a reused PID, identity unprovable, an evicted competitor - are driven end
+to end in `tests/test_suspend_first.py` with real child processes, and in each
+the process is at most frozen, then running again, and never killed.
+
+**The lease.** One request per PID per lease, never one per file (suspension
+nests, so a second would need a second resume); further incidents of the same
+writer, including notifications coalesced into an incident, join the lease that
+exists. The lease is `MONITOR_SUSPEND_LEASE_S` = horizon + clock tolerance + a
+500 ms kill-dispatch margin, 2.05 s by default (the Response service caps a
+lease at `RESPONSE_LEASE_MAX_SECONDS`, 10), and it **ends on its own** on the
+Response side whatever happens to the Monitor. The Monitor also releases every
+lease it holds when it stops (`/monitor/stop`), on the lifespan shutdown and at
+interpreter exit, best effort and short. A process resumed without being killed
+is not frozen again for `MONITOR_SUSPEND_COOLDOWN_S` (30 s), so a benign process
+whose files keep being flagged does not lose a horizon per file. A timeout on the
+suspend request is not treated as a refusal - the request may have been carried
+out - so the process is resumed by PID when its question closes. A Response
+error, a 409 (`PID_REUSED`, `SYSTEM_PROCESS`, `PID_NAMESPACE_ISOLATED`,
+`MONITOR_OR_ANCESTOR`, ...) or an unreachable service means: log it, do nothing
+else, carry on. Detection and the normal kill path never depend on it.
+
+**Switch and settings.** `MONITOR_SUSPEND_FIRST` (default on; `0`, `false`,
+`off`, `no` turn it off, and the Monitor then behaves exactly as it did before
+it existed: no request, no new field on any event, block or terminate request).
+`MONITOR_SUSPEND_LEASE_S`, `MONITOR_KILL_DISPATCH_MARGIN_MS` (500),
+`MONITOR_SUSPEND_TIMEOUT_S` (1.0), `MONITOR_SUSPEND_COOLDOWN_S` (30),
+`MONITOR_SUSPEND_BACKOFF_S` (5: after Response is unreachable, or refuses for a
+reason that is not about one process, no further suspend is asked for this
+long). `/monitor/attribution` reports `suspend_first`.
+
+**What is recorded.** The Response service writes `process_suspended` and
+`process_resumed`, carrying the PID and what the Monitor claimed
+(`attribution_confidence` - `probable` for a pending answer - `attribution_source`,
+`attribution_reason`, and `gate: "suspend_authorised"` with `gate_verified:
+false`: the Response service cannot verify a gate and evaluates none). The
+Monitor's `attribution_escalation` block gains `lease_id` and a `suspension`
+object (`outcome`: `terminated`, `resumed`, `refused`, `unreachable`,
+`uncertain`, ...; `suspended_at`, `expires_at`, `reason`) and names no process.
+**C-16** (`scripts/ledger_coverage.py`) has one narrow exception: a
+`process_suspended` / `process_resumed` block may name a PID only together with
+`gate == "suspend_authorised"`, and the scan fails a block that names one
+without it. Every other block keeps the old rule. So a hand-driven operator
+suspend that passes no `gate` is flagged by `--ledger-db`, by design.
+
+**Docker.** In Compose the Response service has its own PID namespace and
+cannot suspend a host PID; it refuses with `PID_NAMESPACE_ISOLATED` and records
+the refusal, and the Monitor backs off. The stack has to run natively on the
+host for freeze-first (as for the kill). Set `URDS_MONITOR_PID` on the Response
+service so it also refuses to suspend the Monitor and its ancestors.
+
+**Honesty note: what this cannot do.** Freeze-first reduces damage only for an
+attacker that is still running when the first audit record arrives. On the VM
+the simulator families that were not killed had **already finished and exited
+before the horizon**, and the 4663 for a first write arrives about 0.4-1 s after
+it, so there was nothing left to freeze. The code cannot make the fastest
+attackers stoppable, and a gate that allowed it to try on weaker evidence would
+only add wrongly frozen processes. **This is unproven on the VM:** nothing here
+has run against a live Security-log subscription (that needs elevation). The
+tests drive real processes through a stubbed Response service and a recorded
+audit answer, and a one-off run against the real Response service
+(unelevated, a real child, a recorded answer) suspended, resumed and
+terminated-with-lease correctly. How to measure it live is in
+`docs/VM_RETEST_ADDENDUM.md` (F2c).
+
 ### What reaches the ledger
 
 `process_id` alone is not auditable. A PID with no confidence beside it cannot
@@ -431,6 +540,13 @@ host PID names an unrelated process or nothing. This is why TC-07 is already
 Response service running natively on the host**, as TC-04 and TC-07 already do.
 Under Compose, attribution will resolve correctly and the kill will still not
 land.
+
+**2a. Freeze-first helps only attackers still running when the first record
+arrives.** On the VM the families that were not killed had already finished and
+exited before the horizon, and the 4663 for a first write arrives about 0.4-1 s
+after it. The suspend gate cannot make that earlier: see "Freeze-first" in §4. It
+also needs the Response service native on the host (item 2), and it is not yet
+measured on a live elevated host.
 
 **3. The writer may not be the attacker.** Ransomware often runs as a child of
 `powershell.exe` or `wscript.exe`. Killing the writer can leave the orchestrator

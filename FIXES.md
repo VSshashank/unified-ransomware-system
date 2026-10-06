@@ -34,7 +34,7 @@ claims they no longer describe are marked **re-verification pending**.
 | 23 | The demo recorded the wrong PID and matched the wrong events (R14(b)) | `cace563` |
 | 24 | `--restore` could not return the file the simulator was killed on (F3) | `a30baf5` |
 | 25 | One incident per watchdog notification, not per file (F6) | `8554a70` |
-| 26 | F2b, Response side only: suspend, resume and leases (Monitor side not delivered) | `7566905` |
+| 26 | F2b: suspend, resume and leases. Response side `7566905`; the Monitor side (freeze-first, E2) on `wp/e2b-suspend-monitor`, unproven on the VM | `7566905`, Monitor side: this branch |
 | 27 | The dashboard logged a Streamlit deprecation on every refresh | `d4eb382` |
 
 ## The safety invariant
@@ -741,7 +741,11 @@ chain was changed to fit it.
 The brief's resolution is that suspend and resume blocks may carry a PID
 together with the gate that allowed it, and the scan checks that relationship.
 F2b was not implemented in this session (see "F2b: blocked" below), so no such
-block exists, and the rule stands as ported, with no exception.
+block existed, and the rule stood as ported, with no exception. **Since
+2026-10-06 it has the one exception, and the scan checks the relationship:** the
+Monitor side of F2b exists (defect 26, "The Monitor side"), and
+`scripts/ledger_coverage.py` accepts a `process_suspended` / `process_resumed`
+block naming a PID only with `gate == "suspend_authorised"`.
 
 **Check on Windows:**
 - `attack_chain_demo.py`, elevated with the audit SACL: TC-07 passes with the
@@ -860,8 +864,9 @@ kill should come about 1.6 s after its write, not 6.9 s.
 
 **Not changed:** the kill still cannot come before the horizon closes, about
 1.55 s after the read. That is correct (see the safety invariant) and too late
-for a fast encryptor. F2b, suspending the writer before then, is blocked (see
-"F2b: blocked" below).
+for a fast encryptor. F2b, suspending the writer before then, was blocked when
+this was written; see "F2b: what is and is not delivered" below, and defect 26,
+"The Monitor side", for what exists now.
 
 ## F2b: what is and is not delivered
 
@@ -879,15 +884,17 @@ resumed.
   lease expires, when it stops, and (through a separate watchdog process) when it
   is killed outright, and records every suspension, resume and refusal in the
   ledger.
-- **Monitor side (E2): not delivered.** Package E2 (the `suspend_authorised`
-  gate, `suspend_policy.py`, the suspend/resume leg of the C-16 scan, and the
+- **Monitor side (E2): not delivered in that session; built on 2026-10-06**
+  (defect 26, "The Monitor side"; unproven on the VM). Package E2 (the
+  `suspend_authorised` gate, `suspend_policy.py`, the suspend/resume leg of the C-16 scan, and the
   F2c measurement tool) stopped before writing any file: part of its output was
   blocked by a safety classifier while it designed the policy, and it declined to
   continue. It was resumed once and declined again. The maintainer decided to
   skip it and keep merging the rest. Nothing was written for it, and nothing
   else was changed to stand in for it.
 
-What follows from that:
+What followed from that, until the 2026-10-06 session (the next paragraph says
+what is true now):
 - **Nothing on this branch suspends a writer.** The Response routes exist and
   are tested against real child processes, but no component of the Monitor calls
   them. The kill path, the kill gate and the horizon are exactly as before.
@@ -903,6 +910,16 @@ What follows from that:
   `pipeline.request_termination`.
 - The decision to build the Monitor side, here or elsewhere, is the
   maintainer's.
+
+**2026-10-06 session: the Monitor side is built** (`wp/e2b-suspend-monitor`,
+defect 26, "The Monitor side"). `suspend_authorised`, `suspend_policy.py`, the
+C-16 exception for suspend and resume blocks, and the F2c measurement recipe
+(`docs/VM_RETEST_ADDENDUM.md`) exist, on by default and switchable with
+`MONITOR_SUSPEND_FIRST=0`. As the finding above predicted, the trigger is a
+re-ask of the pending question as well as `_correlate`, and a lease is joined
+to the kill in `pipeline.request_termination`. **It is unproven on the VM** and
+only helps an attacker still running when the first 4663 arrives; F2 stays
+`KNOWN-OPEN` until F2c is measured elevated.
 
 ## 17. The audit setup's probe reported a working folder as broken (F4)
 
@@ -2034,11 +2051,12 @@ second with `coalesced_into` and the closing answer.
 ## 26. The Response service could not suspend anything (F2b, Response side only)
 
 Found by the VM test of 2026-10-05 ("F2b" in its open faults). Package E1 of
-the 2026-10-05 fix session. **Only this half was delivered.** The Monitor side
-(package E2: the `suspend_authorised` gate, the policy that calls this API, the
-C-16 scan for suspend/resume blocks) was not built - see "F2b: what is and is
-not delivered", above. Until it is, nothing calls these routes except an
-operator through the gateway.
+the 2026-10-05 fix session. **Only this half was delivered then.** The Monitor
+side (package E2: the `suspend_authorised` gate, the policy that calls this API,
+the C-16 scan for suspend/resume blocks) was built on 2026-10-06 - see "The
+Monitor side (E2)" at the end of this entry, and "F2b: what is and is not
+delivered", above. Until then nothing called these routes except an operator
+through the gateway.
 
 **What was wrong:** `POST /response/suspend` returned 404. The Response
 service had no suspend, no resume, no lease and no ledger block for either. The
@@ -2247,7 +2265,8 @@ on port 18604, with the venv launcher; the log is not kept in the repo):
   with that body in `details`.
 - Refusals are recorded as `process_suspended` with `outcome: refused`, with
   the same caller-claim fields as a suspension. (E2's C-16 scan for these
-  blocks was not built; see "Review follow-ups".)
+  blocks was not built here; it was built on 2026-10-06, see "The Monitor
+  side".)
 - `/resume` of an unknown lease returns 200 `resumed: false`, `state: unknown`.
 
 **Found outside this package:**
@@ -2434,6 +2453,174 @@ from this worktree, with a ledger stub; `C:\URDS-wp-e1-proofs\review\live_review
   at the next suspend. If the service is then killed outright before one, the
   process stays frozen.
 
+### The Monitor side (E2), 2026-10-06
+
+Package E2 of the 2026-10-05 plan, built on `fix/vm-2026-10-05-findings` as
+`wp/e2b-suspend-monitor`. It is the half the section above said was not
+delivered: **the Monitor now suspends a sole writer early and then kills or
+resumes it** ("freeze-first"). **Unproven on the VM.** Nothing here has run
+against a live Security-log subscription, which needs elevation.
+
+**What was wrong:** nothing in the Monitor called `/response/suspend`, so no
+writer was ever frozen before the kill gate opened at the horizon, about 1.55 s
+after the read. That is too late for an attacker that is still encrypting when
+the first audit record arrives (0.1-1.3 s after the write). The kill cannot
+move earlier - a kill cannot be undone - but a suspension can be, which is the
+only reason a weaker gate is acceptable for it.
+
+**Measured** (against the real Response service in a one-off script, not a
+committed test: uvicorn in a subprocess, a ledger stub, a real heartbeat child,
+a recorded audit answer, unelevated):
+- A suspend took 72-91 ms and froze the child (its heartbeat stopped); the
+  resume and the terminate carrying the `lease_id` both worked, and the
+  terminate answered `lease_released: true`.
+- The ledger blocks named the PID with `gate: "suspend_authorised"`,
+  `gate_verified: false`, `attribution_confidence: "probable"`.
+- A first attempt used a 0.5 s timeout. The real service's cold first suspend
+  took longer, **was carried out anyway**, and the Monitor had concluded
+  nothing happened. That is why a timeout is a state of its own (`uncertain`),
+  undone by PID, and why the default timeout is 1.0 s.
+- The first look in `_correlate` usually names nobody: the 4663 arrives after
+  it (the VM's median is 888-985 ms), as the aborted 2026-10-04 attempt noted.
+  The answer that first names a sole writer is a re-ask on the pending
+  sweeper, so the hook is called there as well.
+
+**Cause:** not implemented.
+
+**What changed:**
+- **`services/monitor/attribution.py`: `Attribution.suspend_authorised`**,
+  beside `kill_authorised` and independent of it, which is not touched. It
+  requires all of: a live kernel-grade source; a PID; exactly one writer of the
+  path inside `COMPETITION_MS` so far and no eviction inside that window; the
+  identity check `verify` makes (image and creation time); a PID that is not
+  the Monitor, its ancestors, an excluded or reserved PID or a system process
+  (under `%SystemRoot%`, `C:\Windows`, `/usr/sbin`, `/sbin`,
+  `/usr/lib/systemd`); a path inside the watched root. A pending answer passes
+  it; none passes the kill gate. Six new fields on the answer
+  (`compare=False`, not in `as_event_fields`) carry the evidence, all defaulting
+  to the refusing value, so each condition is tested alone.
+  `Attributor.assess_suspend` fills in what only it can know, on a copy: the
+  answer the pipeline acts on is never changed. `verify`'s body became
+  `_check_identity`, shared by both gates; `verify` itself returns exactly what
+  it did. The lookup now records `kernel_grade` and an eviction on the answer.
+  `PendingAttribution` takes an optional `on_recheck` listener; it hears a
+  re-ask, cannot close a question or change an answer.
+- **`services/monitor/suspend_policy.py`** (new). `on_first_answer`, called from
+  `app._correlate` and from the sweeper's re-ask, and `on_close`, called at the
+  top of `pipeline.escalation_action`:
+  - on the first answer that passes the gate, one suspend request per PID per
+    lease (`lease_seconds` = `MONITOR_SUSPEND_LEASE_S`, horizon + clock
+    tolerance + 500 ms = 2.05 s), on a thread of its own; the lease is
+    registered before the request goes out, so a close that comes meanwhile
+    waits for it. Later incidents of the same writer join the lease; a joined
+    notification never reaches the hook;
+  - at the horizon: `kill_authorised` and the frozen PID -> the terminate
+    carries `lease_id`; anything else -> `/response/resume` (idempotent), with
+    the reason. A second writer during the lease closes the question early
+    (`PendingAttribution.sweep`) and resumes at once;
+  - a Response error, a 409 or a timeout is logged and changes nothing else; a
+    timeout is `uncertain` and the process is resumed by PID; a refusal that is
+    not about one process (Docker's PID namespace, a bad `URDS_MONITOR_PID`,
+    shutting down) or an unreachable Response backs off 5 s; a process resumed
+    without a kill is not frozen again for 30 s; a lease Response says was
+    already held is not the Monitor's to resume;
+  - `/monitor/stop`, the new lifespan shutdown and `atexit` release every lease
+    held (resume, best effort, 2 s in all); Response's lease expiry and
+    watchdog stay the backstop for a crash;
+  - `MONITOR_SUSPEND_FIRST` (default on; `0`, `false`, `off`, `no`) turns both
+    hooks into no-ops: no request, no new field anywhere, the terminate
+    payload key for key as before.
+- **`services/monitor/pipeline.py`**: `request_termination(..., lease_id=None)`
+  adds `lease_id` only when given. `escalation_action`'s signature is
+  unchanged: `on_close` is its first line, the old body is `_take_action`, and
+  the action carries `lease`. The `attribution_escalation` block gains
+  `lease_id` and `suspension` (`outcome`, `suspended_at`, `expires_at`,
+  `reason`, `code`) **only when a suspension was asked for**, and no PID.
+- **`services/monitor/app.py`**: the two hook sites, the `on_recheck` wiring, a
+  lifespan, `release_all` on `/monitor/stop`, warming the HTTP client with the
+  worker, `suspend_first` on `/monitor/attribution`.
+- **`scripts/ledger_coverage.py`**: C-16's value scan accepts a
+  `process_suspended` / `process_resumed` block naming a PID **only with**
+  `gate == "suspend_authorised"` and fails one that names a PID without it; every
+  other rule and every other block type is unchanged. A hand-driven operator
+  suspend that passes no `gate` is now flagged by `--ledger-db`, by design.
+- Docs: `docs/PROCESS_ATTRIBUTION.md` (the gate, the lease, Docker, the honesty
+  note, the 4663 latency as measured: 25-1,269 ms, median 888-985 ms over the
+  two VM runs), `docs/api_spec.md`, `README.md`, `docs/VM_RETEST_ADDENDUM.md`
+  (F2b, F2, F2c, R26), and the F2b text above.
+
+**What this cannot do** (said here because it is the easiest thing to
+overclaim): on the VM the simulator families that were not killed had already
+finished and exited before the horizon, and the 4663 for a first write arrives
+about 0.4-1 s after it. Freeze-first only helps an attacker still running when
+that first record arrives. The code cannot make the fastest attackers
+stoppable, and no result is claimed from it.
+
+**Tests** (120 new, written first):
+`services/monitor/tests/test_suspend_gate.py` (48),
+`test_suspend_first.py` (54), `test_suspend_ledger_scan.py` (18), and
+`_suspend_rig.py`. They use real child processes (a heartbeat that stops when
+the process is frozen) and a Response stub that suspends, resumes and kills the
+real child and records every request; the audit record is a `WriteLog.record`.
+- The gate: each of seven conditions refused on its own, the identity cases
+  (exited, reused by start time, reused by image, unprovable, unreadable), the
+  system-directory and watched-root checks, and that `kill_authorised` did not
+  move.
+- Never a kill, never left frozen, end to end: two writers in the window, two
+  writers across a rename, a stale record, an exited PID, a reused PID (by start
+  time and by image), identity unprovable (probe raises; no image or start
+  time), an evicted competitor. Also: a source that is not kernel-grade, a path
+  outside the root, no watch started.
+- Sole writer -> frozen at the first answer, then killed at the horizon, the
+  terminate carrying `lease_id`; the same when the record arrives after the
+  first look (the sweeper path); a second writer during the lease -> resumed,
+  never killed; two notifications for one file, and five files by one writer
+  -> one suspend; the benign-workload shape (40 ordinary files) suspends
+  nothing; a resumed process is not frozen again at once; stop and lifespan
+  shutdown release every lease, including one whose request was still in
+  flight and one whose reply was lost; `MONITOR_SUSPEND_FIRST=0` (four
+  spellings) is today's behaviour exactly; Response unreachable, refusing
+  (seven codes) or silent changes nothing about detection or the kill; the
+  sweeper is not held up by a slow Response.
+- C-16: a `process_suspended` / `process_resumed` block naming a PID without the
+  gate is rejected, with it accepted, and no other block type is excused.
+- **Fail on the unchanged base** (`22d9971`, the new files copied onto a
+  `git archive` of it; no `suspend_policy.py`, no `suspend_authorised`):
+  `51 failed, 16 passed, 53 errors in 4.64s`. The 16 that pass are guards of
+  things that did not change (the kill gate, the old scan rules). Excerpts:
+  ```
+  E   ModuleNotFoundError: No module named 'suspend_policy'          (54)
+  E   TypeError: Attribution.__init__() got an unexpected keyword argument 'kernel_grade'   (26)
+  E   AttributeError: 'Attributor' object has no attribute 'assess_suspend'   (14)
+  E   AttributeError: 'Attribution' object has no attribute 'suspend_authorised'
+  E   AssertionError: {'detail': [{'attribution_confidence': 'probable', 'block_id': 1, 'event_type': 'process_suspended', ...}], 'events_examined': 1, 'events_naming_a_process': 1, 'unsupported': 1}
+  ```
+  Run against the same base with an inert stand-in `suspend_policy` (so the
+  behaviour is judged, not the import): `35 failed, 19 passed`. The failures
+  are the behaviours:
+  ```
+  >       (request,) = rig.stub.of("/response/suspend")
+  E       ValueError: not enough values to unpack (expected 1, got 0)
+  ```
+  The 19 that pass include the seven safety-invariant cases: on base nothing is
+  suspended or killed either, which is what they must go on asserting once
+  suspension is on.
+- Suite: monitor **780 passed** (660 + 120); the existing 660 are unchanged and
+  none was edited. C-16 as `claim_matrix.py` reports it: 48 events examined,
+  0 name a process, 0 unsupported, before and after.
+
+**Check on Windows:** (elevated, native Response with `URDS_MONITOR_PID` set,
+`MONITOR_SUSPEND_FIRST` at its default; row F2c in
+`docs/VM_RETEST_ADDENDUM.md`). Per family, with and without freeze-first: files
+encrypted before the suspension; files encrypted before the kill; the matching
+4663's delivery to the suspend; detection to the kill; the count of
+`suspension.outcome`; no process left frozen. **Not run, and not claimed.**
+
+**Not changed:** `Attribution.kill_authorised` and its semantics,
+`COMPETITION_MS`, the horizon, any existing test or bound claim, the
+safety-invariant table, the Response service, the gateway. C-16 keeps its
+figures. No dependency was added.
+
 ## 27. The dashboard logged Streamlit's `use_container_width` deprecation on every refresh
 
 Found in the 2026-10-05 VM run: the open dashboard's log held 69,510 lines in 35
@@ -2533,6 +2720,22 @@ The timing-sensitive new files were run 3 times on the merged branch with the
 same result. While seven agents ran suites at once on the 4 vCPUs, a few
 latency-budget tests failed and passed when run alone (defect 22 lists them);
 the counts above are from quiet runs after the agents finished.
+
+### Suites, 2026-10-06 (the Monitor side of defect 26)
+
+`wp/e2b-suspend-monitor` on `fix/vm-2026-10-05-findings` (`22d9971`), same venv
+(Python 3.12.10, Windows 11, 4 vCPU), `URDS_WRITE_REPORTS` unset, other agents
+running suites on the same host:
+
+| Suite | Base | This branch | New tests |
+|---|---|---|---|
+| monitor | 660 passed | 780 passed | +120 (26): 48 gate, 54 end to end, 18 C-16 scan |
+| claim matrix (`scripts/claim_matrix.py`) | C-16 ok: 48 events, 0 name a process, 0 unsupported | the same | - |
+| gateway, ledger, response, dashboard, ml-engine | not run: nothing in this change touches them | | |
+
+The new end-to-end file was run 3 times in a row with the same result (the full
+Monitor suite 2 times: 770 passed before the sweeper path and the `uncertain`
+state were added, 780 after). Nothing existing was edited.
 
 ## Re-test on the Windows VM, 2026-10-04
 
