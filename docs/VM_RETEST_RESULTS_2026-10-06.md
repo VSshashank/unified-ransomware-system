@@ -139,3 +139,41 @@ promises, so it is not made here.
 - **F6's under-3-blocks-per-file target is not met** (section 3).
 - R6b, D5 and A8 remain open.
 - The branch had not been pushed before this commit.
+
+## 9. After this run: what was changed in response, and what is proven
+
+Nothing below has been run on the VM. It is built, reviewed and unit-tested only.
+
+- **Freeze-first, Monitor side (F2b), built** (defect 26): a new gate
+  `suspend_authorised` (weaker than the kill gate only because a freeze can be undone),
+  `services/monitor/suspend_policy.py`, and a lease that is released on `/monitor/stop`.
+  The kill gate, the horizon and `COMPETITION_MS` are unchanged, and a terminate is sent
+  only when `kill_authorised` is true. An independent review (no kill on weaker evidence,
+  nothing left frozen past its lease) found two defects, both fixed with tests first: a
+  kill could wait up to ~1 s for an in-flight freeze request, and a ledger field could carry
+  a PID in a non-certain block (the ledger copy of the lease is now an allow-list and the
+  C-16 scan checks it). Known limits are in the `FIXES.md` entry.
+  **It cannot help the fastest simulator families.** In the 2026-10-06 ledger the 11
+  unkilled families had already finished and exited before the 1.5 s horizon, and the first
+  audit record arrives 0.4 to 1 s after the first write. Freeze-first only helps an
+  attacker still running when that record arrives. The F2c measurement
+  (`tools\r28_f2c.py`, `tools\r28_freeze_first.py` on the VM) will say how much.
+- **Kill pool of 16 workers is now the default** (defect 22 follow-up). Kills for
+  distinct PIDs no longer queue one behind another (20 different writers: the last kill
+  0.30 s after the horizon, was 5.72 s). One existing test that assumed serial order was
+  changed, with the owner's approval, to allow parallel kills. `MONITOR_KILL_WORKERS=1`
+  restores the old behaviour. Not run live with 20 real writers.
+- **Ledger:** coalesced events stay recorded by id (decision in section 7); the live
+  checks now accept an id in `coalesced_event_ids` and fail if an event is in neither. The
+  F6 target of under 3 blocks per file is restated as not met, not hit by logging less.
+- **README:** killing a process needs Administrator rights and the Windows audit setup.
+- **Tests on the merged branch** (run by the lead, one service at a time): gateway 108,
+  ledger 99, response 206 + 2 skipped, dashboard 7, monitor 823 in the default
+  environment. The monitor suite has two timing tests that fail intermittently on this VM
+  (`test_detection_latency_under_100ms` and
+  `test_detected_event_carries_every_feature_the_model_scores`): they failed in 3 of 5
+  repeated runs of the merged tip and 1 of 5 of the commit before it, and pass when
+  repeated. An interleaved comparison shows the same typical p95 (61-65 ms against a
+  100 ms target) on both, with an occasional slow outlier on each. With freeze-first off
+  (`MONITOR_SUSPEND_FIRST=0`) the suite gave 754 passed, 68 skipped (tests that need it
+  on) and the same single latency flake.
