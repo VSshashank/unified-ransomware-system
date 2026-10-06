@@ -28,6 +28,24 @@ from path_keys import path_key, prefilter, same_file
 
 _BLOCK_COLUMNS = "id, timestamp, event_type, event_data, previous_hash, current_hash"
 
+# The most appends one commit may carry. A bound, so that one caller is never
+# made to wait on an unbounded backlog; far above the handful of writers (the
+# Monitor's two threads, the Response service's workers) that can queue at once.
+MAX_BATCH = 64
+
+
+class _Append:
+    """One caller's append, waiting to be committed by whichever caller leads."""
+
+    __slots__ = ("event_type", "event_json", "done", "block", "error")
+
+    def __init__(self, event_type: str, event_json: str) -> None:
+        self.event_type = event_type
+        self.event_json = event_json
+        self.done = False
+        self.block: Optional[dict] = None
+        self.error: Optional[BaseException] = None
+
 
 def utc_now() -> str:
     """UTC timestamp, ISO-8601 with a Z suffix (matches the other services)."""
@@ -42,6 +60,16 @@ class HashChainLedger:
         # threadpool, so without this lock two concurrent logs could read the
         # same tip and fork the chain.
         self._lock = threading.Lock()
+        # Group commit. Each append is made durable before its caller returns, as
+        # it always was, but appends that arrive while a commit is in flight are
+        # carried by the next one instead of each paying for its own: with
+        # `synchronous=FULL` and a rollback journal a commit is several disk
+        # flushes, and on a slow disk a burst's blocks fell seconds behind the
+        # events they describe. `_waiting` and `_leading` are guarded by `_turn`;
+        # `_lock` still guards the connection.
+        self._turn = threading.Condition()
+        self._waiting: list[_Append] = []
+        self._leading = False
         self.create_tables()
 
     def create_tables(self) -> None:
@@ -61,34 +89,90 @@ class HashChainLedger:
     # ------------------------------------------------------------------- writes
 
     def add_block(self, event_type: str, event_data: Any) -> dict:
-        """Append a block and return it. The only write path in the service."""
-        event_json = canonical_json(event_data)
+        """Append a block and return it. The only write path in the service.
 
-        with self._lock:
-            tip = self.conn.execute(
-                "SELECT current_hash FROM blocks ORDER BY id DESC LIMIT 1"
-            ).fetchone()
-            previous_hash = tip["current_hash"] if tip else GENESIS_HASH
+        Returns once the block is committed. Blocks are chained in the order the
+        calls arrived; callers that overlap share one commit.
+        """
+        append = _Append(event_type, canonical_json(event_data))
 
-            timestamp = utc_now()
-            current_hash = self.compute_hash(timestamp, event_type, event_json, previous_hash)
+        with self._turn:
+            self._waiting.append(append)
+        while True:
+            with self._turn:
+                while self._leading and not append.done:
+                    self._turn.wait()
+                if append.done:
+                    return self._outcome(append)
+                # Nobody is committing and this append is not yet committed:
+                # lead. The batch is the oldest appends, this one among them
+                # unless more than MAX_BATCH are ahead of it, in which case the
+                # next pass of this loop leads again.
+                self._leading = True
+                batch = self._waiting[:MAX_BATCH]
+                del self._waiting[:MAX_BATCH]
+            try:
+                self._commit(batch)
+            finally:
+                with self._turn:
+                    self._leading = False
+                    self._turn.notify_all()
 
-            cursor = self.conn.execute(
-                "INSERT INTO blocks (timestamp, event_type, event_data, previous_hash, current_hash)"
-                " VALUES (?,?,?,?,?)",
-                (timestamp, event_type, event_json, previous_hash, current_hash),
-            )
-            self.conn.commit()
-            block_id = cursor.lastrowid
+    @staticmethod
+    def _outcome(append: _Append) -> dict:
+        if append.error is not None:
+            raise append.error
+        assert append.block is not None
+        return append.block
 
-        return {
-            "block_id": block_id,
-            "timestamp": timestamp,
-            "event_type": event_type,
-            "event_data": decode_event_data(event_json),
-            "previous_hash": previous_hash,
-            "current_hash": current_hash,
-        }
+    def _commit(self, batch: list[_Append]) -> None:
+        """Chain `batch` in order and commit it once. Every entry is settled, win or lose."""
+        try:
+            with self._lock:
+                tip = self.conn.execute(
+                    "SELECT current_hash FROM blocks ORDER BY id DESC LIMIT 1"
+                ).fetchone()
+                previous_hash = tip["current_hash"] if tip else GENESIS_HASH
+                blocks = []
+                try:
+                    for append in batch:
+                        timestamp = utc_now()
+                        current_hash = self.compute_hash(
+                            timestamp, append.event_type, append.event_json, previous_hash
+                        )
+                        cursor = self.conn.execute(
+                            "INSERT INTO blocks (timestamp, event_type, event_data, previous_hash, current_hash)"
+                            " VALUES (?,?,?,?,?)",
+                            (timestamp, append.event_type, append.event_json, previous_hash, current_hash),
+                        )
+                        blocks.append(
+                            {
+                                "block_id": cursor.lastrowid,
+                                "timestamp": timestamp,
+                                "event_type": append.event_type,
+                                "event_data": decode_event_data(append.event_json),
+                                "previous_hash": previous_hash,
+                                "current_hash": current_hash,
+                            }
+                        )
+                        previous_hash = current_hash
+                    self.conn.commit()
+                except BaseException:
+                    # Nothing from a batch that did not commit may stay in the
+                    # open transaction to ride into the next one.
+                    self.conn.rollback()
+                    raise
+        except BaseException as exc:
+            for append in batch:
+                append.error = exc
+        else:
+            for append, block in zip(batch, blocks):
+                append.block = block
+        finally:
+            with self._turn:
+                for append in batch:
+                    append.done = True
+                self._turn.notify_all()
 
     # -------------------------------------------------------------- verification
 
