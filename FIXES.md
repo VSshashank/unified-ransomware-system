@@ -1413,6 +1413,127 @@ Off the escalation thread (`pipeline.escalate` called directly, as the
 safety-invariant tests do) there is no probe, and the request is sent as
 before. The image is not compared at dispatch; only the start-time rule is.
 
+#### Kill latency under load (R-RACE)
+
+**What was wrong** (concurrency review R-RACE, scripts s1/s2/s3/s7 on review copy `e762ae9`):
+- (c) A question with nothing queued behind it wrote its ledger block on the
+  escalation thread (`_escalate_one` → `pipeline.escalate`). A second PID's kill
+  closing meanwhile waited for that write: 0.70 s measured, up to
+  `DOWNSTREAM_TIMEOUT`. That breaks R22's 2.05 s on its own.
+- (d) Blocks owed after a kill were written only when `_escalations` was
+  momentarily empty. Under a steady stream of kills the owed backlog grew with
+  the run.
+- (b) A terminate that timed out or was unreachable was not remembered. Each of
+  one process's questions paid the full timeout again, in front of a fresh PID.
+- (a) Kills for different PIDs went out strictly one at a time.
+
+**What changed:**
+- `services/monitor/app.py`: `_escalate_loop` is replaced by `_Escalator`, a
+  thread subclass (still `_escalator`; the None sentinel still stops it).
+  - The intake thread (`monitor-escalation-intake`) only reads `_escalations`
+    and routes. It does no I/O.
+  - A question that authorises a kill goes to its PID's lane (`_KillLanes`).
+    There is one FIFO lane per PID and at most one question per PID out at a
+    time, so a process never has two overlapping terminates. Lanes are keyed by
+    PID alone, which is stricter than PID plus start time. Lanes with work are
+    taken in turn, so a fresh PID waits only for requests already in flight,
+    not for a PID's later questions. Empty lanes are dropped.
+  - `KILL_WORKERS` threads (`MONITOR_KILL_WORKERS`, **default 1**) take the
+    actions.
+  - The ledger writer (`monitor-escalation`) builds the one shared HTTP client
+    when the watch starts. It writes each block as its action finishes, or
+    queues it on `_work` while the incident's own blocks are not in the chain
+    (`_incident_in_chain`, unchanged). A question with no kill is closed there
+    by `pipeline.escalate`, which then makes no request.
+  - At most `MONITOR_MAX_OWED_BLOCKS` (4096) blocks can be owed; past that a
+    kill worker waits for the writer.
+  - `task_done` comes only after the block is written or queued. On stop,
+    everything already taken is acted on, every owed block is written, and all
+    threads exit before the sentinel is `task_done`.
+- `services/monitor/pipeline.py`: `TerminationRegistry` also keeps unconfirmed
+  terminates (refused, timed out or unreachable): the last
+  `MONITOR_UNCONFIRMED_ATTEMPTS` (2) per process, under the same count and age
+  bounds. `find`, `entries` and `len` never see them, so they are never
+  recorded as kills.
+  - On the escalation thread, a question whose write is covered by 2
+    unconfirmed attempts on the same process is not asked for again. The same
+    process means the same PID and start time, or any process on the PID if it
+    is now gone. Covered means `Termination.wrote`: the write came before the
+    request on both clocks.
+  - Such a question closes with the new result **`termination_unconfirmed_earlier`**.
+    Its block has `termination: null`, `response_dispatched_at: null` and
+    `termination_unconfirmed_earlier: {incident_id, response_dispatched_at,
+    process_started_at, attempts}`.
+  - A later write by the process, another live process on the PID, or a
+    failed probe is asked for as before. So the first question is asked, the
+    next one retries once, and every new write gets a new request.
+
+**Tests:** `services/monitor/tests/test_escalation_kill_latency_under_load.py` (8).
+Each test runs its own escalation thread on its own queue. The Response stub
+refuses a dead PID. There are no sleeps over 1 s, and every duration is
+`perf_counter`.
+- Fail on `07c0ec6`:
+  - `test_c_a_kill_does_not_wait_behind_a_lone_questions_ledger_write` (S7);
+  - `test_d_owed_blocks_keep_being_written_under_a_steady_stream_of_kills` (S2);
+  - `test_b_a_timed_out_terminate_is_not_paid_again_by_each_later_question`
+    (S3b, 0.5 s timeout);
+  - `test_with_a_kill_pool_a_fresh_pid_is_asked_for_within_500ms_behind_twenty_pids`.
+    This is the acceptance test: 200 questions over 20 live PIDs (half
+    waiting on `_work`), 300 ms terminates and a ledger write in progress. It
+    also checks no overlapping terminates, no lost or duplicate block, and that
+    stop leaves no thread running. It runs with **16** workers.
+- Guards, which pass on base:
+  - a write made after the unconfirmed attempts is asked for again;
+  - a new process on the PID is not covered by the old one's attempts;
+  - a block still waits for its incident's own blocks on `_work`;
+  - stop flushes and leaves no thread.
+
+On-base output:
+```
+AssertionError: B's kill waited 0.80s behind A's ledger write
+AssertionError: blocks owed grew to 4 while kills kept coming: [... (2.85, 9, 5)]
+AssertionError: each of H's questions paid the timeout again: 10 attempts
+AssertionError: fresh PID's kill went out 6.84s after its question closed
+4 failed, 4 passed in 44.38s
+```
+This commit: 8 passed, 3 runs out of 3.
+- (c): B's kill out in 0.000 s.
+- (d): at most 1 block owed during the stream.
+- (b): H got 2 attempts for 10 questions, and B was out in 0.50-0.51 s (one
+  H timeout in flight).
+- Acceptance: 0.302-0.303 s.
+
+The same acceptance test at 1 worker took 6.02 s, and at 4 workers 1.50 s.
+With 20 live PIDs at 300 ms ahead, the bound needs at least 11 requests in
+flight.
+
+Suites: monitor 652 before, 660 after. Response 206 (+2 skipped), unchanged.
+
+**Not done: the pool is built but off by default.** With
+`MONITOR_KILL_WORKERS=16`,
+`test_pid_reuse_before_kill.py::test_a_pid_reused_while_its_question_waits_behind_a_slow_kill_is_not_killed`
+fails ("the PID's new owner was killed for the old owner's write"). That
+test's premise is that W's question waits behind SLOW's kill. With a pool, W's
+real kill goes out at once, before the test reuses the PID. Turning the pool on
+means rewriting that test, which this package may not do. That is for the lead
+to decide. At the default of 1, (a) is unchanged when several distinct live
+PIDs are due at once. (b), (c) and (d) are fixed at any worker count.
+
+**Check on Windows:**
+- R22 at the default: B ≤ 2.05 s in 8 of 8 runs, now also with a slow ledger.
+- The ledger should show `termination_unconfirmed_earlier` only when Response
+  timed out or refused the same live process twice.
+- Time one real successful `/response/terminate`. Divided into the 500 ms
+  margin, that gives the worker count the pool would need.
+
+**Not changed:**
+- The kill gate (`Attribution.kill_authorised`), `Attributor.verify`, the
+  horizon, and the `pid_reused_before_kill` check.
+- `pipeline.escalate()`'s contract and `escalation_action`'s signature.
+- Every existing test.
+- `/monitor/stop` still does not stop the escalation threads (pre-existing, by
+  design).
+
 ## 23. The demo recorded the wrong PID and matched the wrong events (R14(b))
 
 Seen in the 2026-10-05 VM run (`VM_TEST_REPORT_2026-10-05_dc089ff.md`, fault 1
