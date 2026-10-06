@@ -731,13 +731,58 @@ def _legacy_encrypted_name(name: str, family: str) -> str:
     return name + {"locker": ".locked", "copycat": ".enc"}.get(family, "")
 
 
-def restore(target: Path, seed: bytes) -> int:
+def _manifest_from_journal(target: Path, save_root: Path) -> dict | None:
+    """Rebuild the manifest of a run whose manifest file was torn, from its journal.
+
+    The manifest is rewritten in place after every file, so a process killed in
+    the middle of one of those writes leaves it truncated (the 2026-10-06 VM run
+    saw a 0-byte one). It is not written any other way here because the writes
+    into the target are what the Monitor measures and a test pins their sequence.
+    The journal beside the saved originals is replaced atomically and names the
+    target, the family and every file the run started on, which is everything
+    `--restore` needs: it puts those files back from the copies and removes each
+    name the family could have produced. The newest journal for this target wins.
+    """
+    best = None
+    try:
+        candidates = [p for p in save_root.iterdir() if p.is_dir() and p.name.startswith(SAVE_DIR_PREFIX)]
+    except OSError:
+        return None
+    for saved_dir in candidates:
+        journal = _load_journal(saved_dir, target)
+        if journal is None or journal.get("family") not in FAMILIES:
+            continue
+        try:
+            stamp = (saved_dir / JOURNAL_NAME).stat().st_mtime
+        except OSError:
+            continue
+        if best is None or stamp > best[0]:
+            best = (stamp, saved_dir, journal)
+    if best is None:
+        return None
+    _, saved_dir, journal = best
+    family = journal["family"]
+    return {"family": family, "entries": [], "extra": list(FAMILIES[family][2]), "saved_dir": str(saved_dir)}
+
+
+def restore(target: Path, seed: bytes, save_root: Path | None = None) -> int:
     manifest_path = target / MANIFEST_NAME
     if not manifest_path.exists():
         print(f"no manifest at {manifest_path}; nothing this script created is here")
         return 0
 
-    manifest = json.loads(manifest_path.read_text())
+    recovered = False
+    try:
+        manifest = json.loads(manifest_path.read_text())
+        if not isinstance(manifest, dict):
+            raise ValueError("manifest is not an object")
+    except (OSError, ValueError):
+        manifest = _manifest_from_journal(target, save_root or _save_root(None))
+        if manifest is None:
+            print(f"the manifest at {manifest_path} is unreadable and no saved originals for this target were found; cannot restore")
+            return -1
+        print(f"the manifest at {manifest_path} is unreadable; restoring from the saved originals at {manifest['saved_dir']}")
+        recovered = True
     # Older manifests predate --family and are all locker runs.
     family = manifest.get("family", "locker")
     if family not in FAMILIES:
@@ -790,6 +835,11 @@ def restore(target: Path, seed: bytes) -> int:
     if journal is not None:
         _discard_saved(saved_dir, journal)
 
+    if recovered:
+        # The torn manifest would make a second `--restore` fail; this one names
+        # nothing left to undo and no saved copies, so a second one is a no-op.
+        manifest_path.write_text(json.dumps({"family": family, "entries": [], "extra": manifest["extra"]}))
+
     print(f"restored {restored} file(s) in {target}")
     return restored
 
@@ -824,7 +874,7 @@ def main() -> int:
     seed = args.seed.encode()
 
     if args.restore:
-        return 0 if restore(target, seed) >= 0 else 1
+        return 0 if restore(target, seed, _save_root(args.save_dir)) >= 0 else 1
 
     target.mkdir(parents=True, exist_ok=True)
 
