@@ -392,7 +392,7 @@ def live_view() -> None:
                     ("Timestamp", latest_event.get("timestamp")),
                 ]
             )
-            st.dataframe(event_summary, use_container_width=True, hide_index=True)
+            st.dataframe(event_summary, width="stretch", hide_index=True)
 
             # The adjudication, in full, when a rule was involved. Both costs are
             # shown because the outcome is a comparison between them and an operator
@@ -418,7 +418,7 @@ def live_view() -> None:
                             ("Why", adjudication.get("reason")),
                         ]
                     ),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
         else:
@@ -444,7 +444,7 @@ def live_view() -> None:
                 title="Signals Driving the Decision",
             )
             fig_importance.update_layout(height=240, margin=dict(l=10, r=10, t=45, b=10))
-            st.plotly_chart(fig_importance, use_container_width=True)
+            st.plotly_chart(fig_importance, width="stretch")
 
     chart_col, ledger_col = st.columns([1.5, 1])
 
@@ -470,7 +470,7 @@ def live_view() -> None:
                 xaxis_title="Event time",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else:
             st.info("Waiting for monitor events.")
 
@@ -486,7 +486,7 @@ def live_view() -> None:
                     ("Timestamp", latest_block.get("timestamp")),
                 ]
             )
-            st.dataframe(ledger_summary, use_container_width=True, hide_index=True)
+            st.dataframe(ledger_summary, width="stretch", hide_index=True)
         else:
             st.info("No ledger entries yet.")
 
@@ -502,7 +502,7 @@ def live_view() -> None:
                 "Reported": health_detail(service_data),
             }
         )
-    st.dataframe(pd.DataFrame(health_rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(health_rows), width="stretch", hide_index=True)
 
     details_left, details_right = st.columns([1.4, 1])
 
@@ -529,7 +529,7 @@ def live_view() -> None:
                 table_df[
                     ["Timestamp", "Event", "File", "Entropy", "Governance", "Process ID", "User"]
                 ],
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
             counts = Counter(
@@ -559,7 +559,7 @@ def live_view() -> None:
                 {"Metric": "Last trained", "Value": metrics.get("last_trained", "unknown")},
             ]
         )
-        st.dataframe(quality_df, use_container_width=True, hide_index=True)
+        st.dataframe(quality_df, width="stretch", hide_index=True)
 
 
 live_view()
