@@ -1,0 +1,490 @@
+{
+ "commit": "dc089ffe2bf8b978a4782b1abe33d9da9183bb7d",
+ "branch": "fix/vm-2026-10-04-findings",
+ "date": "2026-10-05",
+ "verdict": "FAIL",
+ "results": [
+  {
+   "id": "1.1",
+   "test": "Fresh clone and checkout",
+   "target": "tip of origin/fix/vm-2026-10-04-findings; descends from 5952218; porcelain empty",
+   "measured": "dc089ffe2bf8b978a4782b1abe33d9da9183bb7d (= expected tip); merge-base --is-ancestor exit 0; 24 commits; 48 files, +4,672/-674; porcelain empty",
+   "result": "PASS",
+   "evidence": "run_log.md"
+  },
+  {
+   "id": "1.2",
+   "test": "Fresh install (6 services + scripts)",
+   "target": "exit 0; pip check clean",
+   "measured": "7 pip installs exit 0 in 329.7 s; pip check: No broken requirements; pywin32 postinstall exit 0 (COM samples not registered: no admin); imports ok; streamlit 1.51.0, Pillow 12.3.0, pyarrow 21.0.0",
+   "result": "PASS",
+   "evidence": "evidence/install.txt"
+  },
+  {
+   "id": "1.3",
+   "test": "Behavioural model",
+   "target": "trains; same MD5 as last run if versions match; porcelain empty",
+   "measured": "72.5 s; MD5 F481AA17F5C777596288F71229BA4661 (= C:\\URDS-integ copy); porcelain empty",
+   "result": "PASS",
+   "evidence": "evidence/train_behavioral.txt"
+  },
+  {
+   "id": "2.1",
+   "test": "pytest gateway",
+   "target": "91 passed",
+   "measured": "91 passed",
+   "result": "PASS",
+   "evidence": "evidence/pytest_gateway.txt"
+  },
+  {
+   "id": "2.2",
+   "test": "pytest ledger",
+   "target": "99 passed",
+   "measured": "99 passed",
+   "result": "PASS",
+   "evidence": "evidence/pytest_ledger.txt"
+  },
+  {
+   "id": "2.3",
+   "test": "pytest monitor",
+   "target": "570, all passing",
+   "measured": "570 passed, first pass (no load-sensitive failure)",
+   "result": "PASS",
+   "evidence": "evidence/pytest_monitor.txt"
+  },
+  {
+   "id": "2.4",
+   "test": "pytest ml-engine",
+   "target": "50 passed, 3 skipped (no EMBER)",
+   "measured": "50 passed, 3 skipped: 'no EMBER model' x3",
+   "result": "PASS",
+   "evidence": "evidence/pytest_ml-engine.txt"
+  },
+  {
+   "id": "2.5",
+   "test": "pytest response",
+   "target": "127 passed, 2 skipped",
+   "measured": "127 passed, 2 skipped: 'SIGTERM cannot be ignored on Windows' x2",
+   "result": "PASS",
+   "evidence": "evidence/pytest_response.txt"
+  },
+  {
+   "id": "2.6",
+   "test": "pytest dashboard",
+   "target": "4 passed",
+   "measured": "4 passed",
+   "result": "PASS",
+   "evidence": "evidence/pytest_dashboard.txt"
+  },
+  {
+   "id": "2.7",
+   "test": "Pester scripts/tests",
+   "target": "30 passed",
+   "measured": "Passed: 30 Failed: 0 Skipped: 0",
+   "result": "PASS",
+   "evidence": "evidence/pester.txt"
+  },
+  {
+   "id": "2.8",
+   "test": "claim_matrix.py --tests",
+   "target": "16 claims, 0 failed",
+   "measured": "16 claims (14 made, 2 not claimed), 0 failed verification; C-16 ok",
+   "result": "PASS",
+   "evidence": "evidence/claim_matrix.txt"
+  },
+  {
+   "id": "2.9",
+   "test": "Seven new test files run, not skip",
+   "target": "18, 6, 1, 18, 3, 2 (Windows), 5; 6; 4",
+   "measured": "18, 6, 1, 18, 3, 2, 5 passed; test_chain_pid_fields 6; test_render 4; 0 skipped",
+   "result": "PASS",
+   "evidence": "evidence/new_test_files.txt"
+  },
+  {
+   "id": "2.10",
+   "test": "simulator_sweep.py",
+   "target": "13/13, 8/8 each",
+   "measured": "13/13 families, 8/8 each, restore ok; first flag 0-125 ms (renamer 125, locker 47; last run <= 16 ms); script criterion <= 2 s met",
+   "result": "PASS",
+   "evidence": "evidence/simulator_sweep.txt"
+  },
+  {
+   "id": "2.11",
+   "test": "tamper_sweep.py",
+   "target": "in-place 20/20; structural 0/8 is the documented limit",
+   "measured": "in-place 20/20; structural 0/8 (documented limit of an unanchored chain)",
+   "result": "PASS",
+   "evidence": "evidence/tamper_sweep.txt"
+  },
+  {
+   "id": "2.12",
+   "test": "failure_injection.py",
+   "target": "5 distinct outcomes, none 'verified'",
+   "measured": "all five ran, distinct, none reported as verified, every outcome explained",
+   "result": "PASS",
+   "evidence": "evidence/failure_injection.txt"
+  },
+  {
+   "id": "2.13",
+   "test": "load_test.py (not gated)",
+   "target": "re-measure",
+   "measured": "1st: median 91.9 / p95 270 / p99 365 ms, 44.9% > 100 ms; re-runs on a quiet VM: 51.8/110.8/143.3 (8.0%) and 49.5/106.5/146.9 (7.1%). Last run 52/113/151 (9.3%)",
+   "result": "PASS",
+   "evidence": "evidence/load_test.txt, load_test_rerun2.txt, load_test_rerun3.txt"
+  },
+  {
+   "id": "2.14",
+   "test": "Gate 1: porcelain after every offline script",
+   "target": "empty",
+   "measured": "empty after each of the 4 scripts and after the suites",
+   "result": "PASS",
+   "evidence": "evidence/*.txt (porcelain_after lines)"
+  },
+  {
+   "id": "3.1",
+   "test": "Run 1 stack (snapshot mode)",
+   "target": "6 services healthy; ledger valid; dashboard ok",
+   "measured": "all 6 up in <= 6 s; gateway /health healthy; ledger valid (0 blocks); /_stcore/health ok; recover/status snapshot_root_override set, elevated false",
+   "result": "PASS",
+   "evidence": "evidence/run1_health.txt"
+  },
+  {
+   "id": "3.2",
+   "test": "Run 2 stack (native, elevated)",
+   "target": "6 healthy; RECOVERY_SNAPSHOT_ROOT unset; VSS elevated",
+   "measured": "all 6 up in <= 6 s; recover/status snapshot_root_override null, vss supported true, elevated true",
+   "result": "PASS",
+   "evidence": "evidence/run2_health.txt"
+  },
+  {
+   "id": "5.1",
+   "test": "Benign workload (69 events)",
+   "target": "0 flagged; workload alive; verdicts benign/benign_compressed/deleted",
+   "measured": "run 1: 0 of 69; run 2 (attribution live): 0 of 69; workload exit 0 both; verdicts {benign, benign_compressed, deleted}",
+   "result": "PASS",
+   "evidence": "evidence/full_e2e_run1.json, full_e2e_run2.json"
+  },
+  {
+   "id": "5.2",
+   "test": "Genuine ZIP",
+   "target": "benign, valid",
+   "measured": "benign / valid (created + modified), both runs",
+   "result": "PASS",
+   "evidence": "evidence/full_e2e_run1.json"
+  },
+  {
+   "id": "5.3",
+   "test": "PK\\x03\\x04 + random",
+   "target": "suspected_encryption, structural_mismatch, forged",
+   "measured": "suspected_encryption, 'declares a zip container but the zip structure is not there', validation_state forged, both runs",
+   "result": "PASS",
+   "evidence": "evidence/full_e2e_run1.json"
+  },
+  {
+   "id": "5.4",
+   "test": "13 families x 10, each its own process",
+   "target": "130/130 flagged; first flag <= 100 ms",
+   "measured": "run 1: 130/130 flagged; harness first flag 32-118 ms (grinder 41 ms from its first malicious write); the 4 over 100 ms re-measured 3x with a tight probe: 21.6-76.2 ms after encryption began (grinder 24-42 ms after its first malicious write) (rule 4). Run 2: every encrypted file flagged (107 of 107 written before the kills; 130 decoys), first flag 20-29 ms, grinder 17 ms from first malicious write, poisoner setup flagged 1.08 s before encryption",
+   "result": "PASS",
+   "evidence": "evidence/full_e2e_run1.json, flag_probe_run1.json, full_e2e_run2.json"
+  },
+  {
+   "id": "5.5",
+   "test": "In-place encryption of 10 existing documents (other process)",
+   "target": "10/10 flagged",
+   "measured": "run 1: 10/10 encrypted, 10/10 files flagged (run 2 skipped this phase: its restore needs a snapshot folder)",
+   "result": "PASS",
+   "evidence": "evidence/full_e2e_run1.json"
+  },
+  {
+   "id": "5.6",
+   "test": "Flagged write visible through the gateway (dashboard closed)",
+   "target": "< 1 s",
+   "measured": "run 1: 0.020-0.063 s (5/5); run 2: 0.022-0.117 s (5/5)",
+   "result": "PASS",
+   "evidence": "evidence/full_e2e_run1.json, full_e2e_run2.json"
+  },
+  {
+   "id": "5.7",
+   "test": "Recovery from the snapshot folder",
+   "target": "10/10 restored + integrity_verified; own SHA-256 10/10",
+   "measured": "HTTP 200 success, recovered 10, integrity_verified true, own-hash 10/10 in 4.46 s (label: snapshot folder, not VSS)",
+   "result": "PASS",
+   "evidence": "evidence/full_e2e_run1.json, teardown_manifest_check.json"
+  },
+  {
+   "id": "5.8",
+   "test": "locker: snapshot folder, re-attack, recover",
+   "target": "10/10, own hash 10/10",
+   "measured": "HTTP 200 success, 10 recovered, integrity_verified true, own-hash 10/10 in 4.52 s",
+   "result": "PASS",
+   "evidence": "evidence/full_e2e_run1.json"
+  },
+  {
+   "id": "5.9",
+   "test": "--restore of each family directory",
+   "target": "byte-identical; F3 expects grinder/staged 9/10 when killed",
+   "measured": "run 1 (nothing killed): 13 x 10/10. Run 2: 12 families 10/10, grinder 9/10 (quarterly_report_03.jpg, in progress when killed). staged was killed after 8 files and restored 10/10",
+   "result": "KNOWN-OPEN",
+   "evidence": "evidence/teardown_manifest_check.json"
+  },
+  {
+   "id": "5.10",
+   "test": "D4 recovery, four spellings, snapshot folder (run 1)",
+   "target": "4/4 integrity_verified",
+   "measured": "4/4 (as recorded, '/', lower case, mixed) integrity_verified, bytes match",
+   "result": "PASS",
+   "evidence": "evidence/e2e_check_run1.json"
+  },
+  {
+   "id": "5.11",
+   "test": "Unelevated attribution degradation",
+   "target": "unavailable, isolate_and_log",
+   "measured": "error 'could not subscribe to the Security channel: (5, 'EvtSubscribe', 'Access is denied.')'; every response network_isolation_planned + admin_notified; 0 PIDs named",
+   "result": "PASS",
+   "evidence": "evidence/e2e_check_run1.console.txt"
+  },
+  {
+   "id": "6.0a",
+   "test": "Audit setup + -Verify on watch_native",
+   "target": "exit 0; End-to-end probe ok",
+   "measured": "setup exit 0, probe ok 'on attempt 2'; -Verify exit 0",
+   "result": "PASS",
+   "evidence": "evidence/setup_watch_native.txt"
+  },
+  {
+   "id": "6.0b",
+   "test": "Attribution gate",
+   "target": "available, windows-security-4663, kernel_grade",
+   "measured": "available=True source=windows-security-4663 kernel_grade=True error=None; audit probe writes_recorded 0 -> 5",
+   "result": "PASS",
+   "evidence": "evidence/e2e_check_run2.console.txt"
+  },
+  {
+   "id": "6.1",
+   "test": "D1: 5 single writes, fresh process each",
+   "target": "5/5 certain, PID = writer, writer killed",
+   "measured": "5/5 certain with the writer's PID, 5/5 killed; write -> PID gone 4.03 (first, after the D3 burst), 1.62, 1.58, 1.64, 1.58 s",
+   "result": "PASS",
+   "evidence": "evidence/e2e_check_run2.json"
+  },
+  {
+   "id": "6.2",
+   "test": "D2: write then rename x5",
+   "target": "rename certain, correct PID",
+   "measured": "5/5 rename events certain, PID = writer, outcome verified, writer killed; rename attempts 1 each",
+   "result": "PASS",
+   "evidence": "evidence/e2e_check_run2.json"
+  },
+  {
+   "id": "6.3",
+   "test": "D3: 20-file burst",
+   "target": "last event <= ~0.2 s after last write; queue_wait_ms on every suspicious event",
+   "measured": "20 writes in 0.077 s; last full-size event +0.255 s (wall clock: approximate, +/-0.1 s at this VM's slew; run 1 +0.166 s); queue_wait_ms on 40/40 (max 3.1 ms)",
+   "result": "PASS",
+   "evidence": "evidence/e2e_check_run2.json"
+  },
+  {
+   "id": "6.4",
+   "test": "D4: four spellings, recovery from the real shadow copy",
+   "target": "4/4 integrity_verified",
+   "measured": "4/4 HTTP 200 success, integrity_verified true, own hash true; file_recovered blocks 2360-2394 joined to incidents",
+   "result": "PASS",
+   "evidence": "evidence/full_e2e_run2.json"
+  },
+  {
+   "id": "6.5",
+   "test": "Invariant: benign writer then encryptor 0.5 s later x3",
+   "target": "never certain, nobody killed",
+   "measured": "3/3: answers only probable (naming the encryptor), nobody killed",
+   "result": "PASS",
+   "evidence": "evidence/e2e_check_run2.json"
+  },
+  {
+   "id": "6.6",
+   "test": "Invariant: second writer after first one's detection x2",
+   "target": "second never certain, never killed",
+   "measured": "2/2: second writer only probable, never killed (first writer certain and killed)",
+   "result": "PASS",
+   "evidence": "evidence/e2e_check_run2.json"
+  },
+  {
+   "id": "6.7",
+   "test": "Wrong PIDs over every correlated event",
+   "target": "exactly 0",
+   "measured": "0 of 68 events (e2e_check), 0 of 227 (full_e2e: 33 certain, 194 probable), 0 of 205 ledger blocks; ledger_coverage: 410 blocks name a process, 0 unsupported",
+   "result": "PASS",
+   "evidence": "evidence/e2e_check_run2.json, full_e2e_run2.json, analysis_run2.json"
+  },
+  {
+   "id": "6.8",
+   "test": "13 families x 10, elevated: FEBR, attribution, termination",
+   "target": "record (KNOWN-OPEN, F2)",
+   "measured": "terminated: grinder (FEBR 3), poisoner (4), slowburn (2), staged (8); notedrop certain+terminated after it finished (10); the other 8 finished first (FEBR 10). First malicious write -> PID gone 0.52-1.63 s for the killed ones. No wrong PID in any family",
+   "result": "KNOWN-OPEN",
+   "evidence": "evidence/full_e2e_run2.json"
+  },
+  {
+   "id": "6.9",
+   "test": "VSS available, --status-only creates nothing",
+   "target": "shadow copies unchanged; supported, elevated",
+   "measured": "1 -> 1 (only {DD628FFD...}); supported True, elevated True, list_snapshots ok (1)",
+   "result": "PASS",
+   "evidence": "evidence/vss_status_only.txt"
+  },
+  {
+   "id": "6.10",
+   "test": "Snapshot",
+   "target": "< 30 s, listed, snapshot_created block",
+   "measured": "{1D563C09-87F1-4033-A72C-39447130114B} in 2.8 s (3.4 s with process start); listed PASS; snapshot_created block 2290",
+   "result": "PASS",
+   "evidence": "evidence/full_e2e_run2.console.txt"
+  },
+  {
+   "id": "6.11",
+   "test": "Restore (locker over the same directory)",
+   "target": "restored + integrity_verified for every file",
+   "measured": "10/10 damaged before; HTTP 200 success, 10 recovered, integrity_verified true, 4.33 s; baselines present for all 10 before encryption",
+   "result": "PASS",
+   "evidence": "evidence/full_e2e_run2.json"
+  },
+  {
+   "id": "6.12",
+   "test": "Independent check",
+   "target": "own SHA-256 = pre_attack_manifest for every file",
+   "measured": "10/10 locker + 4/4 D4 match pre_attack_manifest_run2.json",
+   "result": "PASS",
+   "evidence": "evidence/pre_attack_manifest_run2.json, teardown_manifest_check.json"
+  },
+  {
+   "id": "6.13",
+   "test": "Logged",
+   "target": "file_recovered joined to the incident",
+   "measured": "14 file_recovered blocks (2340-2394), each with incident_id, integrity_verified true, expected = restored hash",
+   "result": "PASS",
+   "evidence": "evidence/ledger_run2_saved.db"
+  },
+  {
+   "id": "6.14",
+   "test": "Chain",
+   "target": "valid; verify < 50 ms (ledger's own figure)",
+   "measured": "2,445 blocks valid in 14.0 ms (ledger's figure); HTTP round trip median 16.2 ms, max 31.0 ms (20 runs)",
+   "result": "PASS",
+   "evidence": "evidence/full_e2e_run2.json"
+  },
+  {
+   "id": "8.7",
+   "test": "Ledger tamper on saved copies (separate ledger on 8013)",
+   "target": "valid:false naming the edited block",
+   "measured": "run 1 copy: block 1068 edited -> valid false, invalid_block_id 1068; run 2 copy: 1228 -> 1228; si_demo live TC-05 caught block 2152 and restored",
+   "result": "PASS",
+   "evidence": "evidence/tamper_saved_run1.json, tamper_saved_run2.json"
+  }
+ ],
+ "regression": [
+  {
+   "id": "R13",
+   "test": "Dashboard rendered nothing and saturated the gateway (F1)",
+   "target": "dashboard held open by headless Edge >= 60 s; 20x /health and /monitor/events (token) on perf_counter; gateway access-log count over 20 s; render in the app's browser pane",
+   "measured": "open: /health median 17.2 ms (run 1) and 11.7 ms (run 2); /monitor/events 11.0 and 8.7 ms; closed: 16.9/10.5 and 11.4/8.6 ms. 20 GET /health + 20 POST /predict in 20 s (both runs; 0 with it closed). Every panel drawn: 'System Secure' banner, pipeline tiles, Model Decision, Entropy Trend, Ledger Evidence, Service Health, Recent File Events, Model Quality; Uptime tile advanced 299 -> 303 s in 5 s. Headless --dump-dom was inconclusive (Streamlit shell only)",
+   "result": "PASS",
+   "evidence": "evidence/r13_run1_*.json, r13_run2_*.json, r13_run1_browser_render.txt"
+  },
+  {
+   "id": "R14",
+   "test": "Fabricated evidence (X1)",
+   "target": "(a) git grep 6666; (b) attack_chain_demo.py unelevated and elevated; (c) ledger_coverage --ledger-db, C-16; (d) si_demo rows",
+   "measured": "(a) empty (exit 1). (b) unelevated: TC-07 skip, exit 1, no terminate issued - as required. Elevated: TC-07 FAIL 'WRONG PROCESS' in all 4 runs (2 venv, 2 base interpreter) although the system's own certain answer named the real writer and terminated it every time: the demo records the venv launcher's PID (Popen(sys.executable) from a venv; measured 11800 vs writer 11756), and it matches events by file name only, so a previous run's event for the same name in another folder is judged as this run's (base-interpreter run: system named 4272 = its writer, demo also counted 8240 from the earlier folder). (c) 2,454 blocks, 410 name a process, 0 unsupported, exit 0, file unchanged; C-16 ok. (d) file_encrypted rows process_id None / unknown; no 6666 or 4321 anywhere",
+   "result": "FAIL",
+   "evidence": "evidence/r14a_grep_6666.txt, demo_attack_unset.console.txt, demo_attack_chain_elevated*.txt, demo_followup_*.txt, venv_launcher_pid_probe.txt, ledger_coverage_run2.txt, r14d_si_demo_rows.txt"
+  },
+  {
+   "id": "R15",
+   "test": "Demos wrote reports/ unconditionally (F7)",
+   "target": "both demos with URDS_WRITE_REPORTS unset; with --out; with =1, copy and git restore",
+   "measured": "unset: porcelain empty after each; --out wrote only evidence/demo_*; =1: 3 tracked reports modified, copied to evidence/regenerated_*, git restore -> porcelain empty. Transcript PIDs are real processes, but the 'writer pid' printed from a venv is the launcher, not the writing process (see R14)",
+   "result": "PASS",
+   "evidence": "evidence/run1_demos.console.txt, regenerated_*"
+  },
+  {
+   "id": "R16",
+   "test": "A kill waited for the pipeline backlog (F2a)",
+   "target": "elevated: 20 rapid writes by A, then one write by fresh B (alive 10 s); B write -> B PID gone on perf_counter; x5, then x3 re-run",
+   "measured": "5.55, 8.73, 3.01, 5.47, 2.86 s; re-run 2.39, 6.25, 2.00 s: 1 of 8 within 2.05 s (last run 6.92 s). Ledger: B's question closes at the horizon (~1.55 s after the read) but its terminate request waits behind 4-22 of A's escalations, dispatched serially 0.30-0.38 s apart, all but the first refused for a PID already dead. Incident IDs present 8/8; file_event < trigger < attribution_escalation holds; the Response service's terminate blocks precede the file_event (the kill no longer waits for _work). D1 #1 after the D3 burst: 4.03 s (FIXES expects ~1.6 s)",
+   "result": "FAIL",
+   "evidence": "evidence/r16_backlog.json, r16_rerun.json, ledger_run2_saved.db"
+  },
+  {
+   "id": "R17",
+   "test": "Audit probe reported a working folder as broken (F4)",
+   "target": "ten new folders: setup then -Verify, then -Revert each (follow-up script; the first attempt was a harness failure, see 'Apparent failures')",
+   "measured": "10/10 setup exit 0 with 'End-to-end probe ok', 10/10 -Verify exit 0, 0 false failures; reverts 10/10 exit 0; log size 1 GiB and subcategory Success unchanged; no rule left",
+   "result": "PASS",
+   "evidence": "evidence/r17_redo.json, followup_elevated.log"
+  },
+  {
+   "id": "R18",
+   "test": "Stale file_size beside the full file's hash (F5)",
+   "target": "every file_baseline block and event with a hash vs pre_attack_manifest; zero-size beside non-empty hash",
+   "measured": "run 1: 352 baselines / 1,233 events, 290 / 516 in the manifest, 0 mismatches, 0 zero-size; run 2: 182 / 1,358, 134 / 475, 0 mismatches, 0 zero-size. size_changed_during_read present on all; true on 5+36 (run 1) and 6+68 (run 2)",
+   "result": "PASS",
+   "evidence": "evidence/analysis_run1.json, analysis_run2.json"
+  },
+  {
+   "id": "R19",
+   "test": "Dashboard raised ArrowTypeError every refresh",
+   "target": "dashboard open >= 60 s after attacks; search its log",
+   "measured": "0 'Serialization of dataframe to Arrow table was unsuccessful', 0 ArrowTypeError/ArrowInvalid, 0 Traceback (run 1: 153 KB of log; run 2: 69,510 lines - all a use_container_width deprecation warning)",
+   "result": "PASS",
+   "evidence": "evidence/../run1/logs/dashboard.log, ../run2/logs/dashboard.log"
+  },
+  {
+   "id": "R20",
+   "test": "Two Security-channel subscriptions per Monitor start",
+   "target": "start/stop/start then a fresh writer, x5, HandleCount before/after; re-run x5 (rule 4)",
+   "measured": "first run 4/5: cycle 5's write answered unknown (no_record) and was not killed; the Security log holds its 4663 (PID 0x26cc = the writer, 16:07:38.030Z) - it reached the Monitor after the 1.5 s horizon; attribution stayed available and full_e2e right after attributed normally. Re-run 5/5 certain, killed at 1.57-1.59 s. Handles 299 -> 290 and 224 -> 296 (first start) then flat: no steady rise",
+   "result": "PASS",
+   "evidence": "evidence/r20_cycles.json, r20_rerun.json, r20_security_log_4663.txt"
+  },
+  {
+   "id": "R21",
+   "test": "PE parser opened files without FILE_SHARE_DELETE",
+   "target": "test_pe_read_shares_delete.py; live: copy python.exe into the watch folder, POST /features, delete at once, x5 per run",
+   "measured": "2 passed, not skipped; live 10/10: /features 200 with PE fields (pe_imports_count 44, api_calls), delete succeeded with 0 sharing violations",
+   "result": "PASS",
+   "evidence": "evidence/new_test_files.txt, r21_run1.json, r21_run2.json"
+  },
+  {
+   "id": "F2",
+   "test": "Kill arrives after fast encryptors finish",
+   "target": "6.2",
+   "measured": "FEBR < 5 for 3 of 13 (grinder 3, poisoner 4, slowburn 2), as last run; staged killed at 8; write -> PID gone for single writers 0.52-4.03 s, median 1.58 s (n=25); kill request after the read median 1.57 s (wall clock, 44 kills), kill itself 11.7-73.8 ms",
+   "result": "KNOWN-OPEN",
+   "evidence": "evidence/full_e2e_run2.json, analysis_run2.json"
+  },
+  {
+   "id": "F2b",
+   "test": "Suspend-first response",
+   "target": "POST /response/suspend",
+   "measured": "HTTP 404 NOT_FOUND (both runs); routes: recover, recover/status, health, terminate, isolate, trigger. Not implemented, as FIXES.md says",
+   "result": "KNOWN-OPEN",
+   "evidence": "evidence/f2b_suspend_probe.txt"
+  },
+  {
+   "id": "F3",
+   "test": "--restore skips the file in progress when killed",
+   "target": "row 5.9",
+   "measured": "grinder 9/10 (KNOWN-OPEN); staged 10/10 this run (killed between files)",
+   "result": "KNOWN-OPEN",
+   "evidence": "evidence/teardown_manifest_check.json"
+  },
+  {
+   "id": "F6",
+   "test": "2-3 incidents and ~5 blocks per encrypted file",
+   "target": "run ledger",
+   "measured": "run 2: 522 file_event blocks for 273 distinct suspicious files (1.91 each), incidents per file median 2 (max 4), 6.06 ledger blocks per suspicious file, 2,454 blocks; 99 'termination_refused_or_unreachable' escalations on certain answers (PID already dead) - and these now cost time (R16). Last run: 317 file_event for ~170 files; 1,556 blocks",
+   "result": "KNOWN-OPEN",
+   "evidence": "evidence/analysis_run2.json"
+  }
+ ]
+}
