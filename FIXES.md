@@ -2513,10 +2513,10 @@ Base `dc089ff` and the merged branch, same venv (Python 3.12.10, Windows 11,
 
 | Suite | Base (`dc089ff`) | This branch | New tests |
 |---|---|---|---|
-| gateway | 91 passed | 103 passed | +12 (26) |
+| gateway | 91 passed | 108 passed | +12, +5 (26) |
 | ledger | 99 passed | 99 passed | - |
-| monitor | 570 passed | 641 passed | +13 (23), +38 (24), +7 (22), +13 (25) |
-| response | 127 passed, 2 skipped | 178 passed, 2 skipped | +2 (22), +49 (26) |
+| monitor | 570 passed | 660 passed | +13 (23), +38 (24), +7, +11, +8 (22), +13 (25) |
+| response | 127 passed, 2 skipped | 206 passed, 2 skipped | +2 (22), +49, +28 (26) |
 | dashboard | 4 passed | 7 passed | +3 (27) |
 | ml-engine | not run: nothing in this session touches it | | |
 | claim matrix (`--tests`) | 0 failed | 0 failed, C-16: 48 events, 0 unsupported | - |
