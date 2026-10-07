@@ -263,3 +263,42 @@ serial path (about three commits per event become about two, overlapped, and con
 share commits), so it may close the 0.1-0.5 s misses or may not. The elevated check is
 `r22_ab2.ps1`: default, tail off, both off, default again, with a disk probe before and after
 each. Until it has run, R22 stays "passes only on a fast disk".
+
+## 12. The elevated A/B of the slow-disk changes (evidence_ab2_20261007_061816) and a loaded-disk test
+
+**Elevated, fast disk (about 3 ms per flush).** Four configurations, four reps each: default
+(tail and group commit on), tail off, both off (the write path as it was), default again.
+- B was killed within 2.05 s in 15 of 16 reps (1.64-1.84 s); the sixteenth, in `default_again`
+  rep 1, was never attributed ("no record") and not killed. The earlier A/B had one such rep too,
+  with both changes off, so it is not new: the audit record for the fresh writer did not arrive
+  inside the delivery horizon. Not investigated further (it needs the Security log, which needs
+  elevation).
+- Ledger order held in 15 of 16 reps. The exception is `default` rep 2, during the one stretch
+  where the disk was slower (flush 6-8 ms before that config; every other config about 3 ms):
+  B's `file_event` landed 2.9 s after Response's `terminate` block. In every normal rep B's
+  `file_event` lands 0.4-1.4 s before the terminate block, in all four configurations. There is no
+  tail-off or both-off run from that slow stretch to compare it with, so this neither shows the
+  change failing nor working.
+- This run could not tell the configurations apart, because the disk was fast throughout.
+
+**Local, with the disk loaded on purpose** (a background writer on the same volume: two streams of
+4 MB fsync'd files, flush about 11 ms - the 10-16 ms range where R22 failed). Whole stack on this
+machine, no audit channel, 20-file burst, time from the last write until the ledger stops growing;
+median of four reps, two interleaved rounds:
+
+| configuration | round 1 | round 2 |
+|---|---|---|
+| default (tail and group commit) | 9.5 s | 9.2 s |
+| tail off (group commit only) | 12.2 s | 12.2 s |
+| both off (as before) | 11.2 s | 11.7 s |
+
+So under a slow disk the default is about 20-25 percent faster than the previous write path. The
+gain needs both parts: group commit alone changes nothing for one serial writer. It is a
+reduction, not a cure: 120 blocks still take about 9 s at an 11 ms flush. Changing the journal mode
+(TRUNCATE, PERSIST) was measured under the same load and did nothing.
+
+**What is still true.** On a disk that is slow enough, a fresh writer's event is processed late
+and its detection block can follow its terminate block. The kill itself is dispatched on time after
+the horizon. Whether the 20-25 percent is enough to bring the 2.2-2.5 s kills under 2.05 s is not
+shown: no elevated run has yet been made on a slow disk with these changes. To make one: start
+`disk_noise.py` (two streams of 4 MB fsync'd writes) on the same volume, then run `r22_ab2.ps1`.

@@ -2793,10 +2793,11 @@ committed alone before the next event's ML call could start.
 pass unedited.
 
 **Measured, and not:** ledger alone, 80 appends on the VM disk in a slow stretch: 1 writer
-unchanged, 3 writers 3.4 -> 2.0 s, 8 writers 2.8 -> 0.75 s. Whole Monitor on a local stack, fast
-disk, 20-file burst, ledger catch-up after the last write: 2.0 s with the tail against 2.3 s
-without (20 repetitions each, interleaved). **Not measured:** the effect on the slow-disk burst
-failures themselves, and the elevated R22; `r22_ab2.ps1` in the run folder is the check.
+unchanged, 3 writers 3.4 -> 2.0 s, 8 writers 2.8 -> 0.75 s. Whole stack locally with the disk
+loaded to an 11 ms flush, 20-file burst, time until the ledger stops growing: 9.2-9.5 s with both
+parts, 12.2 s with the tail off, 11.2-11.7 s with both off (the old path) - about 20-25 percent
+faster; on a fast disk 2.0 s against 2.3 s. The elevated A/B on a fast disk (docs, section 12)
+could not tell the configurations apart. **Not measured:** the elevated R22 on a slow disk.
 
 ## 29. The simulator's `--restore` died on a manifest the kill had torn
 
