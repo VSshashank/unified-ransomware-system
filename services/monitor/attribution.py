@@ -319,6 +319,10 @@ class Attribution:
     protected: str | None = field(default=None, compare=False)
     #: The path is inside a watched root.
     in_watched_roots: bool = field(default=False, compare=False)
+    #: Why a closed "no record" answer found nothing: a record that arrived after the
+    #: horizon, one outside the window, or none at all. Evidence for the reader of the
+    #: ledger only - no gate reads it, and it is not part of the answer's shape.
+    miss_detail: str | None = field(default=None, compare=False)
 
     @property
     def kill_authorised(self) -> bool:
@@ -789,6 +793,9 @@ class WriteLog:
                 source=source,
                 pending=still_arriving and horizon > 0,
                 settle_at=settle_at,
+                miss_detail=None if still_arriving and horizon > 0 else self._explain_miss(
+                    targets, relevant, observed_at, lo_match, settle_mono
+                ),
             )
 
         relevant.sort(key=lambda w: w.written_at)
@@ -892,6 +899,44 @@ class WriteLog:
             candidates=(newest.pid,),
             **evidence,
         )
+
+    def _explain_miss(
+        self,
+        targets: list[str],
+        relevant: list[Write],
+        observed_at: float,
+        lo_match: float,
+        settle_mono: float,
+    ) -> str:
+        """In words, what the log held for this path when a question closed with no match.
+
+        Read-only and called once per closed miss. `relevant` is what the lookup
+        already took under the lock; the wider scan below takes it again for the
+        nearest record of any age, which the lookup does not keep.
+        """
+        late = [w for w in relevant if w.written_at >= lo_match and w.delivered_mono > settle_mono]
+        if late:
+            worst = max(late, key=lambda w: w.delivered_mono)
+            return (
+                f"{len(late)} record(s) for this path arrived after the horizon closed, "
+                f"the last {(worst.delivered_mono - settle_mono) * 1000.0:.0f}ms late (pid {worst.pid}); "
+                f"a record that late is not an answer"
+            )
+        if relevant:
+            nearest = min(relevant, key=lambda w: abs(w.written_at - observed_at))
+            return (
+                f"{len(relevant)} record(s) for this path were older than the window, the nearest "
+                f"{(observed_at - nearest.written_at) * 1000.0:.0f}ms before the event (pid {nearest.pid})"
+            )
+        with self._lock:
+            every = [w for key in targets for w in self._by_path.get(key, ())]
+        if every:
+            nearest = min(every, key=lambda w: abs(w.written_at - observed_at))
+            return (
+                f"no record inside the competition window; the nearest record for this path was "
+                f"{(nearest.written_at - observed_at) * 1000.0:+.0f}ms from the event (pid {nearest.pid})"
+            )
+        return "no record for this path was ever delivered to the write log"
 
     # -- housekeeping ----------------------------------------------------
 

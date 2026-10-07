@@ -2812,6 +2812,22 @@ started file back from its copy and removes each name the family could have prod
 journal it says so and exits 1. `services/monitor/tests/test_simulator_torn_manifest.py` (42);
 they fail on the old script.
 
+## 30. An unidentified fresh writer left no reason (R22 rep 1) - diagnostic only
+
+**Seen:** twice in 32 live repetitions, both rep 1 of a fresh stack (2026-10-06 `both_off`,
+2026-10-07 `default_again`), the fresh writer got `no_record` and was not killed. The
+escalation block said "none arrived within the 1500ms delivery horizon", which does not
+say whether the record never came, came after the horizon, or was stamped outside the
+window.
+
+**Changed:** `Attribution.miss_detail` (not compared, not in `as_event_fields`, read by no
+gate) says which, and the `attribution_escalation` block carries it as `audit_miss` when
+there is one. Nothing about who is attributed, suspended or killed changed. 7 tests in
+`services/monitor/tests/test_miss_detail.py`.
+
+**Not fixed:** the cause. The next elevated run that leaves a writer unidentified will say
+in its ledger whether Windows delivered the record late, or not at all.
+
 ## Suites
 
 Baseline at `7dcee2a` and after this branch, same venv (Python 3.12.10,

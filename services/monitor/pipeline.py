@@ -823,6 +823,10 @@ def record_escalation(
         "coalesced_event_ids": list(event.get("coalesced_event_ids") or []),
         "timestamp": utc_now(),
     }
+    if answer.miss_detail:
+        # What the write log held when this question closed empty (R22 rep 1,
+        # 2026-10-06/07: an unidentified fresh writer, cause unknown).
+        record["audit_miss"] = answer.miss_detail
     if action.get("terminated_earlier"):
         # Which incident's kill this was: the join an auditor needs to find the
         # Response service's own `response_action` block for it.
