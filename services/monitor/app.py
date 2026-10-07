@@ -1619,6 +1619,9 @@ def _show_closed(event: dict, question, answer, outcome: str, record: dict, bloc
         if record.get("suspension"):
             # Freeze-first: what became of the lease this incident's writer was held under.
             event["attribution_escalation"]["suspension"] = record["suspension"]
+        if record.get("audit_miss"):
+            # Why a no_record question found nothing (late, old or absent): the same text the block carries.
+            event["attribution_escalation"]["audit_miss"] = record["audit_miss"]
 
 
 def _run_escalation_record(client: httpx.Client, event: dict, question, answer, outcome: str, action: dict) -> None:

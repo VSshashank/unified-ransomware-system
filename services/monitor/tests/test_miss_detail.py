@@ -117,3 +117,18 @@ def test_the_detail_is_not_part_of_the_answers_identity():
     b = attribution.Attribution(pid=None, image=None, confidence=UNKNOWN, reason="x", miss_detail="two")
     assert a == b
     assert "miss_detail" not in a.as_event_fields()
+
+
+def test_the_events_view_carries_the_miss_detail_with_the_escalation():
+    import app as monitor_app
+
+    event: dict = {}
+    question = type("Q", (), {"first": attribution.Attribution(pid=None, image=None, confidence=UNKNOWN, reason="first")})()
+    answer = attribution.Attribution(pid=None, image=None, confidence=UNKNOWN, reason="final")
+    record = {"result": "not_escalated", "response_dispatched_at": None, "audit_miss": "no record for this path was ever delivered"}
+    monitor_app._show_closed(event, question, answer, "no_record", record, None)
+    assert event["attribution_escalation"]["audit_miss"].startswith("no record")
+    record.pop("audit_miss")
+    event2: dict = {}
+    monitor_app._show_closed(event2, question, answer, "no_record", record, None)
+    assert "audit_miss" not in event2["attribution_escalation"]
