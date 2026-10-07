@@ -241,6 +241,8 @@ prompt, the audit trail is late and out of order. Not fixed: it needs faster or 
 ledger writes. The honest statement of R22 is: passes at about 4 ms per file flush, misses
 the 2.05 s target by 0.1-0.5 s at 10-16 ms.
 
+*(Correction, section 13: the paragraph above that calls R22 disk-latency bound and says the fresh writer's event is processed late so the horizon starts late was an inference. A later run shows the kill does not depend on the ledger at all; see section 13.)*
+
 ## 11. After the A/B: what was built for the slow-disk burst, and what is not yet proven
 
 Written before any VM run of this. Two changes (FIXES.md 28) and one tool fix (FIXES.md 29).
@@ -302,3 +304,45 @@ and its detection block can follow its terminate block. The kill itself is dispa
 the horizon. Whether the 20-25 percent is enough to bring the 2.2-2.5 s kills under 2.05 s is not
 shown: no elevated run has yet been made on a slow disk with these changes. To make one: start
 `disk_noise.py` (two streams of 4 MB fsync'd writes) on the same volume, then run `r22_ab2.ps1`.
+
+## 13. The elevated A/B with the disk loaded on purpose (evidence_ab2_20261007_071226): what it corrects
+
+`r22_ab2_loaded.ps1` runs `r22_ab2.ps1` while a background writer keeps the disk at a 10-40 ms
+flush (probe medians 10-43 ms in the audited folder). Four configurations, four reps each;
+freeze-first and the kill pool on in all.
+
+**The kill does not depend on the ledger.** 16 of 16 fresh writers were killed within 2.05 s, 1.556
+to 1.676 s, in every configuration - including both-off, the old write path. In the same runs the
+ledger fell up to 20 s behind. So the 2026-10-06 slow-stretch misses (kills at 2.2-2.5 s, section 10)
+were not caused by the disk or the ledger write path, and section 10's explanation (disk-latency
+bound; the fresh writer's event processed late) is withdrawn as unsupported. What did cause them
+is not known. Seen in that window and not now: B's detection latency 50-190 ms (5-22 ms in later
+runs), so the machine was generally slower then; but that does not account for 0.7-1 s. It did not
+reproduce in the two later runs: 15 of 16 on a fast disk (the sixteenth was an unattributed writer, below)
+and 16 of 16 loaded (this section), the old write path included. The 4663 delivery lag for B was 70-1500 ms in the loaded run, all within the
+1,500 ms horizon, so the horizon logic held.
+
+**What the loaded run does show: the ledger backlog.** B's `file_event` block landed after Response's
+`terminate` block in every rep of every configuration (the order check fails 16 of 16), because B's
+detection waits behind the burst's. By how much, per rep (seconds after the terminate block):
+
+| configuration | rep 1 | rep 2 | rep 3 | rep 4 |
+|---|---|---|---|---|
+| default (tail and group commit) | 2.9 | 2.8 | 4.0 | 2.7 |
+| default again | 4.4 | 4.4 | 6.0 | 7.1 |
+| tail off | 6.2 | 9.3 | 12.6 | 14.2 |
+| both off (old write path) | 5.6 | 10.6 | 16.9 | 20.6 |
+
+The old path loses ground with each burst (the ledger cannot keep up with a burst every 30 s on this
+disk); the default stays at 3-7 s. That is the benefit of the two changes: a bounded ledger backlog
+on a loaded disk, not a faster kill. It is not enough for the order check, which needs B's detection
+block before the terminate block, so the audit trail is still late and out of order under load.
+
+**Unattributed writer.** None in this run (16 of 16 attributed). Seen once in each of the two earlier
+A/B runs (`both_off` rep 1 in the first, before these changes; `default_again` rep 1 in the fast run).
+Cause unknown.
+
+R22, as it stands: kill within 2.05 s in 31 of 32 reps across the fast and loaded runs of the new
+code (the 32nd was the unattributed writer), and 8 of 8 in the first run; 11 of 20 in the one slow
+window of section 10, unexplained. The
+ledger-order check does not pass on a loaded disk.

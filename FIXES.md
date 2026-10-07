@@ -2765,10 +2765,10 @@ no "use_container_width" line.
 ## 28. A burst's ledger blocks fell seconds behind its events (R22), and the order was wrong
 
 **Seen:** the 2026-10-06 burst A/B (docs/VM_RETEST_RESULTS_2026-10-06.md, section 10). In
-slow disk stretches the Monitor's blocks for a 20-file burst landed 4-8 s after the events,
-a fresh writer's kill missed its 2.05 s target by 0.1-0.5 s, and a `terminate` block could
-reach the chain before the `file_event` block it answers. The same failure with this round's
-earlier changes off, so it was the disk and the write path, not those changes.
+slow disk stretches the Monitor's blocks for a 20-file burst landed 4-8 s after the events, and a
+`terminate` block could reach the chain before the `file_event` block it answers. (That run also
+had kills at 2.2-2.5 s, which this change does not address: a loaded-disk run, section 13, showed
+the kill does not depend on the ledger, and the cause of those late kills is unknown.)
 
 **Cause:** the pipeline worker wrote about three blocks per suspicious event in a row (the
 `file_event`, the Response service's `response_action`, its own `response_action`), and an
@@ -2797,7 +2797,9 @@ unchanged, 3 writers 3.4 -> 2.0 s, 8 writers 2.8 -> 0.75 s. Whole stack locally 
 loaded to an 11 ms flush, 20-file burst, time until the ledger stops growing: 9.2-9.5 s with both
 parts, 12.2 s with the tail off, 11.2-11.7 s with both off (the old path) - about 20-25 percent
 faster; on a fast disk 2.0 s against 2.3 s. The elevated A/B on a fast disk (docs, section 12)
-could not tell the configurations apart. **Not measured:** the elevated R22 on a slow disk.
+could not tell the configurations apart. Elevated, disk loaded to 10-40 ms (docs, section 13): the ledger backlog behind B's detection stays at
+3-7 s with both parts, and grows to 20 s over four bursts on the old path; kills were on time in
+every configuration. **Not fixed:** the ledger-order check still fails under that load.
 
 ## 29. The simulator's `--restore` died on a manifest the kill had torn
 
