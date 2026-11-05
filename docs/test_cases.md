@@ -17,7 +17,7 @@
 | TC-06 | ML model accuracy test | Test set: Precision >85%, Recall >85%, F1-score >85% | NI | **PASS** | `reports/model_metrics.json` — precision 0.9625, recall 0.9525, F1 0.9575 on 7,500 held-out samples |
 | TC-07 | Response time (detection to action) | Process terminated within 2 seconds of detection | AS | **PASS** (unit/native) / **SKIP** (Compose) | `services/response/tests/test_actions.py::test_tc07_*` — 125.6 ms native |
 | TC-08 | System resource usage | CPU <15%, RAM <500MB during normal operation | AS | **PASS** | `test_benchmarks.py::test_cpu_usage_*` and `::test_memory_usage_*` — CPU 1.0%, peak RSS 67.6 MB |
-| TC-09 | Dashboard real-time updates | Alert appears on dashboard within 1 second of detection | SH | **PASS** | `scripts/attack_chain_demo.py` step 8 — 439 ms |
+| TC-09 | Dashboard real-time updates | Alert appears on dashboard within 1 second of detection | SH | **PASS** | `scripts/attack_chain_demo.py` step 8 — 439 ms (transcript withdrawn, `docs/CORRECTIONS.md`; **re-verification pending**) |
 | TC-10 | API authentication failure | HTTP 401 returned, request blocked, audit log entry created | SH | **PASS** | `services/gateway/tests/test_authz.py::test_tc10_*` |
 | TC-11 | Multiple simultaneous attacks | All processes detected and terminated, system remains stable | All | **PASS** | `services/monitor/tests/test_tc11_concurrent.py`, `services/response/tests/test_tc11_concurrent.py` |
 | TC-12 | Blockchain anchoring (if implemented) | Hash successfully anchored to Polygon testnet | SI | **OUT OF SCOPE** | Semester 2 (Weeks 17–24). The spec's own "(if implemented)" makes this conditional. Not attempted. |
@@ -39,7 +39,7 @@ TC-12 gates and which is Semester 2 work.
 | System RAM usage | <500 MB | **70.3 MB** peak (+2.7 MB growth) | `reports/as_benchmarks.json` |
 | File recovery success | 100 % | **100 %** (native) | `reports/si_demo_evidence.txt` |
 | Ledger verification time | <50 ms | **3.1 ms** median / 1000 blocks | `services/ledger/tests/test_hash_chain.py` |
-| Dashboard update latency | <1 s | **10.5 ms** mean to queryable (`test_tc09_*`); 439 ms end-to-end in Compose | `reports/as_benchmarks.json`, `reports/attack_chain_evidence.txt` |
+| Dashboard update latency | <1 s | **10.5 ms** mean to queryable (`test_tc09_*`); 439 ms end-to-end in Compose (that transcript is withdrawn, `docs/CORRECTIONS.md`; **re-verification pending**) | `reports/as_benchmarks.json`, `reports/attack_chain_evidence.txt` |
 
 All ten Table 5.9 targets are measured and met.
 

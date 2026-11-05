@@ -78,11 +78,26 @@ def attempt(label: str, call) -> dict:
         }
 
 
+def not_attempted(label: str, reason: str) -> dict:
+    """A record for an operation this mode deliberately did not run."""
+    return {"operation": label, "succeeded": False, "attempted": False, "reason": reason}
+
+
 def status_only(manager: VSSManager, volume: str) -> int:
     status = manager.platform_status()
+    # `create_snapshot` is attempted only where it is certain to refuse. The
+    # help text says --status-only "creates nothing", and unelevated it did not:
+    # the attempt came back as the refusal this mode exists to record. Run from
+    # an elevated shell on the Windows integration VM, the same attempt
+    # succeeded and left a shadow copy behind. Elevated, the refusal is not
+    # there to record, so the operation is not run at all.
+    if status.get("elevated"):
+        create = not_attempted("create_snapshot", "not attempted: --status-only creates nothing")
+    else:
+        create = attempt("create_snapshot", lambda: manager.create_snapshot(volume))
     attempts = [
         attempt("list_snapshots", manager.list_snapshots),
-        attempt("create_snapshot", lambda: manager.create_snapshot(volume)),
+        create,
     ]
 
     report = {
@@ -108,6 +123,11 @@ def status_only(manager: VSSManager, volume: str) -> int:
             "reports VSS as supported and that both operations refuse for one "
             "stated reason, so the gap in row 12 is a shell privilege and not an "
             "unmeasured capability."
+            if not status.get("elevated")
+            else "Whether a VSS-backed restore verifies. Nothing here creates a "
+            "snapshot or restores from one. This shell is elevated, so "
+            "create_snapshot would have succeeded and was not attempted; run "
+            "without --status-only for the acceptance check."
         ),
     }
 
@@ -120,6 +140,8 @@ def status_only(manager: VSSManager, volume: str) -> int:
     for record in attempts:
         if record["succeeded"]:
             print(f"  {record['operation']:18} ok ({record['result']})")
+        elif record.get("attempted") is False:
+            print(f"  {record['operation']:18} {record['reason']}")
         else:
             print(f"  {record['operation']:18} {record['error_type']}: {record['error']}")
     print()

@@ -283,11 +283,11 @@ def test_tc08_cpu_usage_under_15_percent_while_monitoring(tmp_path):
         client.post("/monitor/start", json={"watch_path": str(tmp_path), "recursive": True})
 
         process.cpu_percent(interval=None)  # prime the counter
-        started = time.time()
+        started = time.monotonic()
         written = 0
 
         # A steady, realistic write load for the sampling window.
-        while time.time() - started < 5.0:
+        while time.monotonic() - started < 5.0:
             target = tmp_path / f"load_{written}.bin"
             target.write_bytes(os.urandom(32768))
             written += 1
@@ -332,8 +332,8 @@ def test_tc08_memory_usage_under_500mb_during_stress(tmp_path):
         client.post("/monitor/start", json={"watch_path": str(tmp_path), "recursive": True})
 
         written = 0
-        started = time.time()
-        while time.time() - started < 5.0:
+        started = time.monotonic()
+        while time.monotonic() - started < 5.0:
             target = tmp_path / f"stress_{written}.bin"
             target.write_bytes(os.urandom(512 * 1024))
             monitor_app.handle_event(str(target), "created")

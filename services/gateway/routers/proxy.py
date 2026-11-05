@@ -19,10 +19,53 @@ SERVICE_URLS = {
 }
 
 
+DOWNSTREAM_TIMEOUT = 5.0
+
+# One client for the life of the gateway: built at startup by
+# `open_downstream_client` (main.lifespan), reused by every downstream call,
+# closed at shutdown.
+#
+# call_downstream used to build a new httpx.AsyncClient per call. Building one
+# loads certifi's CA bundle into a new SSL context - synchronous work on the
+# event loop, so every request the gateway was serving waited behind it. On the
+# Windows test VM that took 267-376 ms a time; /health paid it four times over,
+# and the dashboard's six calls a second kept the gateway permanently busy:
+# proxied GETs went from about 0.2 s to 2.4-2.7 s, /health to 5.5-10.3 s
+# (FIXES.md, defect 13). Shared, it is paid once, and the connections to the
+# services stay open between calls.
+_client: httpx.AsyncClient | None = None
+
+
+def _new_client() -> httpx.AsyncClient:
+    # Idle connections are dropped after 4 s, before uvicorn's default 5 s
+    # keep-alive closes them from the service's end, so the gateway never sends
+    # a request down a connection the service is in the middle of closing.
+    return httpx.AsyncClient(timeout=DOWNSTREAM_TIMEOUT, limits=httpx.Limits(keepalive_expiry=4.0))
+
+
+def downstream_client() -> httpx.AsyncClient:
+    """The shared client, built now if startup did not build it."""
+    global _client
+    if _client is None or _client.is_closed:
+        _client = _new_client()
+    return _client
+
+
+def open_downstream_client() -> None:
+    """Build the shared client before the first request, so no request pays for it."""
+    downstream_client()
+
+
+async def close_downstream_client() -> None:
+    global _client
+    client, _client = _client, None
+    if client is not None:
+        await client.aclose()
+
+
 async def call_downstream(method: str, base_url: str, path: str, json_body: Any | None = None, params: dict[str, Any] | None = None) -> httpx.Response:
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            return await client.request(method, f"{base_url}{path}", json=json_body, params=params)
+        return await downstream_client().request(method, f"{base_url}{path}", json=json_body, params=params)
     except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

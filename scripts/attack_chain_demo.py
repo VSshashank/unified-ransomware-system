@@ -2,12 +2,21 @@
 
 Drops a high-entropy file into the watched path and follows it all the way
 through: Monitor detects -> ML classifies -> Ledger records -> Response acts ->
-Dashboard-visible within 1s. Writes a transcript to
-reports/attack_chain_evidence.txt.
+Dashboard-visible within 1s. Prints a transcript, and writes it to
+reports/attack_chain_evidence.txt (with the results beside it) only when
+URDS_WRITE_REPORTS=1, like every other script that writes the tracked
+evidence; --out PATH writes it there instead.
 
     python scripts/attack_chain_demo.py
+    python scripts/attack_chain_demo.py --out run/attack_chain.txt
 
 Start the stack first: docker compose up -d --build
+
+The suspicious writes are made by separate writer processes, never by this
+script, so the process attribution names is a process this script can check
+the answer against - and so a Monitor with a live attribution source does not
+name this script as the attacker. TC-07 is judged from what the system did to
+that writer. This script terminates nothing itself (docs/CORRECTIONS.md, 1).
 """
 
 import argparse
@@ -16,7 +25,9 @@ import io
 import json
 import math
 import os
+import subprocess
 import sys
+import threading
 import time
 import zipfile
 from collections import Counter
@@ -30,6 +41,162 @@ EVIDENCE_PATH = REPO_ROOT / "reports" / "attack_chain_evidence.txt"
 
 transcript: list[str] = []
 results: dict[str, bool | None] = {}
+
+# The writer: random bytes into one file, report the write and its own PID, then
+# stay alive for `hold` seconds the way an encryptor still working would, and
+# exit on its own. It is the process detection and attribution have to find;
+# nothing here kills it, and it never outlives `hold`. It reports `os.getpid()`
+# because the PID `Popen` returns is not always the writer's: from a venv
+# `sys.executable` is a launcher that starts the base interpreter as a child
+# (R14(b), docs/fixes_drafts/defect-23.md).
+WRITER_SOURCE = (
+    "import hashlib, os, sys, time\n"
+    "path, size, hold = sys.argv[1], int(sys.argv[2]), float(sys.argv[3])\n"
+    "payload = os.urandom(size)\n"
+    "with open(path, 'wb') as handle:\n"
+    "    handle.write(payload)\n"
+    "print('WROTE', hashlib.sha256(payload).hexdigest(), os.getpid(), flush=True)\n"
+    "time.sleep(hold)\n"
+)
+
+#: How long the attack's writer stays alive after its write: past the Monitor's
+#: 1.5 s delivery horizon and the escalation, with room for a slow host.
+ATTACKER_HOLD_SECONDS = 10.0
+
+
+class Writer:
+    """A writer process, and when it was seen to write and to exit."""
+
+    def __init__(
+        self, path: Path, size: int, hold_seconds: float, interpreter: list[str] | None = None
+    ) -> None:
+        # `interpreter` is the argv prefix that runs Python; `sys.executable`
+        # unless a test puts a launcher of its own in front.
+        self.process = subprocess.Popen(
+            [*(interpreter or [sys.executable]), "-c", WRITER_SOURCE,
+             str(path), str(size), str(hold_seconds)],
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        line = (self.process.stdout.readline() or "").split()
+        # perf_counter, not time.time(): the test VM's wall clock is slewed.
+        self.wrote_at = time.perf_counter()
+        if len(line) != 3 or line[0] != "WROTE" or not line[2].isdigit():
+            raise RuntimeError(
+                f"writer (launched as pid {self.process.pid}) did not report its write: {line!r}"
+            )
+        self.sha256 = line[1]
+        # The writer's own PID, as it reports it. Not `self.process.pid`, which
+        # is the launcher's when `sys.executable` is one; `self.process` stays
+        # as the handle that watches for the writer's end.
+        self._reported_pid = int(line[2])
+        self.exited_at: float | None = None
+        self._watch = threading.Thread(target=self._wait, daemon=True)
+        self._watch.start()
+
+    def _wait(self) -> None:
+        self.process.wait()
+        self.exited_at = time.perf_counter()
+
+    @property
+    def pid(self) -> int:
+        return self._reported_pid
+
+    def finish(self, timeout: float) -> int | None:
+        """Wait for the writer to end by itself. Never kills it."""
+        self._watch.join(timeout=timeout)
+        return self.process.poll()
+
+
+def _same_path(left: str, right: str) -> bool:
+    """Two spellings of one path, the way the Monitor compares them.
+
+    `normalise_path` is `normpath(abspath(...))`; Windows paths are then
+    compared without regard to case or separator (`services/ledger/path_keys.py`).
+    """
+    return os.path.normcase(os.path.normpath(os.path.abspath(left))) == os.path.normcase(
+        os.path.normpath(os.path.abspath(right))
+    )
+
+
+def is_this_runs_event(
+    event_path: object, event_hash: object, expected_path: str, expected_hash: str | None
+) -> bool:
+    """Is this Monitor event, or ledger block, about the file THIS run wrote?
+
+    The full normalised path has to match - not `endswith(name)`, because every
+    run writes the same file name and an earlier run's event in another folder
+    ended the same way. Where the event carries a payload hash and this run knows
+    its own, that has to match too, so an earlier run's event for the same path
+    is not judged as this run's. An event with no hash is judged on its path.
+    """
+    if not isinstance(event_path, str) or not _same_path(event_path, expected_path):
+        return False
+    if expected_hash and event_hash:
+        return event_hash == expected_hash
+    return True
+
+
+def judge_tc07(events: list[dict], writer_pid: int, writer_ended_early: bool) -> tuple[dict, list[str]]:
+    """TC-07, the offending process is terminated, from what the system did.
+
+    `events` are every Monitor event for the attacked file, after their
+    attribution questions closed. Only an answer of `certain` that names the
+    writer, followed by the system's own termination, passes. A `certain`
+    answer naming any other process is a failure. Anything short of `certain`
+    is a skip with the reason, and a skip is not a pass (`exit_code`).
+    Nothing in here, or anywhere in this script, asks for a termination.
+    """
+    lines: list[str] = []
+    named = [
+        e for e in events
+        if e.get("attribution_confidence") == "certain" and e.get("process_id") is not None
+    ]
+    if not named:
+        newest = events[0] if events else {}
+        lines.append(f"  attribution        : {newest.get('attribution_confidence', 'no event')}")
+        lines.append(f"  attribution reason : {newest.get('attribution_reason')}")
+        lines.append(f"  attribution source : {newest.get('attribution_source')}")
+        lines.append("  no termination to check: only a CERTAIN attribution authorises one, and")
+        lines.append("  none of this file's events resolved to it. Nothing was killed in its place.")
+        lines.append("  (Expected where the Monitor has no Security-log audit source: unelevated,")
+        lines.append("   no SACL on the watch path, or a container with its own PID namespace.)")
+        return {
+            "tc07_attributed_pid_is_the_writer": None,
+            "tc07_process_terminated": None,
+        }, lines
+
+    wrong = sorted({e["process_id"] for e in named if e["process_id"] != writer_pid})
+    lines.append(f"  writer pid         : {writer_pid}")
+    lines.append(f"  attributed (certain): {sorted({e['process_id'] for e in named})}")
+    if wrong:
+        lines.append(f"  WRONG PROCESS: attribution named {wrong}, which did not write the file")
+    outcomes = sorted({(e.get("attribution_escalation") or {}).get("result") or "-" for e in named})
+    lines.append(f"  escalation results : {outcomes}")
+    terminated = any(
+        (e.get("attribution_escalation") or {}).get("result") == "terminated"
+        and e["process_id"] == writer_pid
+        for e in named
+    )
+    lines.append(f"  writer ended before its hold expired: {writer_ended_early}")
+    return {
+        "tc07_attributed_pid_is_the_writer": not wrong,
+        "tc07_process_terminated": bool(terminated and writer_ended_early and not wrong),
+    }, lines
+
+
+def exit_code(outcomes: dict) -> int:
+    """0 only when every check ran and passed.
+
+    A skipped check is `None`, a failed one `False`. The exit code used to
+    count only the failures, so a run that could not exercise a capability at
+    all still exited 0 to everything that reads a status rather than a
+    transcript (docs/CORRECTIONS.md, 2). A run with no checks is not a pass
+    either.
+    """
+    if not outcomes:
+        return 1
+    return 0 if all(value is True for value in outcomes.values()) else 1
 
 
 def say(line: str = "") -> None:
@@ -49,8 +216,8 @@ def entropy_of(data: bytes) -> float:
 
 
 def wait_for(predicate, timeout=20.0, interval=0.25):
-    deadline = time.time() + timeout
-    while time.time() < deadline:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
         try:
             value = predicate()
             if value:
@@ -75,10 +242,37 @@ def main() -> int:
     )
     # Host path, and the path the same directory has inside the containers.
     parser.add_argument("--watch-host", default=str(REPO_ROOT / "watched_files"))
-    parser.add_argument("--watch-container", default="/watch")
+    parser.add_argument(
+        "--watch-container", default="/watch",
+        help="The path the Monitor is told to watch, and so reports in its events. "
+             "Events are matched on it (full path and hash), so for a native run "
+             "it is the same folder as --watch-host.",
+    )
+    parser.add_argument(
+        "--out",
+        help="Write the transcript here (and <name>_results.json beside it) instead of reports/. "
+             "Without it the transcript goes to reports/ only when URDS_WRITE_REPORTS=1.",
+    )
     args = parser.parse_args()
 
     client = httpx.Client(timeout=15.0)
+
+    def monitor_path(file: Path) -> str:
+        """The path the Monitor reports for a file this script wrote: where it
+        was told to watch, plus the file's place under the watched folder."""
+        return os.path.join(args.watch_container, os.path.relpath(file, args.watch_host))
+
+    def newest_event(path: Path, expected_hash: str | None, **params):
+        """The newest Monitor event about THIS file - full path and hash, not name."""
+        events = client.get(
+            f"{args.gateway}/monitor/events", params={"limit": 50, **params}, headers=auth
+        ).json()["events"]
+        return next(
+            (e for e in events
+             if is_this_runs_event(e["file_path"], e.get("file_hash"), monitor_path(path), expected_hash)),
+            None,
+        )
+
     started_at = datetime.now(timezone.utc)
 
     say("=" * 74)
@@ -138,15 +332,10 @@ def main() -> int:
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("data.bin", os.urandom(300_000))
     control.write_bytes(buffer.getvalue())
+    control_hash = hashlib.sha256(control.read_bytes()).hexdigest()
     say(f"  wrote {control.name} ({control.stat().st_size} bytes, entropy {entropy_of(control.read_bytes()):.3f})")
 
-    control_event = wait_for(
-        lambda: next(
-            (e for e in client.get(f"{args.gateway}/monitor/events", params={"limit": 50}, headers=auth).json()["events"]
-             if e["file_path"].endswith(control.name)),
-            None,
-        )
-    )
+    control_event = wait_for(lambda: newest_event(control, control_hash))
     if control_event:
         say(f"  detected   : entropy={control_event['entropy']} verdict={control_event.get('verdict')}")
         say(f"  suspicious : {control_event.get('suspicious')}")
@@ -159,23 +348,17 @@ def main() -> int:
     # --- 3. the attack -------------------------------------------------------
     rule("3. ATTACK: high-entropy write into the watched path")
     victim = Path(args.watch_host) / "annual_report.docx.locked"
-    payload = os.urandom(400_000)
-    dropped_at = time.time()
-    victim.write_bytes(payload)
-    expected_hash = hashlib.sha256(payload).hexdigest()
-    say(f"  wrote {victim.name} ({len(payload)} bytes, entropy {entropy_of(payload):.3f})")
+    # A separate process writes it - see the module docstring.
+    attacker = Writer(victim, 400_000, ATTACKER_HOLD_SECONDS)
+    expected_hash = attacker.sha256
+    say(f"  writer pid {attacker.pid} wrote {victim.name} ({victim.stat().st_size} bytes, "
+        f"entropy {entropy_of(victim.read_bytes()):.3f})")
     say(f"  sha256     : {expected_hash}")
     say()
 
     # --- 4. detection --------------------------------------------------------
     rule("4. MONITOR DETECTION")
-    event = wait_for(
-        lambda: next(
-            (e for e in client.get(f"{args.gateway}/monitor/events", params={"limit": 50}, headers=auth).json()["events"]
-             if e["file_path"].endswith(victim.name)),
-            None,
-        )
-    )
+    event = wait_for(lambda: newest_event(victim, expected_hash))
     if not event:
         say("  FAIL: monitor never reported the file")
         results["tc01_detected"] = False
@@ -201,8 +384,10 @@ def main() -> int:
     rule("5. ML -> LEDGER -> RESPONSE")
     enriched = wait_for(
         lambda: next(
-            (e for e in client.get(f"{args.gateway}/monitor/events", params={"limit": 50}, headers=auth).json()["events"]
-             if e["file_path"].endswith(victim.name) and e.get("pipeline")),
+            (e for e in client.get(f"{args.gateway}/monitor/events", params={"limit": 50},
+                                   headers=auth).json()["events"]
+             if is_this_runs_event(e["file_path"], e.get("file_hash"), monitor_path(victim), expected_hash)
+             and e.get("pipeline")),
             None,
         ),
         timeout=25.0,
@@ -231,14 +416,13 @@ def main() -> int:
     ).json()
     # Prefer the file_event block: response_action blocks name the same file but
     # carry the action, not the detection.
-    matching = [
+    this_runs = [
         b for b in blocks.get("blocks", [])
-        if str(b.get("event_data", {}).get("file_path", "")).endswith(victim.name)
-        and b.get("event_type") == "file_event"
-    ] or [
-        b for b in blocks.get("blocks", [])
-        if str(b.get("event_data", {}).get("file_path", "")).endswith(victim.name)
+        if is_this_runs_event(b.get("event_data", {}).get("file_path"),
+                              b.get("event_data", {}).get("file_hash"),
+                              monitor_path(victim), expected_hash)
     ]
+    matching = [b for b in this_runs if b.get("event_type") == "file_event"] or this_runs
     if matching:
         block = matching[0]
         data = block["event_data"]
@@ -282,49 +466,56 @@ def main() -> int:
         say("  no response_action blocks in the ledger")
         results["response_action_audited"] = False
 
-    # TC-07 needs a process that actually exists; use a disposable one.
-    import subprocess
+    # TC-07: was the process that wrote the file terminated - by the system,
+    # on its own attribution? Until 2026-09-17 on fix/evidence-integrity, and
+    # until this port here, this block spawned `time.sleep(60)` and asked the
+    # Response service to kill *that*, recording a kill time from it: a
+    # process that wrote nothing and was never detected or attributed
+    # (docs/CORRECTIONS.md, 1). Now the Monitor's answer for this file is read
+    # after its attribution question has closed, and checked against the
+    # writer this script started. Nothing is killed from here.
+    def closed_events():
+        events = [
+            e for e in client.get(f"{args.gateway}/monitor/events", params={"limit": 200},
+                                  headers=auth).json()["events"]
+            if is_this_runs_event(e["file_path"], e.get("file_hash"), monitor_path(victim), expected_hash)
+        ]
+        if events and not any(e.get("attribution_pending") for e in events):
+            return events
+        return None
 
-    victim_process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
-    time.sleep(0.3)
-    kill = client.post(
-        f"{args.gateway}/response/terminate",
-        json={"process_id": victim_process.pid, "incident_id": "inc_demo", "reason": "ransomware_detected", "force": True},
-        headers=auth,
+    events = wait_for(closed_events, timeout=15.0) or []
+    ended_early = attacker.finish(timeout=3.0) is not None and (
+        attacker.exited_at is not None
+        and attacker.exited_at - attacker.wrote_at < ATTACKER_HOLD_SECONDS - 0.5
     )
-    if kill.status_code == 200:
-        body = kill.json()
-        say(f"  terminated pid {body['process_id']} ({body.get('process_name')}) "
-            f"via {body.get('method')} in {body.get('termination_time_ms')}ms (target <2000ms)")
-        results["tc07_process_terminated"] = True
-        results["kill_time_under_2s"] = body.get("termination_time_ms", 9e9) < 2000
+    verdicts, lines = judge_tc07(events, attacker.pid, ended_early)
+    for line in lines:
+        say(line)
+    results.update(verdicts)
+    if verdicts["tc07_process_terminated"]:
+        lifetime = attacker.exited_at - attacker.wrote_at
+        say(f"  writer gone {lifetime * 1000:.0f}ms after it reported its write (target <2000ms)")
+        results["kill_time_under_2s"] = lifetime < 2.0
     else:
-        say(f"  terminate returned {kill.status_code}: {kill.text[:200]}")
-        say("  (expected on macOS/Windows hosts: the response service runs in a Linux")
-        say("   container and cannot see host PIDs. Covered by services/response tests.)")
-        results["tc07_process_terminated"] = None
-        results["kill_time_under_2s"] = None
-    if victim_process.poll() is None:
-        victim_process.kill()
-        victim_process.wait(timeout=5)
+        results["kill_time_under_2s"] = None if verdicts["tc07_process_terminated"] is None else False
     say()
 
     # --- 8. dashboard --------------------------------------------------------
     rule("8. DASHBOARD FRESHNESS (TC-09)")
     probe = Path(args.watch_host) / "dashboard_probe.bin"
-    probe_written = time.time()
-    probe.write_bytes(os.urandom(120_000))
+    # Written by a writer of its own that exits at once, so a Monitor with a
+    # live attribution source does not name this script; timed from the
+    # writer's report of the write, on perf_counter.
+    probe_writer = Writer(probe, 120_000, 0.0)
+    probe_written = probe_writer.wrote_at
     seen = wait_for(
-        lambda: next(
-            (e for e in client.get(f"{args.gateway}/monitor/events", params={"limit": 50}, headers=auth).json()["events"]
-             if e["file_path"].endswith(probe.name)),
-            None,
-        ),
+        lambda: newest_event(probe, probe_writer.sha256),
         timeout=5.0,
         interval=0.05,
     )
     if seen:
-        lag = time.time() - probe_written
+        lag = time.perf_counter() - probe_written
         say(f"  event queryable through the gateway {lag * 1000:.0f}ms after the write")
         say(f"  dashboard auto-refresh interval: 1000ms (services/dashboard/app.py)")
         results["tc09_dashboard_within_1s"] = lag < 1.0
@@ -373,12 +564,37 @@ def finish(client, args, started_at) -> int:
     if failures:
         say(f"failed: {', '.join(failures)}")
 
-    EVIDENCE_PATH.parent.mkdir(exist_ok=True)
-    EVIDENCE_PATH.write_text("\n".join(transcript) + "\n")
-    print(f"\nEvidence written to {EVIDENCE_PATH}")
+    targets = evidence_targets(getattr(args, "out", None))
+    if targets is None:
+        print("\nURDS_WRITE_REPORTS is not set: the transcript above was not written to reports/ "
+              "(pass --out PATH to keep a copy elsewhere)")
+    else:
+        transcript_path, results_path = targets
+        transcript_path.parent.mkdir(parents=True, exist_ok=True)
+        transcript_path.write_text("\n".join(transcript) + "\n")
+        results_path.write_text(json.dumps(results, indent=2))
+        print(f"\nEvidence written to {transcript_path} and {results_path.name}")
+    return exit_code(results)
 
-    (EVIDENCE_PATH.parent / "attack_chain_results.json").write_text(json.dumps(results, indent=2))
-    return 0 if not failures else 1
+
+def write_reports_enabled() -> bool:
+    return os.getenv("URDS_WRITE_REPORTS", "").lower() in {"1", "true", "yes"}
+
+
+def evidence_targets(out: str | None) -> tuple[Path, Path] | None:
+    """Where the transcript and results go, or None for stdout only.
+
+    The two files under reports/ are tracked evidence. Running the demo used
+    to overwrite them unconditionally (F7 in reports/VM_TEST_REPORT_2026-10-04.md),
+    while every other script that writes reports/ does so only under
+    URDS_WRITE_REPORTS=1 - so a run to check something changed the evidence.
+    """
+    if out:
+        transcript_path = Path(out)
+        return transcript_path, transcript_path.with_name(transcript_path.stem + "_results.json")
+    if write_reports_enabled():
+        return EVIDENCE_PATH, EVIDENCE_PATH.parent / "attack_chain_results.json"
+    return None
 
 
 if __name__ == "__main__":

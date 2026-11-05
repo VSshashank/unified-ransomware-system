@@ -13,12 +13,14 @@ All six services are implemented. Nothing in `services/` is a stub any more.
 | Ledger | 8003 | SI | Real. SQLite hash chain with tamper detection; full-chain verification of 1,000 blocks measured at 3.1ms median (2.1–5.7ms over 50 warm runs) against a <50ms target. |
 | Response | 8004 | AS + SI | Real. AS owns terminate/isolate/trigger (psutil process termination, platform-aware network isolation); SI owns `recovery/` (VSS snapshots, restore, integrity verification). |
 | Gateway | 8000 | SH | Real. JWT auth, per-tier rate limiting, service proxies, and the `/analyze` orchestration. |
-| Dashboard | 8501 | SH | Real. Streamlit, 1s auto-refresh, live event feed and ledger evidence. |
+| Dashboard | 8501 | SH | Real. Streamlit, 1s auto-refresh, live event feed and ledger evidence. Streamlit pin raised to 1.51.0 so one environment can hold Pillow 12 — re-verification pending (`FIXES.md`, defect 7). |
 
 Two things are deliberately *not* real, and both say so at runtime rather than faking a result:
 
 - **VSS snapshots** need Windows *and an elevated process*. Verified on Windows 11 build 26200: a real shadow copy of `C:\` in 2.8s against the 30s target. On Linux/macOS `VSSManager` reports `supported: false` with the reason, and recovery falls back to a directory-backed snapshot root so the path stays exercisable.
 - **Network isolation** builds real `iptables`/`pfctl`/`netsh` rules but only applies them when `RESPONSE_ISOLATION_ENABLED=true`. Otherwise it returns `enforced: false` along with the rules it would have applied.
+
+**Killing a process needs Administrator rights and Windows file auditing.** The Monitor can only name the process that wrote a file from the Windows Security log (event 4663), which it can read only when it runs elevated, and only for folders that have an audit rule. Set that up once per watched folder with `powershell -ExecutionPolicy Bypass -File scripts/setup_attribution_audit.ps1 -WatchPath <dir>` (Administrator; `-Verify` checks it, `-Revert` undoes it), then start the Monitor from an elevated shell and check `GET /monitor/attribution`. Without that, the Monitor still detects encryption and still records and responds, but attribution is `unknown` and, by design, it never kills a process it cannot identify. See `docs/PROCESS_ATTRIBUTION.md`.
 
 Trained model artifacts (`models/`) and datasets (`data/`) are gitignored. Rebuild them with `python src/train_behavioral_model.py` and, once a dataset is fetched via `src/fetch_ember_subset.py`, `python src/train_ember_model.py`.
 
@@ -147,6 +149,24 @@ Services find each other by URL, so any one of them can be run outside Compose (
 - `RESPONSE_URL`
 
 This is how the Response service gets run on Windows for real VSS snapshots while the rest of the stack stays in Compose.
+
+**Suspend-first response and Docker.** `POST /response/suspend` freezes a
+process under a lease that ends on its own. It is resumed when the lease
+expires, when Response stops, or by a watchdog process if Response is killed
+outright. In Docker Compose the Response container has its own PID
+namespace: the host PID the Monitor names does not exist inside it, or names
+a different process. So Response **refuses every suspend there** with
+`409 PID_NAMESPACE_ISOLATED`, and records the refusal in the ledger as a
+`process_suspended` block with `outcome: refused`. It does not try. To
+suspend host processes, run Response natively on the host, as on the
+Windows VM. A container started with `pid: host` can declare it with
+`RESPONSE_PID_NAMESPACE=host`. When the Monitor runs as a separate process,
+set `URDS_MONITOR_PID` to its PID so Response refuses to suspend the Monitor
+or its ancestors.
+
+The Monitor side (freeze-first: suspend a sole writer as soon as a kernel-grade answer names it, then kill it at the horizon if the kill gate is satisfied then, or resume it) is built, on by default and switchable with `MONITOR_SUSPEND_FIRST=0` (FIXES.md, defect 26, "The Monitor side"; `docs/PROCESS_ATTRIBUTION.md`). It is **not proven on the VM**, and it only helps against an attacker still running when the first audit record arrives; an operator can also still suspend through the gateway.
+
+Two switches govern how the Monitor's blocks reach the ledger on a slow disk: `LEDGER_MAX_BATCH` (default 64; 1 commits each block alone) and `MONITOR_DEFER_TAIL_BLOCKS` (default on; 0 writes the last block of each incident inline). Neither changes what is in the chain or the order inside one incident (FIXES.md, defect 28).
 
 The gateway needs no internal service logic changes as long as the contracts in `docs/openapi/gateway.yaml` hold.
 

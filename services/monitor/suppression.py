@@ -54,7 +54,15 @@ import threading
 from collections import defaultdict
 from fnmatch import fnmatch
 from pathlib import PurePath
-from time import time
+
+# Training mode times two durations - the window, and each path's dwell - and
+# reports neither as a time of day. They used to run on time.time(), which on
+# the Windows test VM was being slewed by VirtualBox's guest time sync: 0.80x
+# against an HTTP Date reference over 41 s, 1.44x against perf_counter over
+# another 60 s, while monotonic held 1.002x. A dwell measured there was wrong by
+# the slew, and a 50 ms dwell failed to elapse in an 80 ms sleep. See
+# tests/test_training_mode_clock.py.
+from time import monotonic
 
 # Verdicts that mean "this file's content was replaced, not edited". Retained
 # because the ledger and the write-up both name it; the ranking that used to be
@@ -256,7 +264,7 @@ class TrainingMode:
     def start(self, duration_seconds: float) -> dict:
         with self._lock:
             self._state = self.LEARNING
-            self._started_at = time()
+            self._started_at = monotonic()
             self._deadline = self._started_at + duration_seconds
             self._directories.clear()
             self._candidates.clear()
@@ -296,7 +304,7 @@ class TrainingMode:
 
     def _eligible_ceilings(self) -> dict[tuple[str, str], float]:
         """The ceiling each shape would get right now. Lock held."""
-        now = time()
+        now = monotonic()
         ceilings: dict[tuple[str, str], float] = {}
         for key, candidates in self._candidates.items():
             dwelled = [
@@ -309,7 +317,7 @@ class TrainingMode:
         return ceilings
 
     def _expire_if_due(self) -> None:
-        if self._state == self.LEARNING and self._deadline and time() >= self._deadline:
+        if self._state == self.LEARNING and self._deadline and monotonic() >= self._deadline:
             self._promote()
 
     @property
@@ -331,7 +339,7 @@ class TrainingMode:
                 "learned_extensions": self._learned_view(ceilings),
                 "dwell_seconds": self._dwell,
                 "seconds_remaining": (
-                    max(0, round(self._deadline - time(), 1)) if self._deadline else None
+                    max(0, round(self._deadline - monotonic(), 1)) if self._deadline else None
                 ),
             }
 
@@ -385,7 +393,7 @@ class TrainingMode:
 
         directory, extension = _split(file_path)
         key = (extension, _structure_of(verdict))
-        now = time()
+        now = monotonic()
 
         with self._lock:
             self._directories[key].add(directory)

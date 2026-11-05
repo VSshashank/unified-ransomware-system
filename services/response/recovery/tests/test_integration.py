@@ -119,7 +119,11 @@ def test_tc04_file_recovered_to_pre_attack_state(manager, ledger_client, tmp_pat
         "file_encrypted",
         {
             "file_path": str(document),
-            "process_id": 4321,
+            # None: the test makes the write itself and nothing attributed it.
+            # It held an invented 4321, the same pattern as the PID in
+            # test_tc05 below (docs/CORRECTIONS.md, 3).
+            "process_id": None,
+            "attribution_confidence": "unknown",
             "user": "admin",
             "entropy": round(encrypted_entropy, 3),
         },
@@ -241,18 +245,26 @@ def test_tc05_tampered_ledger_row_is_detected(manager, ledger_client, ledger_app
     take_snapshot(snapshot_root, "snap1", document)
 
     document.write_bytes(os.urandom(1024))
+    # process_id is None, not a number. The value is incidental to what this
+    # test asserts - that rewriting the block is detected - but it held the
+    # same invented PID as scripts/si_demo.py, in a suite the claim matrix
+    # cites (C-14). Evidence a claim rests on does not get to contain invented
+    # facts, however irrelevant to the assertion (docs/CORRECTIONS.md, 3).
     incriminating_block = ledger_client.log_event(
-        "file_encrypted", {"file_path": str(document), "process_id": 6666, "entropy": 7.99}
+        "file_encrypted",
+        {"file_path": str(document), "process_id": None,
+         "attribution_confidence": "unknown", "entropy": 7.99},
     )
 
     manager.recover("snap1", [str(document)], verify_integrity=True)
     assert ledger_client.verify_chain()["valid"] is True
 
-    # The attacker rewrites the block that records the encryption.
+    # The attacker rewrites the block that records the encryption. The forgery
+    # names no process either: any edit is what is detected.
     conn = sqlite3.connect(str(db_path))
     conn.execute(
         "UPDATE blocks SET event_data = ? WHERE id = ?",
-        ('{"entropy":1.2,"file_path":"/harmless.txt","process_id":1}', incriminating_block),
+        ('{"entropy":1.2,"file_path":"/harmless.txt","process_id":null}', incriminating_block),
     )
     conn.commit()
     conn.close()
@@ -467,3 +479,116 @@ def test_tc04_a_real_detect_encrypt_recover_cycle_verifies(manager, ledger_clien
     assert result["files"][0]["expected_hash"] == clean_hash
     assert document.read_bytes() == clean
     assert ledger_client.verify_chain()["valid"] is True
+
+
+# --------------------------------------------- defect 4: any spelling verifies
+
+
+def _recorded_form(path: Path) -> str:
+    """How the pre-fix Monitor stored a path.
+
+    On the Windows VM: the watch path as posted, with forward slashes, then
+    watchdog's backslash-joined tail - `C:/URDS-main/watched_files\tc01\
+    file.docx`. Elsewhere, the nearest thing a posted watch path could leave
+    behind: a doubled separator.
+    """
+    if os.name == "nt":
+        return str(path.parent.parent).replace("\\", "/") + "\\" + path.parent.name + "\\" + path.name
+    return f"{path.parent}//{path.name}"
+
+
+def _spell(path: Path, kind: str) -> str:
+    if kind == "recorded":
+        return _recorded_form(path)
+    if kind == "forward-slash":
+        return str(path).replace("\\", "/")
+    if kind == "different-case":
+        return str(path).upper()
+    if kind == "dot-segments":
+        return os.path.join(str(path.parent), ".", "..", path.parent.name, path.name)
+    return str(path)  # "typed"
+
+
+SPELLINGS = [
+    "recorded",
+    "typed",
+    "forward-slash",
+    "dot-segments",
+    pytest.param(
+        "different-case",
+        marks=pytest.mark.skipif(os.name != "nt", reason="a different-case POSIX path is a different file"),
+    ),
+]
+
+
+@pytest.mark.parametrize("spelling", SPELLINGS)
+def test_defect4_a_baseline_in_the_old_recorded_form_verifies_under_any_spelling(
+    manager, ledger_client, tmp_path, spelling
+):
+    """The VM restored the right bytes and reported `partial`: no prior hash.
+
+    The baseline is written the way the pre-fix Monitor wrote it, and stays that
+    way - rows on the chain are never rewritten. The recovery request spells the
+    path another way, as the VM's did.
+    """
+    snapshot_root = Path(manager.snapshot_root)
+    document = tmp_path / "watched_files" / "tc01" / "file.docx"
+    document.parent.mkdir(parents=True)
+    clean = b"Quarterly figures, before anyone touched them. " * 64
+    document.write_bytes(clean)
+    clean_hash = hashlib.sha256(clean).hexdigest()
+
+    ledger_client.log_event("file_baseline", {"file_path": _recorded_form(document), "file_hash": clean_hash})
+    take_snapshot(snapshot_root, "snap_pre_attack", document)
+    document.write_bytes(os.urandom(4096))
+
+    result = manager.recover("snap_pre_attack", [_spell(document, spelling)], verify_integrity=True)
+
+    assert result["status"] == "success", result
+    assert result["integrity_verified"] is True
+    assert result["files"][0]["expected_hash"] == clean_hash
+    assert document.read_bytes() == clean
+    assert ledger_client.verify_chain()["valid"] is True
+
+
+def test_defect4_the_monitor_given_the_vms_spelling_records_one_that_every_spelling_finds(
+    manager, ledger_client, ledger_app, tmp_path
+):
+    """The whole loop, handed the path the way the VM's watchdog handed it over."""
+    monitor = load_monitor()
+    ledger_main, _ = ledger_app
+    snapshot_root = Path(manager.snapshot_root)
+
+    monitor.EVENTS.clear()
+    monitor._SEEN_FILES.clear()
+    monitor.ENTROPY_HISTORY.clear()
+    monitor.WHITELIST.replace([], [])
+    monitor.TRAINING_MODE.reset()
+    monitor.PIPELINE_ENABLED = True
+    monitor.BASELINE_LOGGING_ENABLED = True
+    monitor._work = queue.Queue()
+
+    document = tmp_path / "watched_files" / "tc01" / "file.docx"
+    document.parent.mkdir(parents=True)
+    clean = b"Chapter 1. The original, uncorrupted thesis. " * 64
+    clean_hash = hashlib.sha256(clean).hexdigest()
+
+    with monitor_downstream(ledger_main) as client:
+        document.write_bytes(clean)
+        first = monitor.handle_event(_recorded_form(document), "created")
+        assert first["file_path"] == str(document), "normalised at the source"
+        drain(monitor, client)
+
+        take_snapshot(snapshot_root, "snap_pre_attack", document)
+        document.write_bytes(os.urandom(4096))
+        attacked = monitor.handle_event(_recorded_form(document), "modified")
+        assert attacked["suspicious"] is True
+        drain(monitor, client)
+
+    # The maintainer's re-check, row 4: the typed spelling and the recorded one.
+    for spelling in (str(document), _recorded_form(document)):
+        result = manager.recover("snap_pre_attack", [spelling], verify_integrity=True)
+        assert result["integrity_verified"] is True, (spelling, result)
+        assert result["files"][0]["expected_hash"] == clean_hash
+        assert document.read_bytes() == clean
+        document.write_bytes(os.urandom(4096))  # attacked again before the next spelling

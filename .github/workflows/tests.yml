@@ -14,10 +14,12 @@ name: tests
 #
 # Each job installs from the service's own requirements.txt, so a dependency a
 # service forgot to declare fails here rather than on a machine where it happens
-# to be installed for some other reason. `psutil` in the Monitor is exactly that
-# case: its benchmarks import it and its requirements.txt does not list it,
-# because it is a test-only dependency of a service that does not use it at
-# runtime. It is installed below as one, and named as one.
+# to be installed for some other reason. `watchdog` in the Response service is
+# exactly that case: one of its tests imports the Monitor, and nothing the
+# Response container runs imports watchdog. It is installed below as a test-only
+# extra, and named as one. (`psutil` used to be the Monitor's example; since the
+# PID-identity check at attribution escalation it is a declared runtime
+# dependency, and the Monitor's extra below is now redundant but harmless.)
 
 on:
   pull_request:
@@ -48,8 +50,9 @@ jobs:
           - service: ledger
             extras: ""
           - service: monitor
-            # Test-only. `test_benchmarks.py` measures CPU and RSS against
-            # Table 5.9's targets; nothing the container runs imports psutil.
+            # `test_benchmarks.py` measures CPU and RSS with psutil. It is also
+            # in requirements.txt now (attribution verifies a PID's identity
+            # before an escalated kill), so this extra only restates it.
             extras: "psutil"
           - service: ml-engine
             # 18 of this service's tests are `skipif`-gated on

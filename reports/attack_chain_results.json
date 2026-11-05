@@ -1,4 +1,5 @@
 {
+  "_withdrawn": "2026-10-04: produced on 2026-08-16 by the demo that spawned its own TC-07 victim and exited 0 on skips; see docs/CORRECTIONS.md (1, 2). Superseded by a run of the corrected demo.",
   "all_services_healthy": true,
   "tc03_no_false_positive": true,
   "tc01_detected": true,

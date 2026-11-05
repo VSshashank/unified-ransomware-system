@@ -1,3 +1,8 @@
+WITHDRAWN 2026-10-04 - produced on 2026-08-16 by the version of scripts/attack_chain_demo.py
+that spawned its own "victim" process for TC-07 and exited 0 on skipped checks.
+Kept unchanged below for the record; superseded by a run of the corrected demo.
+See docs/CORRECTIONS.md (1, 2) and FIXES.md defect 14.
+
 ==========================================================================
 URDS end-to-end attack chain
 started 2026-08-16T07:37:27.077802Z

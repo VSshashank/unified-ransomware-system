@@ -127,11 +127,11 @@ The only authenticated entry point. Everything else binds to loopback.
 
 | File | Responsibility |
 |---|---|
-| `main.py` | App assembly, `/health`, `/auth/token`, `/analyze`, the four exception handlers, request-ID middleware, and the startup secret check. |
+| `main.py` | App assembly, `/health` (the four services asked at once), `/auth/token`, `/analyze`, the four exception handlers, request-ID middleware, and the startup secret check. |
 | `auth.py` | JWT mint/decode, `get_current_user` (401), `require_role` (403), bootstrap-secret comparison, `verify_jwt_secret_configuration`. |
 | `models.py` | Pydantic request/response shapes. `TokenRequest` defaults are the least-privileged role. |
 | `rate_limit.py` | Token-bucket limiter. `RATE_LIMITS` by tier; `resolve_tier()` maps role→tier. |
-| `routers/proxy.py` | `call_downstream()` (httpx, 5 s timeout) and `proxy_request()`, which forwards the query string and converts downstream ≥400 into the project error envelope. |
+| `routers/proxy.py` | `call_downstream()` (one httpx client, built at startup and shared; 5 s timeout) and `proxy_request()`, which forwards the query string and converts downstream ≥400 into the project error envelope. |
 | `routers/monitor.py` | `/monitor/start` (admin+enterprise), `/monitor/stop` (**admin only**), `/status`, `/events`. |
 | `routers/ml.py` | `/predict` (admin+enterprise), `/model/metrics` (any role). |
 | `routers/ledger.py` | `/ledger/log` (admin+enterprise), `/entries`, `/verify`, `/blocks` (any role). |
@@ -425,7 +425,11 @@ which writes it into its own `response_action` block.
   hash, and a back-pointer that does not match the real prior block (a deleted or
   reordered row). Stops at the first break and reports its id.
 - `get_blocks(...)` — paginated read with optional `event_type` / `file_path`
-  filters. The SQL `LIKE` is a prefilter; exact matching happens in Python.
+  filters. The SQL `LIKE` is a prefilter on the file's name; the match is made in
+  Python on a key derived from the stored `file_path`, so any spelling of one
+  file finds its blocks, rows stored before the Monitor normalised paths
+  included (`path_keys.py`, defect 4 in `FIXES.md`). Paging and `total` count
+  matches.
 
 ### `main.py` (151 lines)
 
@@ -501,8 +505,9 @@ as a column on the recent-events table. The outcome is read from the adjudicatio
 record and **never inferred from `suspicious`**, because a cancelled alert and a
 benign file both report `suspicious: false`.
 
-Streamlit, 1 s auto-refresh. Mints its own `admin` token directly with `jose`
-(lines 18–27) using the shared `JWT_SECRET`, then calls the gateway over HTTP.
+Streamlit; the live panels are a fragment refreshed every 1 s. Mints its own
+`admin` token directly with `jose` (lines 21–30) using the shared `JWT_SECRET`,
+then calls the gateway over HTTP.
 Panels: service health, live event feed, entropy timeline, ledger evidence and
 chain verification, ML metrics.
 
@@ -528,8 +533,8 @@ chain verification, ML metrics.
 
 | File | What it drives | Talks to |
 |---|---|---|
-| `attack_chain_demo.py` | Full end-to-end chain, 18 checks. Writes `reports/attack_chain_evidence.txt`. | Gateway :8000 and dashboard :8501 **only** |
-| `si_demo.py` | TC-04 recovery and TC-05 tamper detection. Restores the tampered row in a `finally` so consecutive runs both pass. | Ledger :8003, response :8004 **directly** |
+| `attack_chain_demo.py` | Full end-to-end chain, 19 checks. The suspicious writes come from separate writer processes, each reporting its own `os.getpid()` (from a venv `sys.executable` is a launcher, so `Popen().pid` is not the writer's), and the demo judges only events whose full normalised path and payload hash are this run's, never one that merely ends in the same file name; TC-07 passes only if the system's own `certain` attribution named that writer and the system terminated it, and the demo terminates nothing itself (`docs/CORRECTIONS.md`). Exits 0 only when every check ran and passed. Writes `reports/attack_chain_evidence.txt` only under `URDS_WRITE_REPORTS=1`, or `--out PATH`. | Gateway :8000 and dashboard :8501 **only** |
+| `si_demo.py` | TC-04 recovery and TC-05 tamper detection. Restores the tampered row in a `finally` so consecutive runs both pass. Exits 0 only when both ran and passed. Writes `reports/si_demo_evidence.txt` only under `URDS_WRITE_REPORTS=1`, or `--out PATH`. | Ledger :8003, response :8004 **directly** |
 | `verify_vss.py` | TC-04 / VSS acceptance. Requires an elevated shell. | Ledger :8003 |
 | `ransomware_simulator.py` | TC-01 stand-in. Manifest-guarded, reversible. | Filesystem only |
 | `simulator_sweep.py` | Every simulated family past a live Monitor. Writes `reports/simulator_families.json`. | Filesystem only |

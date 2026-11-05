@@ -687,7 +687,7 @@ Important function:
 call_downstream(...)
 ```
 
-Uses `httpx.AsyncClient` to call another service.
+Uses one shared `httpx.AsyncClient`, built when the gateway starts, to call another service.
 
 If a downstream service is unavailable, the gateway returns a `503 Service Unavailable` error.
 
@@ -774,7 +774,6 @@ It is built with:
 - Plotly
 - Pandas
 - Requests
-- streamlit-autorefresh
 
 The dashboard was redesigned to be easier to explain during a presentation. Instead of showing only raw metrics, it now presents the system as an operations view:
 
@@ -800,10 +799,12 @@ Purpose:
 
 Main features:
 
-1. Auto-refresh every second:
+1. Auto-refresh every second. The live panels are a fragment on a 1 s timer,
+   so a refresh never cancels a render in progress:
 
 ```python
-st_autorefresh(interval=1000, key="urds_refresh")
+@st.fragment(run_every=REFRESH_INTERVAL)  # "1s"
+def live_view() -> None:
 ```
 
 2. Creates a development JWT token:

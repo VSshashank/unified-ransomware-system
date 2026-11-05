@@ -74,7 +74,7 @@ covers the same ground.
 | System RAM usage | <500 MB | **70.6 MB** peak, +1.9 MB growth over 137 × 512 KB | PASS |
 | File recovery success | 100 % | **100 %** native (`reports/si_demo_evidence.txt`) | PASS |
 | Ledger verification | <50 ms | **2.3 ms** / 1000 blocks | PASS |
-| Dashboard update latency | <1 s | **442 ms** (`reports/attack_chain_evidence.txt` §8) | PASS |
+| Dashboard update latency | <1 s | **442 ms** (`reports/attack_chain_evidence.txt` §8; that transcript reads 86 ms and is withdrawn, `docs/CORRECTIONS.md`; **re-verification pending**) | PASS |
 
 All ten targets met, independently. Numbers differ from the committed
 `reports/*.json` by a few percent because they are a fresh measurement on this
@@ -330,9 +330,9 @@ claims to satisfy it.
 | TC-04 | File recovery from backup | Restored to pre-attack state, integrity verified | `recovery/tests/test_integration.py::test_tc04_*`, `scripts/si_demo.py` | ✅ native / N-A in Compose |
 | TC-05 | Audit log tampering attempt | Chain validation fails, tampering detected and logged | `ledger/tests/test_api.py::test_tc05_*` + 27 chain tests | ✅ `invalid_block_id` = exact block |
 | TC-06 | ML model accuracy test | Precision/Recall/F1 all >85 % | `reports/model_metrics.json` | ✅ P 0.9761 / R 0.9775 / F1 0.9768 |
-| TC-07 | Response time (detection to action) | Terminated within 2 s of detection | `response/tests/test_actions.py::test_tc07_*` | ✅ 150 ms |
+| TC-07 | Response time (detection to action) | Terminated within 2 s of detection | `response/tests/test_actions.py::test_tc07_*` | ✅ 150 ms for the kill primitive on a PID handed to it, not detection to termination of an attacking process (`docs/CORRECTIONS.md`) |
 | TC-08 | System resource usage | CPU <15 %, RAM <500 MB | `monitor/tests/test_benchmarks.py` | ✅ 1.31 % / 70.6 MB |
-| TC-09 | Dashboard real-time updates | Alert within 1 s of detection | `scripts/attack_chain_demo.py` §8 | ✅ 442 ms |
+| TC-09 | Dashboard real-time updates | Alert within 1 s of detection | `scripts/attack_chain_demo.py` §8 | ✅ 442 ms (transcript withdrawn, `docs/CORRECTIONS.md`; **re-verification pending**) |
 | TC-10 | API authentication failure | 401, request blocked, **audit log entry created** | `gateway/tests/test_authz.py::test_tc10_*` (5 tests) | ✅ all three parts |
 | TC-11 | Multiple simultaneous attacks | All detected and terminated, system stable | `monitor/tests/test_tc11_concurrent.py` + `response/tests/test_tc11_concurrent.py` | ✅ 12 concurrent detections, 8 concurrent kills |
 | TC-12 | Blockchain anchoring **(if implemented)** | Hash anchored to Polygon testnet | — | ⏸ correctly out of scope |
