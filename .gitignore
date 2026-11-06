@@ -22,3 +22,6 @@ docs/_ref.txt
 
 # Working directory for scripts/phase5_baseline.py - regenerated, never committed
 .baseline_work/
+
+# Native Windows stack (scripts/start_stack.ps1): logs, ledger database, demo state
+run/
