@@ -1,9 +1,10 @@
 <#
-One-line install on a fresh Windows VM. Paste this into an ELEVATED PowerShell
+Install on a fresh Windows VM. Paste these two lines into an ELEVATED PowerShell
 ("Run as administrator"); it is short on purpose so it survives copy/paste
 from a PDF:
 
-    irm https://raw.githubusercontent.com/VSshashank/unified-ransomware-system/main/scripts/bootstrap_vm.ps1 | iex
+    $u = "https://raw.githubusercontent.com/VSshashank/unified-ransomware-system"
+    irm "$u/main/scripts/bootstrap_vm.ps1" | iex
 
 What it does:
   1. downloads the repository to C:\urds (git clone when Git is installed,
