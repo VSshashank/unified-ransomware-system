@@ -40,7 +40,7 @@ The 8 steps (about 8 minutes in total):
 
 ---
 
-## 1. Fresh VM: setup is one command
+## 1. Fresh VM: setup is two short lines
 
 **VM:** Windows 10 or 11, 64-bit, 2+ CPU cores, 4 GB+ RAM, 10 GB free disk,
 internet access. Nothing needs to be installed first: not Git, not Python, not
@@ -48,10 +48,11 @@ winget.
 
 1. Start menu → type `PowerShell` → right-click → **Run as administrator**.
    Use this window for the whole demo.
-2. Paste this single line and press Enter:
+2. Type (or paste) these two lines, pressing Enter after each:
 
 ```powershell
-irm https://raw.githubusercontent.com/VSshashank/unified-ransomware-system/main/scripts/bootstrap_vm.ps1 | iex
+$u = "https://raw.githubusercontent.com/VSshashank/unified-ransomware-system"
+irm "$u/main/scripts/bootstrap_vm.ps1" | iex
 ```
 
 It downloads the code to `C:\urds` and runs `scripts\setup_vm.ps1`, which:
@@ -72,7 +73,8 @@ To rehearse a branch before it is merged into `main`, set the branch first, in t
 
 ```powershell
 $env:URDS_BRANCH = "claude/exhibition-demo-setup-3b9d28"
-irm https://raw.githubusercontent.com/VSshashank/unified-ransomware-system/claude/exhibition-demo-setup-3b9d28/scripts/bootstrap_vm.ps1 | iex
+$u = "https://raw.githubusercontent.com/VSshashank/unified-ransomware-system"
+irm "$u/$env:URDS_BRANCH/scripts/bootstrap_vm.ps1" | iex
 ```
 
 **Offline VM:** copy the repository folder (including `models\`) to `C:\urds`,
@@ -103,7 +105,11 @@ Then:
 3. Optional dry run without the slow steps: `.\scripts\exhibition_demo.ps1 --auto --steps 1,2,7`
 
 If PowerShell says *running scripts is disabled on this system*, run this once
-in that window: `Set-ExecutionPolicy -Scope Process Bypass -Force`
+in that window:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+```
 
 ---
 
@@ -240,9 +246,10 @@ Run from `C:\urds` after `. .\scripts\start_watching.ps1`.
 
 ```powershell
 $py = ".venv\Scripts\python.exe"
-& $py scripts\attack_chain_demo.py --watch-host $PWD\watched_files --watch-container $PWD\watched_files
-& $py scripts\ransomware_simulator.py --target-dir watched_files\tc01 --family locker
-& $py scripts\ransomware_simulator.py --target-dir watched_files\tc01 --restore
+$w = "$PWD\watched_files"
+& $py scripts\attack_chain_demo.py --watch-host $w --watch-container $w
+& $py scripts\ransomware_simulator.py --target-dir $w\tc01 --family locker
+& $py scripts\ransomware_simulator.py --target-dir $w\tc01 --restore
 & $py scripts\verify_vss.py --volume C:\
 & $py scripts\si_demo.py --db run\data\ledger.db
 curl.exe -i http://localhost:8000/ledger/entries
@@ -253,7 +260,8 @@ Empty the whitelist (the old guide used `POST`; the API only accepts `PUT`):
 
 ```powershell
 $body = '{"paths":[],"hashes":[]}'
-Invoke-RestMethod -Method Put http://localhost:8001/monitor/whitelist -ContentType "application/json" -Body $body
+$url = "http://localhost:8001/monitor/whitelist"
+irm -Method Put $url -ContentType "application/json" -Body $body
 ```
 
 ## Appendix B — what was wrong with the previous guide
