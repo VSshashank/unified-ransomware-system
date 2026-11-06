@@ -1,0 +1,29 @@
+# URDS console theme. Palette "Frost and slate" and the IBM Plex pairing from
+# the taste-skill library: neutral slate on near-white, one teal accent, colour
+# reserved for state. Without network access the fonts fall back to sans-serif.
+[theme]
+base = "light"
+primaryColor = "#0d7480"
+backgroundColor = "#f7f9fa"
+secondaryBackgroundColor = "#eef2f4"
+textColor = "#1f3038"
+linkColor = "#0d7480"
+borderColor = "#dde3e6"
+showWidgetBorder = true
+baseRadius = "4px"
+baseFontSize = 14
+font = "'IBM Plex Sans':https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap, sans-serif"
+codeFont = "'IBM Plex Mono':https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap, monospace"
+redColor = "#b42318"
+orangeColor = "#b54708"
+greenColor = "#067647"
+blueColor = "#0d7480"
+
+[theme.sidebar]
+backgroundColor = "#eef2f4"
+
+[client]
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false

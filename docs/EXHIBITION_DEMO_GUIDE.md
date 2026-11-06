@@ -1,8 +1,8 @@
 # Exhibition demo guide — Windows VM, no Docker
 
-One elevated PowerShell window, one projector page, one guided script that tells
-the whole story from a file being saved to an attacker being stopped and the
-files coming back.
+One elevated PowerShell window, the URDS console in the browser, and one guided
+script that runs the whole sequence from a file being saved to an attacker
+being stopped and the files coming back.
 
 Every command below is short on purpose: long lines copied out of a PDF pick up
 line breaks and spaces and stop working. Type them, or copy them one at a time.
@@ -11,19 +11,20 @@ line breaks and spaces and stop working. Type them, or copy them one at a time.
 
 ## 0. What the jury will see
 
-The projector shows **http://localhost:8501/Exhibition_Story**, a full-screen
-page that follows the demo live:
+The PowerShell window runs the guided script and narrates each step with
+✔ / ✘ results. The projector shows the URDS console at
+**http://localhost:8501**: the system's own operator dashboard, the same view an
+administrator would use, updating as the demo runs.
 
-| Area on screen | What it shows |
+| Page | What it shows |
 |---|---|
-| Status pill (top right) | SYSTEM SECURE / THREAT DETECTED / LEDGER TAMPERED |
-| Step tracker | the 8 steps of the story, the current one pulsing |
-| Story card | in plain words: what is happening now and what to look at |
-| Detection pipeline | the newest file walked through six stages: File changed → Monitor → AI model → Evidence ledger → Response → Recovery. Green = safe, red = threat, purple = sealed evidence, grey = not needed |
-| Step panel | the 20 documents during the simulator, before/encrypted/restored during recovery, the hash chain during the tamper test |
-| Tiles | files checked, alerts, attackers stopped, evidence blocks, ledger seal, attacker tracking |
+| Overview | service health, files watched, alerts, processes terminated, ledger blocks and chain integrity; the latest alert traced through Detected → Classified → Recorded → Responded; entropy of recent events; recent events and ledger blocks |
+| Events | every file event the Monitor holds, filterable (alerts, benign, governed, deleted, verdict, path); one event in full: entropy, container check, hash, model verdict, ledger block, attributed process, response result, governance decision |
+| Ledger | chain integrity and verification time; every block, paged and filterable by type and file, with a per-block link check; the block inspector with full hashes and event data; CSV and JSON export |
+| Response | monitor status with start/stop, process attribution status, every response action, suspension leases, snapshots and restores, the whitelist |
+| Model | accuracy, precision, recall, F1 and ROC AUC per model; score any file on demand (the result is logged to the ledger) |
 
-The presenter's PowerShell window narrates the same steps with ✔ / ✘ results.
+Which page to show at each step is in section 3.
 
 The 8 steps (about 8 minutes in total):
 
@@ -65,7 +66,7 @@ It downloads the code to `C:\urds` and runs `scripts\setup_vm.ps1`, which:
 | 4/7 | trains the ML model if `models\` is missing (about 1–3 min) |
 | 5/7 | adds Windows Defender exclusions for the folder and the Python processes |
 | 6/7 | turns on the file-audit rule that lets URDS name, and stop, the attacking process |
-| 7/7 | starts all six services, prints UP for each, starts the Monitor and opens the projector page |
+| 7/7 | starts all six services, prints UP for each, starts the Monitor and opens the console |
 
 It ends with **READY**. Re-running it is safe; finished steps are skipped.
 
@@ -100,7 +101,7 @@ section 6.
 
 Then:
 
-1. In the browser that opened, press **F11** for full screen on the projector.
+1. In the browser that opened (the console, on Overview), press **F11** for full screen.
 2. Clean the stage: `.\scripts\exhibition_demo.ps1 --reset`
 3. Optional dry run without the slow steps: `.\scripts\exhibition_demo.ps1 --auto --steps 1,2,7`
 
@@ -139,7 +140,18 @@ Other options:
 | `--skip-vss` | skip step 5 if shadow copies do not work on this VM |
 | `--verbose` | show step 3's full technical transcript |
 
-### What to say at each step
+### What to show and say at each step
+
+| Step | Console page | Look at |
+|---|---|---|
+| 1 Normal work | Overview | Latest event: the ZIP at entropy 8.0, *Benign (valid container)*, no ledger block |
+| 2 Disguised file | Overview | Latest alert: container *forged*, Classified *Ransomware*, Recorded *Block #n* |
+| 3 Live attack | Overview, then Events | Responded *Terminated*; on Events, the alert's process and PID |
+| 4 Simulator | Events (Alerts) | one alert per encrypted document, each with its response |
+| 5 Recovery | Response | Recovery table: *snapshot_created*, *file_recovered*, integrity verified |
+| 6 Tamper-proof log | Ledger | Chain integrity turns *Broken* and names the block; the inspector shows it failing; then *Valid* again |
+| 7 Access control | Ledger | filter type *auth_failure*: the refused request is a block |
+| 8 Numbers | Model | per-model accuracy, precision, recall, F1, ROC AUC |
 
 1. **Normal work.** "URDS watches every file change. It measures how random
    the bytes are, on a scale of 0 to 8, and checks the file's inner structure.
@@ -155,15 +167,16 @@ Other options:
    wrote the file, and terminates it in well under two seconds. Note the PID on
    screen."
 4. **Simulator.** "A harmless simulator starts encrypting twenty documents.
-   Watch the grid: red is encrypted. URDS stops it after a few files, and
-   then every file is put back." *(Say honestly: the faster the attack, the
+   Each alert on screen is one encrypted document. URDS stops it after a few
+   files, and then every file is put back." *(Say honestly: the faster the attack, the
    more files are hit before the kill; see docs\VM_RETEST_ADDENDUM.md.)*
 5. **Recovery.** "We take a Windows shadow copy, the file is encrypted, and
    URDS restores it. It then checks the restored file's SHA-256 fingerprint
    against the one recorded in the ledger before the attack."
 6. **Tamper-proof log.** "Each record carries the fingerprint of the one
    before it. Here an attacker edits a record directly in the database to hide
-   the alert. The chain breaks and URDS names the exact block." *(Honest limit:
+   the alert. The chain breaks and URDS names the exact block. Every block is
+   here in full: its hash, the hash of the one before it, and what it records." *(Honest limit:
    an attacker who recomputes every later hash is not caught;
    `scripts\tamper_sweep.py`: 20/20 in-place tampers detected, 0/8 structural.)*
 7. **Access control.** "No token, or a forged one: refused. A valid signed
@@ -179,8 +192,8 @@ Other options:
 .\scripts\exhibition_demo.ps1 --reset
 ```
 
-This restores any simulator files, empties `watched_files`, clears the
-projector page and empties the Monitor's whitelist. Full restart if anything
+This restores any simulator files, empties `watched_files` and empties the
+Monitor's whitelist. The ledger keeps every block: it is append-only by design. Full restart if anything
 looks wrong:
 
 ```powershell
@@ -223,7 +236,7 @@ re-run it alone.
 | *Attacker tracking is OFF* | `.\scripts\setup_vm.ps1 -SkipInstall -NoStart` in an elevated window, then `.\scripts\start_stack.ps1` |
 | Simulator not stopped in step 4 | same as above: attacker tracking must be LIVE |
 | Step 5: *shadow copy failed* | VSS is off on this VM: run with `--skip-vss` and say so; detection is unaffected |
-| Projector page blank / "not reachable" | `.\scripts\start_stack.ps1` (it restarts everything cleanly) |
+| Console blank / "Gateway data unavailable" | `.\scripts\start_stack.ps1` (it restarts everything cleanly) |
 | Port already in use | `.\scripts\stop_stack.ps1`, then start again |
 | Simulator files vanish | Defender quarantine: re-run `.\scripts\setup_vm.ps1 -SkipInstall -NoStart` to re-add the exclusions |
 | 401 in your own `Invoke-RestMethod` calls | token expired (2 h): `. .\scripts\start_watching.ps1` refreshes `$t` and `$h` |
@@ -277,6 +290,6 @@ irm -Method Put $url -ContentType "application/json" -Body $body
 | Under PS 5.1, `$ErrorActionPreference = "Stop"` turned pip's stderr warnings into fatal errors | native tools are checked by exit code instead |
 | `start_watching.ps1` got HTTP 400: the gateway requires `file_patterns` | the request now sends `file_patterns: []` |
 | `Test-NetConnection` took seconds per check; the wait loop looked hung | plain HTTP health checks, with the failing service's log printed |
-| Streamlit on `0.0.0.0` raised a Windows Firewall dialog on the projector | dashboard binds `127.0.0.1` (use `-Lan` to expose it) |
+| Streamlit on `0.0.0.0` raised a Windows Firewall dialog mid-demo | dashboard binds `127.0.0.1` (use `-Lan` to expose it) |
 | Defender's behaviour monitor could kill the simulator before URDS did | process exclusions for the venv and base Python |
 | Whitelist reset used `POST` → HTTP 405 | `PUT` (Appendix A), and `--reset` does it for you |

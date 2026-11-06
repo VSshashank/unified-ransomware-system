@@ -1,7 +1,6 @@
 <#
 The guided exhibition demo. Runs scripts\exhibition_demo.py with the venv's
-Python; the projector page (http://localhost:8501/Exhibition_Story) follows
-along step by step.
+Python; the dashboard (http://localhost:8501) shows each step as it happens.
 
     powershell -ExecutionPolicy Bypass -File scripts\exhibition_demo.ps1                 # presenter mode: Enter = next step
     powershell -ExecutionPolicy Bypass -File scripts\exhibition_demo.ps1 --auto --loop   # unattended kiosk loop
