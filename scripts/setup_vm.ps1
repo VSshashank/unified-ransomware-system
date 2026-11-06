@@ -174,4 +174,4 @@ if ($LASTEXITCODE -ne 0) { Die "the stack did not come up - see the NOT UP lines
 
 Write-Host "`nREADY." -ForegroundColor Green
 Write-Host "Run the guided exhibition demo:   powershell -ExecutionPolicy Bypass -File scripts\exhibition_demo.ps1"
-Write-Host "Projector page:                   http://localhost:8501/Exhibition_Story"
+Write-Host "Dashboard:                        http://localhost:8501"

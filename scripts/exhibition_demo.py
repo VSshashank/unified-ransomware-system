@@ -8,11 +8,9 @@
 (or scripts\\exhibition_demo.ps1 with the same arguments)
 
 Every step tells the audience in plain words what is about to happen, does it
-against the running stack, and reports what the system did. The same story is
-written to run/exhibition_state.json, which the dashboard's "Exhibition Story"
-page (http://localhost:8501/Exhibition_Story) draws on the projector: a step
-tracker, the live detection pipeline, the simulator's documents, the ledger's
-seal.
+against the running stack, and reports what the system did. The console at
+http://localhost:8501 shows the same activity as it happens: the Overview
+follows each detection, the Ledger page holds every block it writes.
 
 Steps
   1  Normal work is left alone          text, CSV and a real ZIP - no alarm (TC-03)
@@ -57,7 +55,6 @@ WATCH = REPO / "watched_files"
 STAGE = WATCH / "exhibition"
 SIM_DIR = STAGE / "office_documents"
 RECOVERY_DIR = STAGE / "recovery"
-STATE_PATH = Path(os.getenv("URDS_EXHIBITION_STATE", str(RUN / "exhibition_state.json")))
 BOOTSTRAP_SECRET = os.getenv("DEV_TOKEN_BOOTSTRAP_SECRET", "dev-bootstrap-change-me")
 IS_WINDOWS = platform.system() == "Windows"
 
@@ -202,49 +199,27 @@ def banner(step: dict) -> None:
 # --------------------------------------------------------------------------- shared state
 
 class State:
-    """What the projector page draws. Written atomically after every change."""
+    """What this run did, step by step; printed as the summary at the end."""
 
-    def __init__(self, path: Path) -> None:
-        self.path = path
+    def __init__(self) -> None:
         self.data: dict = {
-            "started_at": now_iso(),
             "steps": [{"n": s["n"], "title": s["title"], "status": "pending"} for s in STEPS],
-            "current": None,
-            "phase": "idle",
-            "message": "",
-            "focus_file": None,
             "results": {},
             "simulator": None,
             "recovery": None,
             "tamper": None,
-            "numbers": None,
         }
 
     def set(self, **fields) -> None:
         self.data.update(fields)
-        self.flush()
 
     def step(self, n: int, status: str) -> None:
         for s in self.data["steps"]:
             if s["n"] == n:
                 s["status"] = status
-        self.flush()
 
     def result(self, key: str, value) -> None:
         self.data["results"][key] = value
-        self.flush()
-
-    def flush(self) -> None:
-        self.data["updated_at"] = now_iso()
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.data, indent=1, default=str), encoding="utf-8")
-        for _ in range(20):  # the page may be reading the old file at this instant
-            try:
-                os.replace(tmp, self.path)
-                return
-            except PermissionError:
-                time.sleep(0.05)
 
 
 def now_iso() -> str:
@@ -408,9 +383,9 @@ def preflight(stack: Stack, state: State, args) -> bool:
             ok = False
     try:
         stack.http.get(f"{stack.dashboard}/_stcore/health", timeout=5).raise_for_status()
-        good(f"{'Dashboard':20} running  ->  {stack.dashboard}/Exhibition_Story")
+        good(f"{'Dashboard':20} running  ->  {stack.dashboard}")
     except httpx.HTTPError:
-        warn("Dashboard not reachable on :8501 - the projector page will be blank")
+        warn("Dashboard not reachable on :8501")
     try:
         ml = stack.http.get(args.ml.rstrip("/") + "/health", timeout=5).json()
         if ml.get("behavioral_model_loaded"):
@@ -846,7 +821,7 @@ RUNNERS = {
 
 # --------------------------------------------------------------------------- reset
 
-def reset(stack: Stack | None, state_path: Path) -> None:
+def reset(stack: Stack | None) -> None:
     say(col("Resetting the exhibition area ...", "c"))
     # Any folder the simulator worked in (ours, or watched_files\tc01 from the
     # manual commands) is restored first: its originals live outside the folder.
@@ -857,20 +832,18 @@ def reset(stack: Stack | None, state_path: Path) -> None:
             shutil.rmtree(leftover, ignore_errors=True)
         else:
             leftover.unlink(missing_ok=True)
-    state_path.unlink(missing_ok=True)
     if stack is not None:
         try:
             stack.http.put(f"{stack.monitor}/monitor/whitelist", json={"paths": [], "hashes": []}, timeout=5)
         except httpx.HTTPError:
             pass
-    good("watched_files cleaned, simulator files restored, projector page cleared")
+    good("watched_files cleaned, simulator files restored, whitelist emptied")
 
 
 # --------------------------------------------------------------------------- main
 
 def run_once(stack: Stack, args, selected: list[dict], pacer: Pacer) -> bool:
-    state = State(STATE_PATH)
-    state.flush()
+    state = State()
     if not preflight(stack, state, args):
         state.set(phase="error", message="The system is not ready - see the console")
         return False
@@ -902,7 +875,11 @@ def run_once(stack: Stack, args, selected: list[dict], pacer: Pacer) -> bool:
         state.set(phase="waiting")
         if step is not selected[-1] and pacer.wait("Press Enter for the next step") == "q":
             raise Quit
-    state.set(phase="finished", current=None, message="Demo complete")
+    say(col("\n  SUMMARY", "w", "B"))
+    marks = {"done": col("done", "g"), "error": col("error", "r"), "skipped": col("skipped", "d"),
+             "pending": col("not run", "d"), "running": col("stopped", "y")}
+    for s in state.data["steps"]:
+        say(f"   {s['n']}. {s['title']:44} {marks.get(s['status'], s['status'])}")
     say(col("\n  ✔ Demo complete. Thank you!\n", "g", "B"))
     return True
 
@@ -930,7 +907,7 @@ def main() -> int:
 
     stack = Stack(args)
     if args.reset:
-        reset(stack, STATE_PATH)
+        reset(stack)
         return 0
 
     selected = STEPS
@@ -944,7 +921,7 @@ def main() -> int:
             if not (args.auto and args.loop and ok):
                 return 0 if ok else 1
             time.sleep(args.pause * 2)
-            reset(stack, STATE_PATH)
+            reset(stack)
     except (Quit, KeyboardInterrupt):
         say(col("\n  stopped. Run with --reset to clean up.", "y"))
         if SIM_DIR.exists():

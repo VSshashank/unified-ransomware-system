@@ -2,7 +2,7 @@
 Start all six URDS services natively on Windows, no Docker, from one elevated
 PowerShell. Services run as children of this elevated shell, so they inherit
 Administrator rights and never prompt again. Then it starts the Monitor
-watching watched_files and opens the projector page.
+watching watched_files and opens the dashboard.
 
     powershell -ExecutionPolicy Bypass -File scripts\start_stack.ps1
     powershell -ExecutionPolicy Bypass -File scripts\start_stack.ps1 -Lan        # dashboard reachable from other machines
@@ -47,7 +47,6 @@ $env:MODEL_DIR = Join-Path $Repo "models"
 $env:URDS_ENV = "development"; $env:ALLOW_DEV_TOKENS = "true"
 $env:JWT_SECRET = "dev-only-change-me"; $env:DEV_TOKEN_BOOTSTRAP_SECRET = "dev-bootstrap-change-me"
 $env:RESPONSE_ISOLATION_ENABLED = "false"
-$env:URDS_EXHIBITION_STATE = Join-Path $Run "exhibition_state.json"
 # A cp1252/cp437 console cannot print every character the services log.
 $env:PYTHONUTF8 = "1"; $env:PYTHONUNBUFFERED = "1"
 Remove-Item Env:\URDS_WRITE_REPORTS -ErrorAction SilentlyContinue
@@ -57,7 +56,7 @@ if (-not (Test-Path $env:BEHAVIORAL_MODEL_PATH)) {
     Write-Warning "No behavioural model at $($env:BEHAVIORAL_MODEL_PATH): ML /predict will return 503. Run: .venv\Scripts\python.exe src\train_behavioral_model.py"
 }
 
-# 127.0.0.1 keeps Windows Firewall from popping up a dialog on the projector.
+# 127.0.0.1 keeps Windows Firewall from popping up a dialog during the demo.
 $dashAddress = if ($Lan) { "0.0.0.0" } else { "127.0.0.1" }
 $services = @(
     @{ n = "ledger";    dir = "services\ledger";    args = "-m uvicorn main:app --host 127.0.0.1 --port 8003"; port = 8003; health = "/health" },
@@ -116,7 +115,6 @@ if (-not $NoWatch) {
 
 Write-Host "`nWatch folder : $Watch"
 Write-Host "Dashboard    : http://localhost:8501"
-Write-Host "Projector    : http://localhost:8501/Exhibition_Story"
 Write-Host "Guided demo  : powershell -ExecutionPolicy Bypass -File scripts\exhibition_demo.ps1"
-if (-not $NoBrowser) { Start-Process "http://localhost:8501/Exhibition_Story" }
+if (-not $NoBrowser) { Start-Process "http://localhost:8501" }
 exit 0

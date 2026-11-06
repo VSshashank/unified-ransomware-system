@@ -177,6 +177,8 @@ services:
       - "8501:8501"
     environment:
       - GATEWAY_URL=${GATEWAY_URL:-http://gateway:8000}
+      # The Response page reads attribution and the whitelist from the Monitor directly.
+      - MONITOR_URL=${MONITOR_URL:-http://monitor:8001}
       - JWT_SECRET=${JWT_SECRET:-dev-only-change-me}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
     depends_on:

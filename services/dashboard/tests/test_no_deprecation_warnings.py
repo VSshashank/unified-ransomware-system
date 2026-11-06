@@ -16,7 +16,7 @@ import logging
 import pytest
 from streamlit.delta_generator import DeltaGenerator
 
-from test_render import APP, EVENT, GATEWAY, gateway, run_dashboard  # noqa: F401
+from test_render import APP, EVENT, GATEWAY, PAGES, ROOT, VIEWS, gateway, run  # noqa: F401
 
 DEPRECATED = "use_container_width"
 ADJUDICATED = dict(EVENT, admissibility={
@@ -46,13 +46,15 @@ def deprecations():
 def test_one_refresh_logs_no_use_container_width_warning(gateway, deprecations, monkeypatch):
     # The adjudicated event draws every table, so every call site runs.
     monkeypatch.setitem(GATEWAY, "/monitor/events", {"events": [ADJUDICATED]})
-    run_dashboard()
+    for script in PAGES:
+        run(VIEWS / script)
     seen = [m for m in deprecations[0] if DEPRECATED in m]
-    assert seen == [], f"{len(seen)} deprecation warnings in one refresh"
+    assert seen == [], f"{len(seen)} deprecation warnings across one refresh of every page"
 
 
 def test_the_source_has_no_use_container_width_left():
-    assert DEPRECATED not in APP.read_text(encoding="utf-8")
+    sources = [APP, ROOT / "urds_ui.py", *VIEWS.glob("*.py")]
+    assert not [p.name for p in sources if DEPRECATED in p.read_text(encoding="utf-8")]
 
 
 def test_every_table_and_chart_still_stretches(gateway, monkeypatch):
@@ -66,9 +68,10 @@ def test_every_table_and_chart_still_stretches(gateway, monkeypatch):
         return real(self, delta_type, element_proto, add_rows_metadata, layout_config)
 
     monkeypatch.setattr(DeltaGenerator, "_enqueue", spy)
-    run_dashboard()
+    for script in PAGES:
+        run(VIEWS / script)
 
     kinds = {kind for kind, _ in drawn}
     assert kinds == {"arrow_data_frame", "plotly_chart"}, kinds
-    assert len(drawn) >= 8, drawn
+    assert len(drawn) >= 7, drawn  # every table and chart across the five pages
     assert all(width == "stretch" for _, width in drawn), drawn
